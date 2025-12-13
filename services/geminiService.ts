@@ -2,7 +2,9 @@ import { GoogleGenAI } from "@google/genai";
 import { Lead } from "../types";
 
 export const generateLeadStrategy = async (lead: Lead, funnelName: string, stageName: string): Promise<string> => {
+  // Use process.env.API_KEY as per guidelines
   const apiKey = process.env.API_KEY;
+  
   if (!apiKey) {
     return "API Key not configured.";
   }
