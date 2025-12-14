@@ -1,13 +1,14 @@
 
 import React, { useState, useRef } from 'react';
 import { useCRM } from '../context/CRMContext';
-import { Plus, GripVertical, Building, Layers, SlidersHorizontal, Trash2, CheckSquare, Type, List, ArrowRight, AlertOctagon, FileText } from 'lucide-react';
+import { Plus, GripVertical, Building, Layers, SlidersHorizontal, Trash2, CheckSquare, Type, List, ArrowRight, AlertOctagon, FileText, Users, CreditCard, Check, Sparkles, Zap, Shield, Loader2 } from 'lucide-react';
 import { CustomFieldDefinition, CustomFieldOption, CustomFieldType, CustomFieldContext } from '../types';
+import { Teams } from './Teams';
 
-type SettingsTab = 'pipeline' | 'fields';
+type SettingsTab = 'pipeline' | 'fields' | 'teams' | 'billing';
 
 export const Settings = () => {
-  const { funnels, addFunnel, updateFunnel, addStage, reorderStages, customFields, addCustomField, deleteCustomField } = useCRM();
+  const { funnels, addFunnel, updateFunnel, addStage, reorderStages, customFields, addCustomField, deleteCustomField, currentUser, allAccounts, upgradePlan } = useCRM();
   const [activeTab, setActiveTab] = useState<SettingsTab>('pipeline');
   
   // Pipeline State
@@ -26,8 +27,15 @@ export const Settings = () => {
   const [newOptionLabel, setNewOptionLabel] = useState('');
   const [fieldVisibleStages, setFieldVisibleStages] = useState<string[]>([]);
 
+  // Billing State
+  const [billingLoading, setBillingLoading] = useState<string | null>(null); // 'pro' | 'enterprise' | null
+
   const selectedFunnel = funnels.find(f => f.id === selectedFunnelId);
   const fieldFunnel = funnels.find(f => f.id === fieldFunnelId);
+  
+  // Current Account Data
+  const currentAccount = allAccounts.find(a => a.id === currentUser?.accountId);
+  const currentPlan = currentAccount?.plan || 'trial';
 
   // --- Pipeline Handlers ---
   const handleAddFunnel = () => {
@@ -89,6 +97,7 @@ export const Settings = () => {
     
     const newField: CustomFieldDefinition = {
         id: `cf-${Date.now()}`,
+        accountId: currentUser?.accountId || '',
         name: fieldName,
         type: fieldType,
         context: fieldContext,
@@ -107,30 +116,184 @@ export const Settings = () => {
     // Keep context and funnel same for convenience
   };
 
+  // --- Billing Handler ---
+  const handleUpgrade = async (plan: 'pro' | 'enterprise') => {
+      setBillingLoading(plan);
+      await upgradePlan(plan);
+      setBillingLoading(null);
+      alert(`Plano ${plan.toUpperCase()} ativado com sucesso! (Simulação de pagamento)`);
+  };
+
   return (
     <div className="p-8 h-full flex flex-col bg-gray-50 animate-fade-in">
-      <div className="mb-6 flex justify-between items-center">
+      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
         <div>
             <h2 className="text-2xl font-bold text-gray-800">Configurações</h2>
-            <p className="text-gray-500 mt-1">Gerencie funis, etapas e campos personalizados.</p>
+            <p className="text-gray-500 mt-1">Gerencie funis, campos personalizados, equipe e assinatura.</p>
         </div>
-        <div className="flex bg-white rounded-lg p-1 shadow-sm border border-gray-200">
+        <div className="flex bg-white rounded-lg p-1 shadow-sm border border-gray-200 overflow-x-auto max-w-full">
             <button 
                 onClick={() => setActiveTab('pipeline')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'pipeline' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'pipeline' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
             >
-                Funis e Etapas
+                <Layers size={16} /> Funis
             </button>
             <button 
                 onClick={() => setActiveTab('fields')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'fields' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'fields' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
             >
-                Campos Personalizados
+                <SlidersHorizontal size={16} /> Campos
+            </button>
+            <button 
+                onClick={() => setActiveTab('teams')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'teams' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+                <Users size={16} /> Equipes
+            </button>
+            <button 
+                onClick={() => setActiveTab('billing')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'billing' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
+            >
+                <CreditCard size={16} /> Assinatura
             </button>
         </div>
       </div>
       
-      {activeTab === 'pipeline' ? (
+      {activeTab === 'billing' ? (
+        <div className="flex-1 overflow-y-auto">
+             <div className="max-w-5xl mx-auto">
+                 {/* Current Plan Status */}
+                 <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl p-8 text-white shadow-xl mb-12 flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden">
+                     {/* Decor */}
+                     <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500 rounded-full blur-[100px] opacity-20 -mr-20 -mt-20"></div>
+
+                     <div className="relative z-10">
+                         <div className="flex items-center gap-3 mb-2">
+                             <span className="bg-blue-500/20 text-blue-200 border border-blue-500/30 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                                 Plano Atual
+                             </span>
+                         </div>
+                         <h3 className="text-4xl font-bold mb-2 capitalize">{currentPlan}</h3>
+                         <p className="text-slate-400 max-w-md">
+                             Sua assinatura expira em: <span className="text-white font-medium">{new Date(currentAccount?.expiresAt || Date.now()).toLocaleDateString()}</span>
+                         </p>
+                     </div>
+                     <div className="relative z-10 text-right">
+                         <div className="text-3xl font-bold mb-1">
+                             {currentPlan === 'trial' ? 'Grátis' : currentPlan === 'pro' ? 'R$ 99,00' : 'R$ 299,00'}
+                             <span className="text-sm text-slate-400 font-normal">/mês</span>
+                         </div>
+                         <p className="text-sm text-slate-500 mb-4">Próxima cobrança em {new Date(currentAccount?.expiresAt || Date.now()).toLocaleDateString()}</p>
+                         <button className="text-white underline hover:text-blue-300 text-sm">Gerenciar forma de pagamento</button>
+                     </div>
+                 </div>
+
+                 {/* Pricing Cards */}
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                     
+                     {/* TRIAL / FREE */}
+                     <div className={`bg-white rounded-2xl border p-8 flex flex-col transition-all ${currentPlan === 'trial' ? 'border-blue-500 ring-4 ring-blue-50 shadow-lg' : 'border-gray-200 hover:border-gray-300'}`}>
+                         <div className="mb-4">
+                             <h4 className="text-lg font-bold text-gray-900">Trial / Grátis</h4>
+                             <p className="text-gray-500 text-sm mt-1">Para quem está começando.</p>
+                         </div>
+                         <div className="mb-6">
+                             <span className="text-4xl font-bold text-gray-900">R$ 0</span>
+                             <span className="text-gray-500">/mês</span>
+                         </div>
+                         <ul className="space-y-3 mb-8 flex-1">
+                             <li className="flex items-center gap-3 text-sm text-gray-600"><Check size={16} className="text-green-500" /> Até 2 usuários</li>
+                             <li className="flex items-center gap-3 text-sm text-gray-600"><Check size={16} className="text-green-500" /> 1 Funil de Vendas</li>
+                             <li className="flex items-center gap-3 text-sm text-gray-600"><Check size={16} className="text-green-500" /> 50 Leads ativos</li>
+                         </ul>
+                         <button 
+                            disabled={currentPlan === 'trial'}
+                            className="w-full py-3 rounded-xl border border-gray-200 font-bold text-gray-600 disabled:opacity-50 disabled:bg-gray-100 disabled:text-gray-400"
+                         >
+                             {currentPlan === 'trial' ? 'Plano Atual' : 'Downgrade'}
+                         </button>
+                     </div>
+
+                     {/* PRO */}
+                     <div className={`bg-white rounded-2xl border p-8 flex flex-col transition-all relative ${currentPlan === 'pro' ? 'border-blue-500 ring-4 ring-blue-50 shadow-lg' : 'border-gray-200 hover:border-blue-200 hover:shadow-md'}`}>
+                         <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
+                             Mais Popular
+                         </div>
+                         <div className="mb-4">
+                             <div className="flex items-center gap-2">
+                                <Zap size={20} className="text-blue-600 fill-current" />
+                                <h4 className="text-lg font-bold text-gray-900">Pro</h4>
+                             </div>
+                             <p className="text-gray-500 text-sm mt-1">Para pequenas equipes em crescimento.</p>
+                         </div>
+                         <div className="mb-6">
+                             <span className="text-4xl font-bold text-gray-900">R$ 99</span>
+                             <span className="text-gray-500">/mês</span>
+                         </div>
+                         <ul className="space-y-3 mb-8 flex-1">
+                             <li className="flex items-center gap-3 text-sm text-gray-600"><Check size={16} className="text-green-500" /> Até 10 usuários</li>
+                             <li className="flex items-center gap-3 text-sm text-gray-600"><Check size={16} className="text-green-500" /> 5 Funis de Vendas</li>
+                             <li className="flex items-center gap-3 text-sm text-gray-600"><Check size={16} className="text-green-500" /> Leads Ilimitados</li>
+                             <li className="flex items-center gap-3 text-sm text-gray-600"><Check size={16} className="text-green-500" /> Dashboards Avançados</li>
+                         </ul>
+                         <button 
+                            onClick={() => handleUpgrade('pro')}
+                            disabled={currentPlan === 'pro' || billingLoading !== null}
+                            className={`w-full py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 ${currentPlan === 'pro' ? 'bg-gray-100 text-gray-400 cursor-default' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                         >
+                             {billingLoading === 'pro' ? <Loader2 className="animate-spin" /> : currentPlan === 'pro' ? 'Plano Atual' : 'Assinar Pro'}
+                         </button>
+                     </div>
+
+                     {/* ENTERPRISE */}
+                     <div className={`bg-white rounded-2xl border p-8 flex flex-col transition-all ${currentPlan === 'enterprise' ? 'border-blue-500 ring-4 ring-blue-50 shadow-lg' : 'border-gray-200 hover:border-purple-200 hover:shadow-md'}`}>
+                         <div className="mb-4">
+                             <div className="flex items-center gap-2">
+                                <Shield size={20} className="text-purple-600 fill-current" />
+                                <h4 className="text-lg font-bold text-gray-900">Enterprise</h4>
+                             </div>
+                             <p className="text-gray-500 text-sm mt-1">Para grandes operações.</p>
+                         </div>
+                         <div className="mb-6">
+                             <span className="text-4xl font-bold text-gray-900">R$ 299</span>
+                             <span className="text-gray-500">/mês</span>
+                         </div>
+                         <ul className="space-y-3 mb-8 flex-1">
+                             <li className="flex items-center gap-3 text-sm text-gray-600"><Check size={16} className="text-green-500" /> Usuários Ilimitados</li>
+                             <li className="flex items-center gap-3 text-sm text-gray-600"><Check size={16} className="text-green-500" /> Funis Ilimitados</li>
+                             <li className="flex items-center gap-3 text-sm text-gray-600"><Check size={16} className="text-green-500" /> IA Nexus Ilimitada</li>
+                             <li className="flex items-center gap-3 text-sm text-gray-600"><Check size={16} className="text-green-500" /> Suporte Dedicado 24/7</li>
+                             <li className="flex items-center gap-3 text-sm text-gray-600"><Check size={16} className="text-green-500" /> API de Integração</li>
+                         </ul>
+                         <button 
+                            onClick={() => handleUpgrade('enterprise')}
+                            disabled={currentPlan === 'enterprise' || billingLoading !== null}
+                            className={`w-full py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 ${currentPlan === 'enterprise' ? 'bg-gray-100 text-gray-400 cursor-default' : 'bg-gray-900 text-white hover:bg-gray-800'}`}
+                         >
+                             {billingLoading === 'enterprise' ? <Loader2 className="animate-spin" /> : currentPlan === 'enterprise' ? 'Plano Atual' : 'Assinar Enterprise'}
+                         </button>
+                     </div>
+
+                 </div>
+
+                 <div className="mt-12 p-6 bg-gray-100 rounded-xl text-center text-gray-500 text-sm">
+                     <p>Pagamentos processados de forma segura via <strong>Stripe</strong>. Suas informações estão protegidas.</p>
+                     <div className="flex justify-center gap-4 mt-2 grayscale opacity-50">
+                         {/* Icons representing card brands would go here */}
+                         <span>VISA</span>
+                         <span>MasterCard</span>
+                         <span>Amex</span>
+                         <span>Pix</span>
+                     </div>
+                 </div>
+             </div>
+        </div>
+      ) : activeTab === 'teams' ? (
+        // Teams View Integrated (Breaking out of padding for full height feel)
+        <div className="flex-1 -mx-8 -mb-8 mt-2 border-t border-gray-200 bg-white rounded-t-xl overflow-hidden">
+             <Teams />
+        </div>
+      ) : activeTab === 'pipeline' ? (
         <div className="flex gap-8 flex-1 min-h-0">
             {/* List of Funnels */}
             <div className="w-80 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">

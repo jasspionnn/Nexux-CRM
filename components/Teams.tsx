@@ -2,37 +2,63 @@
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { User, Team, UserRole } from '../types';
-import { Users, Shield, Briefcase, Plus, Trash2, Mail, DollarSign, UserPlus } from 'lucide-react';
+import { Users, Shield, Briefcase, Plus, Trash2, Mail, DollarSign, UserPlus, Send, Check, Copy, Loader2, X, Clock, CheckCircle } from 'lucide-react';
 
 export const Teams = () => {
-  const { users, teams, addUser, updateUser, deleteUser, addTeam, deleteTeam } = useCRM();
+  const { users, teams, addUser, updateUser, deleteUser, addTeam, deleteTeam, currentUser } = useCRM();
   const [selectedTeamId, setSelectedTeamId] = useState<string | 'all'>('all');
   
+  // Permission Check
+  const canEdit = currentUser?.role === UserRole.ACCOUNT_ADMIN;
+
   // Modal States
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
 
+  // Invitation Logic State
+  const [inviteStatus, setInviteStatus] = useState<'idle' | 'sending' | 'success'>('idle');
+  const [generatedCreds, setGeneratedCreds] = useState<{email: string, pass: string} | null>(null);
+
   // Form States
-  const [newUser, setNewUser] = useState<Partial<User>>({ role: UserRole.SALES, teamId: '' });
+  const [newUser, setNewUser] = useState<Partial<User>>({ role: UserRole.USER, teamId: '' });
   const [newTeam, setNewTeam] = useState<Partial<Team>>({ goal: 0 });
 
   const filteredUsers = selectedTeamId === 'all' 
     ? users 
     : users.filter(u => u.teamId === selectedTeamId);
 
-  const handleAddUser = (e: React.FormEvent) => {
+  const resetUserModal = () => {
+      setIsUserModalOpen(false);
+      setNewUser({ role: UserRole.USER, teamId: '' });
+      setInviteStatus('idle');
+      setGeneratedCreds(null);
+  };
+
+  const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newUser.name && newUser.email) {
+      setInviteStatus('sending');
+      
+      // Generate a temporary password
+      const tempPassword = Math.random().toString(36).slice(-8) + "1!";
+      
+      // Simulate API/Email Service delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
       addUser({
         id: `u-${Date.now()}`,
         name: newUser.name,
         email: newUser.email,
-        role: newUser.role || UserRole.SALES,
+        password: tempPassword,
+        role: newUser.role || UserRole.USER,
         teamId: newUser.teamId || undefined,
-        avatar: `https://ui-avatars.com/api/?name=${newUser.name}&background=random`
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(newUser.name)}&background=random`,
+        status: 'pending', // Set as pending invite
+        joinedAt: new Date().toISOString()
       });
-      setIsUserModalOpen(false);
-      setNewUser({ role: UserRole.SALES, teamId: '' });
+
+      setGeneratedCreds({ email: newUser.email, pass: tempPassword });
+      setInviteStatus('success');
     }
   };
 
@@ -41,12 +67,18 @@ export const Teams = () => {
     if (newTeam.name) {
       addTeam({
         id: `t-${Date.now()}`,
+        accountId: currentUser?.accountId || '',
         name: newTeam.name,
         goal: Number(newTeam.goal) || 0
       });
       setIsTeamModalOpen(false);
       setNewTeam({ goal: 0 });
     }
+  };
+
+  const copyToClipboard = (text: string) => {
+      navigator.clipboard.writeText(text);
+      // Optional toast here
   };
 
   return (
@@ -89,7 +121,7 @@ export const Teams = () => {
                 <span className={`font-semibold ${selectedTeamId === team.id ? 'text-blue-700' : 'text-gray-700'}`}>
                   {team.name}
                 </span>
-                {selectedTeamId === team.id && (
+                {selectedTeamId === team.id && canEdit && (
                   <button 
                     onClick={(e) => { e.stopPropagation(); deleteTeam(team.id); setSelectedTeamId('all'); }}
                     className="text-gray-300 hover:text-red-500"
@@ -116,14 +148,16 @@ export const Teams = () => {
           ))}
         </div>
 
-        <div className="p-4 border-t border-gray-100">
-          <button 
-            onClick={() => setIsTeamModalOpen(true)}
-            className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors flex items-center justify-center gap-2 font-medium"
-          >
-            <Plus size={18} /> Nova Equipe
-          </button>
-        </div>
+        {canEdit && (
+          <div className="p-4 border-t border-gray-100">
+            <button 
+              onClick={() => setIsTeamModalOpen(true)}
+              className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-500 transition-colors flex items-center justify-center gap-2 font-medium"
+            >
+              <Plus size={18} /> Nova Equipe
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Right Content: Users Grid */}
@@ -137,21 +171,36 @@ export const Teams = () => {
                   {filteredUsers.length} usuários ativos nesta visualização
                </p>
             </div>
-            <button 
-               onClick={() => setIsUserModalOpen(true)}
-               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm font-medium transition-all"
-            >
-               <UserPlus size={18} /> Adicionar Vendedor
-            </button>
+            {canEdit && (
+              <button 
+                 onClick={() => setIsUserModalOpen(true)}
+                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm font-medium transition-all"
+              >
+                 <UserPlus size={18} /> Convidar Usuário
+              </button>
+            )}
          </div>
 
          <div className="flex-1 overflow-y-auto p-8">
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                {filteredUsers.map(user => (
-                  <div key={user.id} className="bg-white rounded-xl p-5 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+                  <div key={user.id} className="bg-white rounded-xl p-5 shadow-sm border border-gray-200 hover:shadow-md transition-shadow relative">
+                     {/* Status Badge */}
+                     <div className="absolute top-5 right-5">
+                         {user.status === 'pending' ? (
+                             <span className="flex items-center gap-1 bg-yellow-100 text-yellow-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-yellow-200" title="Aguardando primeiro acesso">
+                                 <Clock size={10} /> Pendente
+                             </span>
+                         ) : (
+                             <span className="flex items-center gap-1 bg-green-100 text-green-700 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-green-200">
+                                 <CheckCircle size={10} /> Ativo
+                             </span>
+                         )}
+                     </div>
+
                      <div className="flex justify-between items-start mb-4">
                         <div className="flex items-center gap-3">
-                           <img src={user.avatar} className="w-12 h-12 rounded-full" alt={user.name} />
+                           <img src={user.avatar} className={`w-12 h-12 rounded-full ${user.status === 'pending' ? 'grayscale opacity-70' : ''}`} alt={user.name} />
                            <div>
                               <h4 className="font-bold text-gray-800">{user.name}</h4>
                               <div className="flex items-center gap-1 text-xs text-gray-500">
@@ -159,26 +208,23 @@ export const Teams = () => {
                               </div>
                            </div>
                         </div>
-                        <button 
-                           onClick={() => deleteUser(user.id)}
-                           className="text-gray-300 hover:text-red-500 transition-colors"
-                        >
-                           <Trash2 size={16} />
-                        </button>
                      </div>
                      
-                     <div className="space-y-3">
+                     <div className="space-y-3 pt-2">
                         {/* Role Select */}
                         <div>
                            <label className="text-[10px] uppercase font-bold text-gray-400">Cargo</label>
                            <div className="relative">
                               <Shield className="absolute left-2 top-2 text-gray-400" size={14} />
                               <select 
+                                 disabled={!canEdit}
                                  value={user.role}
                                  onChange={(e) => updateUser(user.id, { role: e.target.value as UserRole })}
-                                 className="w-full bg-gray-50 border border-gray-200 text-sm rounded-md py-1.5 pl-7 pr-2 outline-none focus:border-blue-500"
+                                 className={`w-full bg-gray-50 border border-gray-200 text-sm rounded-md py-1.5 pl-7 pr-2 outline-none ${canEdit ? 'focus:border-blue-500' : 'cursor-not-allowed text-gray-500'}`}
                               >
-                                 {Object.values(UserRole).map(role => (
+                                 {Object.values(UserRole)
+                                    .filter(role => role !== UserRole.NEXUS_ADMIN)
+                                    .map(role => (
                                     <option key={role} value={role}>{role}</option>
                                  ))}
                               </select>
@@ -191,9 +237,10 @@ export const Teams = () => {
                            <div className="relative">
                               <Users className="absolute left-2 top-2 text-gray-400" size={14} />
                               <select 
+                                 disabled={!canEdit}
                                  value={user.teamId || ''}
                                  onChange={(e) => updateUser(user.id, { teamId: e.target.value || undefined })}
-                                 className="w-full bg-gray-50 border border-gray-200 text-sm rounded-md py-1.5 pl-7 pr-2 outline-none focus:border-blue-500"
+                                 className={`w-full bg-gray-50 border border-gray-200 text-sm rounded-md py-1.5 pl-7 pr-2 outline-none ${canEdit ? 'focus:border-blue-500' : 'cursor-not-allowed text-gray-500'}`}
                               >
                                  <option value="">Sem equipe</option>
                                  {teams.map(t => (
@@ -202,6 +249,21 @@ export const Teams = () => {
                               </select>
                            </div>
                         </div>
+                     </div>
+
+                     <div className="mt-4 pt-3 border-t border-gray-100 flex justify-between items-center">
+                         <span className="text-[10px] text-gray-400">
+                            Entrou em: {new Date(user.joinedAt || Date.now()).toLocaleDateString()}
+                         </span>
+                         {canEdit && (
+                            <button 
+                                onClick={() => deleteUser(user.id)}
+                                className="text-gray-300 hover:text-red-500 transition-colors p-1 hover:bg-red-50 rounded"
+                                title="Remover Usuário"
+                            >
+                                <Trash2 size={16} />
+                            </button>
+                         )}
                      </div>
                   </div>
                ))}
@@ -216,72 +278,138 @@ export const Teams = () => {
          </div>
       </div>
 
-      {/* --- MODALS --- */}
+      {/* --- MODALS (Only rendered if canEdit) --- */}
       
-      {/* Add User Modal */}
-      {isUserModalOpen && (
+      {/* Invite User Modal */}
+      {isUserModalOpen && canEdit && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
            <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-scale-in">
               <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
-                 <h3 className="font-bold text-gray-800">Novo Usuário</h3>
-                 <button onClick={() => setIsUserModalOpen(false)} className="text-gray-400 hover:text-gray-600"><Trash2 size={20} className="rotate-45" /></button>
+                 <h3 className="font-bold text-gray-800">
+                     {inviteStatus === 'success' ? 'Convite Enviado' : 'Convidar Novo Usuário'}
+                 </h3>
+                 <button onClick={resetUserModal} className="text-gray-400 hover:text-gray-600">
+                    <X size={20} />
+                 </button>
               </div>
-              <form onSubmit={handleAddUser} className="p-6 space-y-4">
-                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo</label>
-                    <input 
-                       required
-                       value={newUser.name || ''}
-                       onChange={e => setNewUser({...newUser, name: e.target.value})}
-                       className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                 </div>
-                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <input 
-                       required
-                       type="email"
-                       value={newUser.email || ''}
-                       onChange={e => setNewUser({...newUser, email: e.target.value})}
-                       className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                 </div>
-                 <div className="grid grid-cols-2 gap-4">
+
+              {inviteStatus === 'success' && generatedCreds ? (
+                  <div className="p-6 text-center animate-fade-in">
+                      <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <Check className="text-green-600 w-8 h-8" />
+                      </div>
+                      <h4 className="text-lg font-bold text-gray-800 mb-2">Convite enviado com sucesso!</h4>
+                      <p className="text-gray-600 text-sm mb-6">
+                          Um e-mail de boas-vindas foi enviado para <strong>{generatedCreds.email}</strong> com o link de acesso seguro.
+                      </p>
+                      
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-left mb-6 relative overflow-hidden">
+                          <div className="absolute top-0 right-0 bg-yellow-100 text-yellow-800 text-[10px] font-bold px-2 py-0.5 rounded-bl">SIMULAÇÃO</div>
+                          <p className="text-xs text-gray-500 uppercase font-bold mb-2">Credenciais Geradas</p>
+                          <div className="flex justify-between items-center mb-2">
+                              <span className="text-sm text-gray-600">Senha Temporária:</span>
+                              <div className="flex items-center gap-2">
+                                  <code className="bg-white px-2 py-1 rounded border text-sm font-mono text-gray-800">{generatedCreds.pass}</code>
+                                  <button onClick={() => copyToClipboard(generatedCreds.pass)} className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded"><Copy size={14}/></button>
+                              </div>
+                          </div>
+                      </div>
+
+                      <button 
+                        onClick={resetUserModal}
+                        className="w-full bg-gray-900 text-white py-2 rounded-lg font-medium hover:bg-gray-800 transition-colors"
+                      >
+                          Concluir e Voltar
+                      </button>
+                  </div>
+              ) : (
+                  <form onSubmit={handleInviteUser} className="p-6 space-y-4">
+                     <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-800 mb-4 flex gap-2">
+                        <Mail size={16} className="flex-shrink-0 mt-0.5" />
+                        <p>O usuário receberá um e-mail com instruções para configurar sua senha e acessar o CRM.</p>
+                     </div>
+                     
                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Cargo</label>
-                        <select 
-                           value={newUser.role}
-                           onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}
-                           className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none bg-white"
-                        >
-                           {Object.values(UserRole).map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Nome Completo <span className="text-red-500">*</span></label>
+                        <input 
+                           required
+                           placeholder="Ex: Ana Silva"
+                           value={newUser.name || ''}
+                           onChange={e => setNewUser({...newUser, name: e.target.value})}
+                           className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                           disabled={inviteStatus === 'sending'}
+                        />
                      </div>
                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Equipe</label>
-                        <select 
-                           value={newUser.teamId || ''}
-                           onChange={e => setNewUser({...newUser, teamId: e.target.value})}
-                           className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none bg-white"
-                        >
-                           <option value="">Nenhuma</option>
-                           {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Email Corporativo <span className="text-red-500">*</span></label>
+                        <input 
+                           required
+                           type="email"
+                           placeholder="ana.silva@empresa.com"
+                           value={newUser.email || ''}
+                           onChange={e => setNewUser({...newUser, email: e.target.value})}
+                           className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                           disabled={inviteStatus === 'sending'}
+                        />
                      </div>
-                 </div>
-                 <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 mt-2">Salvar Usuário</button>
-              </form>
+                     <div className="grid grid-cols-2 gap-4">
+                         <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Cargo</label>
+                            <select 
+                               value={newUser.role}
+                               onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}
+                               className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none bg-white"
+                               disabled={inviteStatus === 'sending'}
+                            >
+                               {Object.values(UserRole)
+                                .filter(r => r !== UserRole.NEXUS_ADMIN)
+                                .map(r => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                         </div>
+                         <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Equipe Inicial</label>
+                            <select 
+                               value={newUser.teamId || ''}
+                               onChange={e => setNewUser({...newUser, teamId: e.target.value})}
+                               className="w-full border border-gray-300 rounded-lg px-3 py-2 outline-none bg-white"
+                               disabled={inviteStatus === 'sending'}
+                            >
+                               <option value="">Nenhuma</option>
+                               {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            </select>
+                         </div>
+                     </div>
+                     
+                     <button 
+                        type="submit" 
+                        disabled={inviteStatus === 'sending'}
+                        className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 mt-2 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed shadow-sm"
+                     >
+                        {inviteStatus === 'sending' ? (
+                            <>
+                                <Loader2 size={18} className="animate-spin" />
+                                Enviando E-mail...
+                            </>
+                        ) : (
+                            <>
+                                <Send size={18} />
+                                Enviar Convite
+                            </>
+                        )}
+                     </button>
+                  </form>
+              )}
            </div>
         </div>
       )}
 
       {/* Add Team Modal */}
-      {isTeamModalOpen && (
+      {isTeamModalOpen && canEdit && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
            <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-scale-in">
               <div className="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
                  <h3 className="font-bold text-gray-800">Nova Equipe</h3>
-                 <button onClick={() => setIsTeamModalOpen(false)} className="text-gray-400 hover:text-gray-600"><Trash2 size={20} className="rotate-45" /></button>
+                 <button onClick={() => setIsTeamModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
               </div>
               <form onSubmit={handleAddTeam} className="p-6 space-y-4">
                  <div>

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { X, Save, DollarSign, Building, User } from 'lucide-react';
@@ -10,7 +11,7 @@ interface Props {
 }
 
 export const NewLeadModal: React.FC<Props> = ({ isOpen, onClose, defaultFunnelId }) => {
-  const { addLead, funnels, users } = useCRM();
+  const { addLead, funnels, users, currentUser } = useCRM();
   
   const [formData, setFormData] = useState({
     title: '',
@@ -34,6 +35,7 @@ export const NewLeadModal: React.FC<Props> = ({ isOpen, onClose, defaultFunnelId
 
     const newLead: Lead = {
       id: `l${Date.now()}`,
+      accountId: currentUser?.accountId || '',
       title: formData.title,
       company: formData.company || 'Nova Empresa',
       value: Number(formData.value),

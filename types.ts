@@ -1,23 +1,42 @@
 
 export enum UserRole {
-  ADMIN = 'ADMIN',
-  MANAGER = 'MANAGER',
-  SALES = 'SALES',
+  NEXUS_ADMIN = 'NEXUS_ADMIN',   // Super Admin (Gere as contas)
+  ACCOUNT_ADMIN = 'ACCOUNT_ADMIN', // Conta Mãe (Dono da empresa)
+  USER = 'USER',                 // Vendedor (Usuário final)
+}
+
+export interface Account {
+  id: string;
+  companyName: string;
+  ownerName: string;
+  email: string; // Login email for the account admin
+  status: 'active' | 'suspended';
+  plan: 'trial' | 'pro' | 'enterprise';
+  expiresAt: string; // ISO Date
+  createdAt: string;
+  // Payment Integration Fields
+  stripeCustomerId?: string;
+  subscriptionStatus?: 'active' | 'past_due' | 'canceled' | 'trialing';
 }
 
 export interface User {
   id: string;
+  accountId?: string; // Optional for Nexus Admin, Required for others
   name: string;
   email: string;
+  password?: string;
   role: UserRole;
   avatar: string;
   teamId?: string;
+  status: 'active' | 'pending' | 'inactive';
+  joinedAt?: string;
 }
 
 export interface Team {
   id: string;
+  accountId: string; // Linked to account
   name: string;
-  goal: number; // Monthly revenue goal
+  goal: number;
 }
 
 export interface Stage {
@@ -29,10 +48,11 @@ export interface Stage {
 
 export interface Funnel {
   id: string;
+  accountId: string; // Linked to account
   name: string;
   stages: Stage[];
-  defaultWonStageId?: string; // Stage to move to when won
-  defaultLostStageId?: string; // Stage to move to when lost
+  defaultWonStageId?: string;
+  defaultLostStageId?: string;
 }
 
 export interface Note {
@@ -45,12 +65,11 @@ export interface Note {
 export interface Task {
   id: string;
   title: string;
-  dueDate: string; // ISO date string
+  dueDate: string;
   completed: boolean;
   type: 'call' | 'email' | 'meeting' | 'todo';
 }
 
-// Custom Fields Types
 export type CustomFieldType = 'text' | 'select' | 'multiselect';
 export type CustomFieldContext = 'lead_detail' | 'lost_reason';
 
@@ -61,16 +80,18 @@ export interface CustomFieldOption {
 
 export interface CustomFieldDefinition {
   id: string;
+  accountId: string; // Linked to account
   name: string;
   type: CustomFieldType;
-  context: CustomFieldContext; // New property to distinguish standard fields vs lost reason fields
-  options?: CustomFieldOption[]; // Only for select/multiselect
-  funnelId: string; // The funnel this field belongs to
-  visibleStageIds: string[]; // Empty means all stages, otherwise specific stages
+  context: CustomFieldContext;
+  options?: CustomFieldOption[];
+  funnelId: string;
+  visibleStageIds: string[];
 }
 
 export interface Lead {
   id: string;
+  accountId: string; // Linked to account
   title: string;
   company: string;
   value: number;
@@ -82,10 +103,10 @@ export interface Lead {
   assignedUserId: string;
   createdAt: string;
   notes: Note[];
-  tasks: Task[]; // New field
+  tasks: Task[];
   tags: string[];
-  probability: number; // 0-100
-  customValues?: Record<string, any>; // Key: customFieldId, Value: string | string[]
+  probability: number;
+  customValues?: Record<string, any>;
 }
 
 export interface DashboardStats {
