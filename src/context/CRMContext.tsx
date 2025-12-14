@@ -1,6 +1,6 @@
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
-import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole } from '../types';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account } from '../types';
 import { api } from '../services/api';
 
 interface CRMContextType {
@@ -76,7 +76,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Carga inicial
+  // Carga inicial do usuário (Sessão)
   useEffect(() => {
     const savedUser = localStorage.getItem('nexus_user');
     if (savedUser) {
@@ -84,10 +84,11 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const user = JSON.parse(savedUser);
             setCurrentUser(user);
             if (user.accountId) {
+                // Sincroniza dados ao recarregar a página
                 syncData(user.accountId);
             }
         } catch (e) {
-            console.error("Erro ao ler usuário do localStorage", e);
+            console.error("Sessão inválida", e);
         }
     }
   }, []);
@@ -96,17 +97,19 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setIsLoading(true);
       try {
           const data = await api.get<SyncResponse>(`/sync/${accountId}`);
-          setFunnels(data.funnels);
-          setLeads(data.leads);
-          setUsers(data.users);
-          setTeams(data.teams);
-          setCustomFields(data.customFields);
           
-          if (data.funnels.length > 0 && !activeFunnelId) {
-              setActiveFunnelId(data.funnels[0].id);
+          setFunnels(data.funnels || []);
+          setLeads(data.leads || []);
+          setUsers(data.users || []);
+          setTeams(data.teams || []);
+          setCustomFields(data.customFields || []);
+          
+          // Define o funil ativo se não houver um selecionado
+          if (data.funnels && data.funnels.length > 0) {
+              setActiveFunnelId(prev => prev || data.funnels[0].id);
           }
       } catch (error) {
-          console.error("Erro ao sincronizar:", error);
+          console.error("Erro ao sincronizar dados:", error);
       } finally {
           setIsLoading(false);
       }
@@ -115,18 +118,20 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const login = async (email: string, pass: string): Promise<string | boolean> => {
       try {
           const data = await api.post<AuthResponse>('/auth/login', { email, password: pass });
+          
           if (data.error) return data.error;
+          if (!data.user) return "Erro desconhecido no login.";
 
           setCurrentUser(data.user);
           localStorage.setItem('nexus_user', JSON.stringify(data.user));
           
           if (data.user.role !== 'NEXUS_ADMIN' && data.user.accountId) {
-              syncData(data.user.accountId);
+              await syncData(data.user.accountId);
           }
           return true;
       } catch (e) {
           console.error(e);
-          return "Erro ao conectar com servidor.";
+          return "Erro ao conectar com servidor. Verifique sua conexão.";
       }
   };
 
@@ -135,18 +140,20 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       localStorage.removeItem('nexus_user');
       setLeads([]);
       setFunnels([]);
+      setUsers([]);
   };
 
   // --- LEADS ---
 
   const addLead = async (lead: Lead) => {
-      // Optimistic Update
+      // Optimistic Update (Atualiza UI instantaneamente)
       setLeads(prev => [...prev, lead]);
       try {
           await api.post('/leads', lead);
       } catch (e) {
-          console.error("Falha ao salvar lead", e);
-          setLeads(prev => prev.filter(l => l.id !== lead.id)); // Revert on fail
+          console.error("Falha ao salvar lead no servidor", e);
+          // Reverte em caso de erro
+          setLeads(prev => prev.filter(l => l.id !== lead.id));
       }
   };
 
@@ -161,7 +168,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const deleteLead = async (id: string) => {
       setLeads(prev => prev.filter(l => l.id !== id));
-      // Falta endpoint de delete no backend demo, mas seria:
+      // TODO: Implementar DELETE endpoint no backend
       // await api.delete(`/leads/${id}`);
   };
 
@@ -214,22 +221,38 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       } catch (e) { console.error(e); }
   };
 
-  // --- Placeholders (Sem Backend neste Demo) ---
+  // --- Placeholders e Funções Locais (Pode migrar para API depois) ---
+  
   const registerAccount = async (userName: string, email: string, pass: string, companyName: string): Promise<string|boolean> => {
-      console.log(userName, email, pass, companyName);
-      return "Registro desativado na demo.";
+      // Para Demo, apenas simula sucesso
+      console.log("Register:", userName, email);
+      return "Registro via API ainda não implementado na Demo. Use admin@demo.com / 123";
   };
   
   const addFunnel = (name: string) => {
-    // Mock
-    console.log("Add funnel", name);
+    if (!currentUser?.accountId) return;
+    const newFunnel: Funnel = {
+      id: `f_${Date.now()}`,
+      accountId: currentUser.accountId,
+      name,
+      stages: [
+        { id: `s_${Date.now()}_1`, name: 'Novo', color: 'bg-gray-100 border-gray-300', order: 0 },
+        { id: `s_${Date.now()}_2`, name: 'Ganho', color: 'bg-green-100 border-green-300', order: 1 },
+      ]
+    };
+    setFunnels(prev => [...prev, newFunnel]);
+    // TODO: api.post('/funnels', newFunnel);
   };
+
   const updateFunnel = (id: string, updates: Partial<Funnel>) => {
       setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
   };
   const addStage = (fid: string, n: string) => {
-    // Mock
-    console.log("Add stage", fid, n);
+     setFunnels(prev => prev.map(f => {
+         if (f.id !== fid) return f;
+         const newStage = { id: `s_${Date.now()}`, name: n, color: 'bg-gray-100', order: f.stages.length };
+         return { ...f, stages: [...f.stages, newStage] };
+     }));
   };
   const reorderStages = (funnelId: string, newStages: Stage[]) => {
       setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages: newStages } : f));
