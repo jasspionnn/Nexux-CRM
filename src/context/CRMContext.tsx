@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account } from '../types';
 import { api } from '../services/api';
@@ -141,6 +140,8 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setLeads([]);
       setFunnels([]);
       setUsers([]);
+      // Recarrega para limpar estados de memória
+      window.location.reload();
   };
 
   // --- LEADS ---
