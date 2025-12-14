@@ -1,0 +1,7 @@
+name = "nexus-crm"
+compatibility_date = "2024-12-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nexus-crm"
+database_id = "5d087172-7960-4d47-9606-16c395e21923"
