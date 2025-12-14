@@ -2,11 +2,12 @@ import { GoogleGenAI } from "@google/genai";
 import { Lead } from "../types";
 
 export const generateLeadStrategy = async (lead: Lead, funnelName: string, stageName: string): Promise<string> => {
-  // Use process.env.API_KEY as per guidelines
-  const apiKey = process.env.API_KEY;
+  // Refatorado para usar import.meta.env (Padrão Vite)
+  // Certifique-se de que a variável no Cloudflare/env se chame VITE_API_KEY
+  const apiKey = import.meta.env.VITE_API_KEY;
   
   if (!apiKey) {
-    return "API Key not configured.";
+    return "API Key não configurada. Verifique se VITE_API_KEY está definida nas variáveis de ambiente.";
   }
   
   const ai = new GoogleGenAI({ apiKey });
