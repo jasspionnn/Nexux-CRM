@@ -50,6 +50,20 @@ interface CRMContextType {
 
 const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
+// Helper Types for API Responses
+interface SyncResponse {
+    funnels: Funnel[];
+    leads: Lead[];
+    users: User[];
+    teams: Team[];
+    customFields: CustomFieldDefinition[];
+}
+
+interface AuthResponse {
+    user: User;
+    error?: string;
+}
+
 export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [funnels, setFunnels] = useState<Funnel[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -66,10 +80,14 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     const savedUser = localStorage.getItem('nexus_user');
     if (savedUser) {
-        const user = JSON.parse(savedUser);
-        setCurrentUser(user);
-        if (user.accountId) {
-            syncData(user.accountId);
+        try {
+            const user = JSON.parse(savedUser);
+            setCurrentUser(user);
+            if (user.accountId) {
+                syncData(user.accountId);
+            }
+        } catch (e) {
+            console.error("Erro ao ler usuário do localStorage", e);
         }
     }
   }, []);
@@ -77,7 +95,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const syncData = async (accountId: string) => {
       setIsLoading(true);
       try {
-          const data = await api.get(`/sync/${accountId}`);
+          const data = await api.get<SyncResponse>(`/sync/${accountId}`);
           setFunnels(data.funnels);
           setLeads(data.leads);
           setUsers(data.users);
@@ -96,17 +114,18 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const login = async (email: string, pass: string): Promise<string | boolean> => {
       try {
-          const data = await api.post('/auth/login', { email, password: pass });
+          const data = await api.post<AuthResponse>('/auth/login', { email, password: pass });
           if (data.error) return data.error;
 
           setCurrentUser(data.user);
           localStorage.setItem('nexus_user', JSON.stringify(data.user));
           
-          if (data.user.role !== 'NEXUS_ADMIN') {
+          if (data.user.role !== 'NEXUS_ADMIN' && data.user.accountId) {
               syncData(data.user.accountId);
           }
           return true;
       } catch (e) {
+          console.error(e);
           return "Erro ao conectar com servidor.";
       }
   };
@@ -121,13 +140,13 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // --- LEADS ---
 
   const addLead = async (lead: Lead) => {
-      // Optimistic Update (Atualiza a UI antes da API responder)
+      // Optimistic Update
       setLeads(prev => [...prev, lead]);
       try {
           await api.post('/leads', lead);
       } catch (e) {
           console.error("Falha ao salvar lead", e);
-          // Em app real, reverteria o estado aqui
+          setLeads(prev => prev.filter(l => l.id !== lead.id)); // Revert on fail
       }
   };
 
@@ -140,10 +159,10 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
   };
 
-  const deleteLead = (id: string) => {
+  const deleteLead = async (id: string) => {
       setLeads(prev => prev.filter(l => l.id !== id));
       // Falta endpoint de delete no backend demo, mas seria:
-      // api.delete(`/leads/${id}`);
+      // await api.delete(`/leads/${id}`);
   };
 
   const moveLead = (leadId: string, targetStageId: string) => {
@@ -196,22 +215,58 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // --- Placeholders (Sem Backend neste Demo) ---
-  const registerAccount = async () => "Registro desativado na demo.";
-  const addFunnel = (name: string) => console.log("Implementar API");
-  const updateFunnel = (id: string, u: any) => console.log("Implementar API");
-  const addStage = (fid: string, n: string) => console.log("Implementar API");
-  const reorderStages = () => {};
-  const addCustomField = () => {};
-  const deleteCustomField = () => {};
-  const addUser = () => {};
-  const updateUser = () => {};
-  const deleteUser = () => {};
-  const addTeam = () => {};
-  const deleteTeam = () => {};
-  const createAccount = () => {};
-  const updateAccountStatus = () => {};
-  const extendAccountSubscription = () => {};
-  const upgradePlan = async () => {};
+  const registerAccount = async (userName: string, email: string, pass: string, companyName: string): Promise<string|boolean> => {
+      console.log(userName, email, pass, companyName);
+      return "Registro desativado na demo.";
+  };
+  
+  const addFunnel = (name: string) => {
+    // Mock
+    console.log("Add funnel", name);
+  };
+  const updateFunnel = (id: string, updates: Partial<Funnel>) => {
+      setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+  };
+  const addStage = (fid: string, n: string) => {
+    // Mock
+    console.log("Add stage", fid, n);
+  };
+  const reorderStages = (funnelId: string, newStages: Stage[]) => {
+      setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages: newStages } : f));
+  };
+  const addCustomField = (field: CustomFieldDefinition) => {
+      setCustomFields(prev => [...prev, field]);
+  };
+  const deleteCustomField = (id: string) => {
+      setCustomFields(prev => prev.filter(f => f.id !== id));
+  };
+  const addUser = (u: User) => {
+      setUsers(prev => [...prev, u]);
+  };
+  const updateUser = (id: string, updates: Partial<User>) => {
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u));
+  };
+  const deleteUser = (id: string) => {
+      setUsers(prev => prev.filter(u => u.id !== id));
+  };
+  const addTeam = (t: Team) => {
+      setTeams(prev => [...prev, t]);
+  };
+  const deleteTeam = (id: string) => {
+      setTeams(prev => prev.filter(t => t.id !== id));
+  };
+  const createAccount = (acc: Account) => {
+      setAllAccounts(prev => [...prev, acc]);
+  };
+  const updateAccountStatus = (id: string, status: 'active' | 'suspended') => {
+      setAllAccounts(prev => prev.map(a => a.id === id ? { ...a, status } : a));
+  };
+  const extendAccountSubscription = (id: string, months: number) => {
+      console.log("Extend", id, months);
+  };
+  const upgradePlan = async (plan: 'pro' | 'enterprise') => {
+      console.log("Upgrade", plan);
+  };
 
   const getFunnelStats = (fid: string) => {
       const fl = leads.filter(l => l.funnelId === fid);
@@ -234,4 +289,10 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       {children}
     </CRMContext.Provider>
   );
+};
+
+export const useCRM = () => {
+  const context = useContext(CRMContext);
+  if (!context) throw new Error("useCRM must be used within a CRMProvider");
+  return context;
 };

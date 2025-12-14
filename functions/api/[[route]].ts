@@ -1,22 +1,18 @@
+
 import { Hono } from 'hono';
 import { handle } from 'hono/cloudflare-pages';
 import { cors } from 'hono/cors';
 
-// Define Cloudflare D1 types locally to fix "Cannot find name 'D1Database'"
+// --- Type Definitions for D1 (to avoid reliance on global types) ---
 interface D1Result<T = unknown> {
   results: T[];
   success: boolean;
-  meta: any;
+  meta: unknown;
   error?: string;
 }
 
-interface D1ExecResult {
-  count: number;
-  duration: number;
-}
-
 interface D1PreparedStatement {
-  bind(...values: any[]): D1PreparedStatement;
+  bind(...values: unknown[]): D1PreparedStatement;
   first<T = unknown>(colName?: string): Promise<T | null>;
   run<T = unknown>(): Promise<D1Result<T>>;
   all<T = unknown>(): Promise<D1Result<T>>;
@@ -27,18 +23,37 @@ interface D1Database {
   prepare(query: string): D1PreparedStatement;
   dump(): Promise<ArrayBuffer>;
   batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>;
-  exec(query: string): Promise<D1ExecResult>;
+  exec(query: string): Promise<unknown>;
 }
 
 type Bindings = {
   DB: D1Database;
 };
 
+// Application Types matching DB
+interface DBUser {
+    id: string;
+    account_id: string;
+    name: string;
+    email: string;
+    password?: string;
+    role: string;
+    avatar: string;
+    status: string;
+    team_id?: string;
+}
+
+interface DBAccount {
+    id: string;
+    status: string;
+    plan: string;
+}
+
 const app = new Hono<{ Bindings: Bindings }>();
 
-// 1. CORS Middleware (Essencial para não dar erro no Frontend)
+// 1. CORS Middleware
 app.use('/*', cors({
-  origin: '*', // Em produção, restrinja para seu domínio
+  origin: '*',
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
@@ -49,17 +64,20 @@ const generateId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().
 // --- ROTAS DE AUTENTICAÇÃO ---
 
 app.post('/api/auth/login', async (c) => {
-  const { email, password } = await c.req.json();
+  const body = await c.req.json();
+  const { email, password } = body as { email?: string; password?: string };
+
+  if (!email || !password) return c.json({ error: 'Dados incompletos' }, 400);
   
   // Busca usuário no D1
-  const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first<any>();
+  const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first<DBUser>();
   
   if (!user) return c.json({ error: 'Usuário não encontrado' }, 401);
-  if (user.password !== password) return c.json({ error: 'Senha incorreta' }, 401); // Em prod, use bcrypt.compare
+  if (user.password !== password) return c.json({ error: 'Senha incorreta' }, 401);
 
   // Valida conta
   if (user.role !== 'NEXUS_ADMIN') {
-      const account = await c.env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(user.account_id).first<any>();
+      const account = await c.env.DB.prepare('SELECT * FROM accounts WHERE id = ?').bind(user.account_id).first<DBAccount>();
       if (!account || account.status !== 'active') {
           return c.json({ error: 'Conta inativa ou inexistente' }, 403);
       }
@@ -80,26 +98,27 @@ app.post('/api/auth/login', async (c) => {
 });
 
 // --- ROTAS DE SINCRONIZAÇÃO (Dashboard) ---
-// Carrega tudo de uma vez para evitar N requests na inicialização
 app.get('/api/sync/:accountId', async (c) => {
   const accountId = c.req.param('accountId');
 
-  const { results: funnels } = await c.env.DB.prepare('SELECT * FROM funnels WHERE account_id = ?').bind(accountId).all<any>();
-  const { results: leadsRaw } = await c.env.DB.prepare('SELECT * FROM leads WHERE account_id = ?').bind(accountId).all<any>();
-  const { results: users } = await c.env.DB.prepare('SELECT * FROM users WHERE account_id = ?').bind(accountId).all<any>();
-  const { results: teams } = await c.env.DB.prepare('SELECT * FROM teams WHERE account_id = ?').bind(accountId).all<any>();
+  const funnelsResult = await c.env.DB.prepare('SELECT * FROM funnels WHERE account_id = ?').bind(accountId).all<any>();
+  const leadsResult = await c.env.DB.prepare('SELECT * FROM leads WHERE account_id = ?').bind(accountId).all<any>();
+  const usersResult = await c.env.DB.prepare('SELECT * FROM users WHERE account_id = ?').bind(accountId).all<any>();
+  const teamsResult = await c.env.DB.prepare('SELECT * FROM teams WHERE account_id = ?').bind(accountId).all<any>();
   
+  const funnels = funnelsResult.results;
+
   // Popula estágios para cada funil
   const funnelsWithStages = await Promise.all(funnels.map(async (f: any) => {
-      const { results: stages } = await c.env.DB.prepare('SELECT * FROM stages WHERE funnel_id = ? ORDER BY "order" ASC').bind(f.id).all<any>();
-      return { ...f, stages };
+      const stagesResult = await c.env.DB.prepare('SELECT * FROM stages WHERE funnel_id = ? ORDER BY "order" ASC').bind(f.id).all<any>();
+      return { ...f, stages: stagesResult.results };
   }));
 
   // Popula tasks e notes para cada lead
-  // Nota: Isso pode ficar lento com milhares de leads. Em escala real, carregue tasks sob demanda.
+  const leadsRaw = leadsResult.results;
   const leads = await Promise.all(leadsRaw.map(async (l: any) => {
-      const { results: tasks } = await c.env.DB.prepare('SELECT * FROM tasks WHERE lead_id = ?').bind(l.id).all<any>();
-      const { results: notes } = await c.env.DB.prepare('SELECT * FROM notes WHERE lead_id = ? ORDER BY created_at DESC').bind(l.id).all<any>();
+      const tasksRes = await c.env.DB.prepare('SELECT * FROM tasks WHERE lead_id = ?').bind(l.id).all<any>();
+      const notesRes = await c.env.DB.prepare('SELECT * FROM notes WHERE lead_id = ? ORDER BY created_at DESC').bind(l.id).all<any>();
       
       return {
           id: l.id,
@@ -117,13 +136,13 @@ app.get('/api/sync/:accountId', async (c) => {
           tags: JSON.parse(l.tags || '[]'),
           customValues: JSON.parse(l.custom_values || '{}'),
           createdAt: l.created_at,
-          tasks: tasks.map((t: any) => ({ ...t, dueDate: t.due_date, leadId: t.lead_id, completed: Boolean(t.completed) })),
-          notes: notes.map((n: any) => ({ ...n, leadId: n.lead_id, authorName: n.author_name, createdAt: n.created_at }))
+          tasks: tasksRes.results.map((t: any) => ({ ...t, dueDate: t.due_date, leadId: t.lead_id, completed: Boolean(t.completed) })),
+          notes: notesRes.results.map((n: any) => ({ ...n, leadId: n.lead_id, authorName: n.author_name, createdAt: n.created_at }))
       };
   }));
 
   // Map users to camelCase
-  const usersCamel = users.map((u: any) => ({
+  const usersCamel = usersResult.results.map((u: any) => ({
       id: u.id,
       accountId: u.account_id,
       name: u.name,
@@ -134,7 +153,7 @@ app.get('/api/sync/:accountId', async (c) => {
       teamId: u.team_id
   }));
 
-  const teamsCamel = teams.map((t: any) => ({
+  const teamsCamel = teamsResult.results.map((t: any) => ({
       id: t.id,
       accountId: t.account_id,
       name: t.name,
@@ -146,21 +165,18 @@ app.get('/api/sync/:accountId', async (c) => {
       leads,
       users: usersCamel,
       teams: teamsCamel,
-      customFields: [] // Implementar tabela se necessário
+      customFields: []
   });
 });
 
 // --- ROTAS DE LEADS ---
 
-// GET Leads
 app.get('/api/leads', async (c) => {
-    // Implementar filtros aqui se necessário
     return c.json({ msg: 'Use /api/sync/:accountId para carga inicial' });
 });
 
-// POST Lead
 app.post('/api/leads', async (c) => {
-    const data = await c.req.json();
+    const data = await c.req.json() as any;
     const id = data.id || generateId('l');
     
     await c.env.DB.prepare(`
@@ -177,10 +193,9 @@ app.post('/api/leads', async (c) => {
     return c.json({ success: true, id });
 });
 
-// PATCH Lead
 app.patch('/api/leads/:id', async (c) => {
     const id = c.req.param('id');
-    const data = await c.req.json();
+    const data = await c.req.json() as any;
     
     // Atualização dinâmica simples
     if (data.stageId) await c.env.DB.prepare('UPDATE leads SET stage_id = ? WHERE id = ?').bind(data.stageId, id).run();
@@ -190,9 +205,8 @@ app.patch('/api/leads/:id', async (c) => {
     
     // Handle Notes
     if (data.notes && Array.isArray(data.notes) && data.notes.length > 0) {
-        const newNote = data.notes[0]; // Assume que o frontend manda a nova nota no topo
+        const newNote = data.notes[0];
         if (newNote.id) {
-             // Verifica se nota já existe para evitar duplicação em race condition
              const exists = await c.env.DB.prepare('SELECT id FROM notes WHERE id = ?').bind(newNote.id).first();
              if (!exists) {
                  await c.env.DB.prepare('INSERT INTO notes (id, lead_id, content, author_name, created_at) VALUES (?, ?, ?, ?, ?)')
@@ -206,9 +220,8 @@ app.patch('/api/leads/:id', async (c) => {
 
 // --- ROTAS DE TASKS ---
 
-// POST Task
 app.post('/api/tasks', async (c) => {
-    const data = await c.req.json();
+    const data = await c.req.json() as any;
     
     await c.env.DB.prepare(`
         INSERT INTO tasks (id, lead_id, title, due_date, completed, type)
@@ -220,19 +233,15 @@ app.post('/api/tasks', async (c) => {
     return c.json({ success: true });
 });
 
-// DELETE Task
 app.delete('/api/tasks/:taskId', async (c) => {
     const taskId = c.req.param('taskId');
-    // Para deleção de tarefa, precisamos apenas do ID da tarefa, mas a rota pode pedir leadId se quiser validar
     await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(taskId).run();
     return c.json({ success: true });
 });
 
-// TOGGLE Task
 app.patch('/api/tasks/:taskId/toggle', async (c) => {
     const taskId = c.req.param('taskId');
-    // Inverte o estado atual
-    const task = await c.env.DB.prepare('SELECT completed FROM tasks WHERE id = ?').bind(taskId).first<any>();
+    const task = await c.env.DB.prepare('SELECT completed FROM tasks WHERE id = ?').bind(taskId).first<{completed: number}>();
     if (task) {
         const newState = task.completed === 1 ? 0 : 1;
         await c.env.DB.prepare('UPDATE tasks SET completed = ? WHERE id = ?').bind(newState, taskId).run();
