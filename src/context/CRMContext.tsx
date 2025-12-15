@@ -1,22 +1,28 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account } from '../types';
-import { api } from '../services/api';
+
+import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
+import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole } from '../types';
+import { INITIAL_FUNNELS, MOCK_LEADS, MOCK_TEAMS, MOCK_USERS, MOCK_ACCOUNTS } from '../constants';
 
 interface CRMContextType {
+  // Data (Filtered by Account)
   funnels: Funnel[];
   leads: Lead[];
   users: User[];
   teams: Team[];
   customFields: CustomFieldDefinition[];
+  
+  // Data (Nexus Admin Only)
   allAccounts: Account[];
+  
   activeFunnelId: string;
-  currentUser: User | null;
-  isLoading: boolean;
+  currentUser: User | null; // Auth State
   
   setActiveFunnelId: (id: string) => void;
-  login: (email: string, pass: string) => Promise<string | boolean>;
+  login: (email: string, pass: string) => string | boolean; // Returns error string or true
+  registerAccount: (userName: string, email: string, pass: string, companyName: string) => string | boolean;
   logout: () => void;
 
+  // CRM Actions
   addLead: (lead: Lead) => void;
   updateLead: (id: string, updates: Partial<Lead>) => void;
   moveLead: (leadId: string, targetStageId: string) => void;
@@ -34,281 +40,476 @@ interface CRMContextType {
   deleteCustomField: (id: string) => void;
   getFunnelStats: (funnelId: string) => { totalValue: number; leadCount: number };
   
+  // User & Team Management
   addUser: (user: User) => void;
   updateUser: (id: string, updates: Partial<User>) => void;
   deleteUser: (id: string) => void;
   addTeam: (team: Team) => void;
   deleteTeam: (id: string) => void;
 
-  registerAccount: (userName: string, email: string, pass: string, companyName: string) => Promise<string | boolean>;
+  // Nexus Admin Actions
   createAccount: (account: Account, adminUser: User) => void;
   updateAccountStatus: (accountId: string, status: 'active' | 'suspended') => void;
   extendAccountSubscription: (accountId: string, months: number) => void;
+  
+  // Payment Integration (Mock)
   upgradePlan: (plan: 'pro' | 'enterprise') => Promise<void>;
 }
 
 const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
-// Helper Types for API Responses
-interface SyncResponse {
-    funnels: Funnel[];
-    leads: Lead[];
-    users: User[];
-    teams: Team[];
-    customFields: CustomFieldDefinition[];
+interface CRMProviderProps {
+  children: ReactNode;
 }
 
-interface AuthResponse {
-    user: User;
-    error?: string;
-}
+export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
+  // Master Data (Contains data for ALL accounts) - Initialize from localStorage or Mocks
+  const [masterFunnels, setMasterFunnels] = useState<Funnel[]>(() => {
+      const saved = localStorage.getItem('nexus_funnels');
+      return saved ? JSON.parse(saved) : INITIAL_FUNNELS;
+  });
+  const [masterLeads, setMasterLeads] = useState<Lead[]>(() => {
+      const saved = localStorage.getItem('nexus_leads');
+      return saved ? JSON.parse(saved) : MOCK_LEADS;
+  });
+  const [masterUsers, setMasterUsers] = useState<User[]>(() => {
+      const saved = localStorage.getItem('nexus_users');
+      return saved ? JSON.parse(saved) : MOCK_USERS;
+  });
+  const [masterTeams, setMasterTeams] = useState<Team[]>(() => {
+      const saved = localStorage.getItem('nexus_teams');
+      return saved ? JSON.parse(saved) : MOCK_TEAMS;
+  });
+  const [masterCustomFields, setMasterCustomFields] = useState<CustomFieldDefinition[]>(() => {
+      const saved = localStorage.getItem('nexus_fields');
+      return saved ? JSON.parse(saved) : [];
+  });
+  const [masterAccounts, setMasterAccounts] = useState<Account[]>(() => {
+      const saved = localStorage.getItem('nexus_accounts');
+      return saved ? JSON.parse(saved) : MOCK_ACCOUNTS;
+  });
 
-export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [funnels, setFunnels] = useState<Funnel[]>([]);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
-  const [allAccounts, setAllAccounts] = useState<Account[]>([]);
-  
   const [activeFunnelId, setActiveFunnelId] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
 
-  // Carga inicial do usuário (Sessão)
+  // --- PERSISTENCE EFFECT ---
+  useEffect(() => { localStorage.setItem('nexus_funnels', JSON.stringify(masterFunnels)); }, [masterFunnels]);
+  useEffect(() => { localStorage.setItem('nexus_leads', JSON.stringify(masterLeads)); }, [masterLeads]);
+  useEffect(() => { localStorage.setItem('nexus_users', JSON.stringify(masterUsers)); }, [masterUsers]);
+  useEffect(() => { localStorage.setItem('nexus_teams', JSON.stringify(masterTeams)); }, [masterTeams]);
+  useEffect(() => { localStorage.setItem('nexus_fields', JSON.stringify(masterCustomFields)); }, [masterCustomFields]);
+  useEffect(() => { localStorage.setItem('nexus_accounts', JSON.stringify(masterAccounts)); }, [masterAccounts]);
+
+  // Load user from localStorage
   useEffect(() => {
-    const savedUser = localStorage.getItem('nexus_user');
+    const savedUser = localStorage.getItem('nexus_user_session');
     if (savedUser) {
         try {
-            const user = JSON.parse(savedUser);
-            setCurrentUser(user);
-            if (user.accountId) {
-                // Sincroniza dados ao recarregar a página
-                syncData(user.accountId);
-            }
-        } catch (e) {
-            console.error("Sessão inválida", e);
-        }
+            const parsed = JSON.parse(savedUser);
+            // Verify if user still exists in masterUsers
+            const exists = masterUsers.find(u => u.id === parsed.id);
+            if(exists) setCurrentUser(exists);
+        } catch (e) {}
     }
   }, []);
 
-  const syncData = async (accountId: string) => {
-      setIsLoading(true);
-      try {
-          const data = await api.get<SyncResponse>(`/sync/${accountId}`);
-          
-          setFunnels(data.funnels || []);
-          setLeads(data.leads || []);
-          setUsers(data.users || []);
-          setTeams(data.teams || []);
-          setCustomFields(data.customFields || []);
-          
-          // Define o funil ativo se não houver um selecionado
-          if (data.funnels && data.funnels.length > 0) {
-              setActiveFunnelId(prev => prev || data.funnels[0].id);
-          }
-      } catch (error) {
-          console.error("Erro ao sincronizar dados:", error);
-      } finally {
-          setIsLoading(false);
+  // --- FILTERED DATA (Based on Current User) ---
+  const currentAccountId = currentUser?.accountId;
+  const isNexusAdmin = currentUser?.role === UserRole.NEXUS_ADMIN;
+
+  const visibleFunnels = useMemo(() => {
+      if (isNexusAdmin) return []; // Admin Nexus doesn't see pipelines
+      return masterFunnels.filter(f => f.accountId === currentAccountId);
+  }, [masterFunnels, currentAccountId, isNexusAdmin]);
+
+  const visibleLeads = useMemo(() => {
+      if (isNexusAdmin) return [];
+      return masterLeads.filter(l => l.accountId === currentAccountId);
+  }, [masterLeads, currentAccountId, isNexusAdmin]);
+
+  const visibleUsers = useMemo(() => {
+      if (isNexusAdmin) return [];
+      return masterUsers.filter(u => u.accountId === currentAccountId);
+  }, [masterUsers, currentAccountId, isNexusAdmin]);
+
+  const visibleTeams = useMemo(() => {
+      if (isNexusAdmin) return [];
+      return masterTeams.filter(t => t.accountId === currentAccountId);
+  }, [masterTeams, currentAccountId, isNexusAdmin]);
+  
+  const visibleCustomFields = useMemo(() => {
+      if (isNexusAdmin) return [];
+      return masterCustomFields.filter(f => f.accountId === currentAccountId);
+  }, [masterCustomFields, currentAccountId, isNexusAdmin]);
+
+
+  // Set default active funnel when filtered list changes
+  useEffect(() => {
+      if (visibleFunnels.length > 0 && !visibleFunnels.find(f => f.id === activeFunnelId)) {
+          setActiveFunnelId(visibleFunnels[0].id);
       }
+  }, [visibleFunnels, activeFunnelId]);
+
+
+  // --- AUTH ACTIONS ---
+
+  const login = (email: string, pass: string): string | boolean => {
+      const user = masterUsers.find(u => u.email === email);
+      
+      if (!user) return "Usuário não encontrado.";
+      
+      // Simple Password Check (Simulated)
+      const isValid = user.password ? user.password === pass : pass === '123';
+      if (!isValid) return "Senha incorreta.";
+
+      // Account Status Check (Skip for Nexus Admin)
+      if (user.role !== UserRole.NEXUS_ADMIN && user.accountId) {
+          const account = masterAccounts.find(a => a.id === user.accountId);
+          if (!account) return "Conta da empresa não encontrada.";
+          if (account.status === 'suspended') return "Esta conta está suspensa. Contate o suporte.";
+      }
+
+      if (user.status === 'inactive') return "Usuário inativo.";
+
+      // Auto-activate pending
+      if (user.status === 'pending') {
+          const activeUser = { ...user, status: 'active' as const };
+          setMasterUsers(prev => prev.map(u => u.id === user.id ? activeUser : u));
+          setCurrentUser(activeUser);
+          localStorage.setItem('nexus_user_session', JSON.stringify(activeUser));
+      } else {
+          setCurrentUser(user);
+          localStorage.setItem('nexus_user_session', JSON.stringify(user));
+      }
+      return true;
   };
 
-  const login = async (email: string, pass: string): Promise<string | boolean> => {
-      try {
-          const data = await api.post<AuthResponse>('/auth/login', { email, password: pass });
-          
-          if (data.error) return data.error;
-          if (!data.user) return "Erro desconhecido no login.";
-
-          setCurrentUser(data.user);
-          localStorage.setItem('nexus_user', JSON.stringify(data.user));
-          
-          if (data.user.role !== 'NEXUS_ADMIN' && data.user.accountId) {
-              await syncData(data.user.accountId);
-          }
-          return true;
-      } catch (e) {
-          console.error(e);
-          return "Erro ao conectar com servidor. Verifique sua conexão.";
+  const registerAccount = (userName: string, email: string, pass: string, companyName: string) => {
+      // Check if user exists
+      if (masterUsers.find(u => u.email === email)) {
+          return "Este email já está cadastrado.";
       }
+
+      const accountId = `acc_${Date.now()}`;
+      
+      const newAccount: Account = {
+          id: accountId,
+          companyName,
+          ownerName: userName,
+          email,
+          status: 'active',
+          plan: 'trial',
+          subscriptionStatus: 'trialing',
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString() // 30 days trial
+      };
+
+      const newUser: User = {
+          id: `u_${Date.now()}`,
+          accountId: accountId,
+          name: userName,
+          email,
+          password: pass,
+          role: UserRole.ACCOUNT_ADMIN,
+          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=random`,
+          status: 'active',
+          joinedAt: new Date().toISOString()
+      };
+
+       // Default Funnel
+      const defaultFunnel: Funnel = {
+        id: `f_def_${accountId}`,
+        accountId: accountId,
+        name: 'Vendas Padrão',
+        stages: [
+            { id: `s_${Date.now()}_1`, name: 'Novo Lead', color: 'bg-gray-100 border-gray-300', order: 0 },
+            { id: `s_${Date.now()}_2`, name: 'Qualificação', color: 'bg-blue-50 border-blue-200', order: 1 },
+            { id: `s_${Date.now()}_3`, name: 'Fechamento', color: 'bg-green-50 border-green-200', order: 2 },
+        ]
+      };
+
+      setMasterAccounts(prev => [...prev, newAccount]);
+      setMasterUsers(prev => [...prev, newUser]);
+      setMasterFunnels(prev => [...prev, defaultFunnel]);
+      setActiveFunnelId(defaultFunnel.id);
+
+      // Auto login
+      setCurrentUser(newUser);
+      localStorage.setItem('nexus_user_session', JSON.stringify(newUser));
+
+      return true;
   };
 
   const logout = () => {
       setCurrentUser(null);
-      localStorage.removeItem('nexus_user');
-      setLeads([]);
-      setFunnels([]);
-      setUsers([]);
-      // Recarrega para limpar estados de memória
-      window.location.reload();
+      localStorage.removeItem('nexus_user_session');
+      setActiveFunnelId('');
   };
 
-  // --- LEADS ---
+  // --- CRM ACTIONS (Auto-inject Account ID) ---
 
-  const addLead = async (lead: Lead) => {
-      // Optimistic Update (Atualiza UI instantaneamente)
-      setLeads(prev => [...prev, lead]);
-      try {
-          await api.post('/leads', lead);
-      } catch (e) {
-          console.error("Falha ao salvar lead no servidor", e);
-          // Reverte em caso de erro
-          setLeads(prev => prev.filter(l => l.id !== lead.id));
-      }
+  const addLead = (lead: Lead) => {
+    if (!currentAccountId) return;
+    setMasterLeads(prev => [...prev, { ...lead, accountId: currentAccountId }]);
   };
 
-  const updateLead = async (id: string, updates: Partial<Lead>) => {
-      setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
-      try {
-          await api.patch(`/leads/${id}`, updates);
-      } catch (e) {
-          console.error("Falha ao atualizar lead", e);
-      }
-  };
-
-  const deleteLead = async (id: string) => {
-      setLeads(prev => prev.filter(l => l.id !== id));
-      // TODO: Implementar DELETE endpoint no backend
-      // await api.delete(`/leads/${id}`);
+  const updateLead = (id: string, updates: Partial<Lead>) => {
+    setMasterLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
   };
 
   const moveLead = (leadId: string, targetStageId: string) => {
-      updateLead(leadId, { stageId: targetStageId });
+    setMasterLeads(prev => prev.map(l => l.id === leadId ? { ...l, stageId: targetStageId } : l));
   };
 
   const duplicateLead = (originalLeadId: string, targetFunnelId: string, targetStageId: string) => {
-      const originalLead = leads.find(l => l.id === originalLeadId);
-      if (!originalLead || !currentUser?.accountId) return;
-      
-      const newLead: Lead = {
-          ...originalLead,
-          id: `l_${Date.now()}`,
-          funnelId: targetFunnelId,
-          stageId: targetStageId,
-          title: `${originalLead.title} (Cópia)`,
+    const originalLead = masterLeads.find(l => l.id === originalLeadId);
+    if (!originalLead || !currentAccountId) return;
+
+    const originalFunnelName = visibleFunnels.find(f => f.id === originalLead.funnelId)?.name || 'Desconhecido';
+    
+    const newLead: Lead = {
+      ...originalLead,
+      id: `l${Date.now()}`,
+      accountId: currentAccountId,
+      funnelId: targetFunnelId,
+      stageId: targetStageId,
+      createdAt: new Date().toISOString(),
+      title: `${originalLead.title} (Cópia)`,
+      tasks: [],
+      notes: [{
+          id: `n-sys-${Date.now()}`,
+          content: `Lead duplicado a partir do funil: ${originalFunnelName}.`,
           createdAt: new Date().toISOString(),
-          tasks: [],
-          notes: []
-      };
-      
-      addLead(newLead);
+          authorName: 'Sistema'
+      }]
+    };
+    
+    setMasterLeads(prev => [...prev, newLead]);
   };
 
-  // --- TASKS ---
-
-  const addTask = async (leadId: string, task: Task) => {
-      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: [...(l.tasks || []), task] } : l));
-      try {
-          await api.post('/tasks', { ...task, leadId });
-      } catch (e) { console.error(e); }
+  const deleteLead = (id: string) => {
+    setMasterLeads(prev => prev.filter(l => l.id !== id));
   };
 
-  const toggleTask = async (leadId: string, taskId: string) => {
-      setLeads(prev => prev.map(l => 
-          l.id === leadId ? { ...l, tasks: l.tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t) } : l
-      ));
-      try {
-          await api.patch(`/tasks/${taskId}/toggle`, {});
-      } catch (e) { console.error(e); }
+  const addTask = (leadId: string, task: Task) => {
+      setMasterLeads(prev => prev.map(l => {
+          if (l.id !== leadId) return l;
+          return { ...l, tasks: [...(l.tasks || []), task] };
+      }));
   };
 
-  const deleteTask = async (leadId: string, taskId: string) => {
-      setLeads(prev => prev.map(l => 
-          l.id === leadId ? { ...l, tasks: l.tasks.filter(t => t.id !== taskId) } : l
-      ));
-      try {
-          await api.delete(`/tasks/${taskId}`);
-      } catch (e) { console.error(e); }
+  const toggleTask = (leadId: string, taskId: string) => {
+      setMasterLeads(prev => prev.map(l => {
+          if (l.id !== leadId) return l;
+          return {
+              ...l,
+              tasks: l.tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t)
+          };
+      }));
   };
 
-  // --- Placeholders e Funções Locais (Pode migrar para API depois) ---
-  
-  const registerAccount = async (userName: string, email: string, pass: string, companyName: string): Promise<string|boolean> => {
-      // Para Demo, apenas simula sucesso
-      console.log("Register:", userName, email);
-      return "Registro via API ainda não implementado na Demo. Use admin@demo.com / 123";
+  const deleteTask = (leadId: string, taskId: string) => {
+      setMasterLeads(prev => prev.map(l => {
+          if (l.id !== leadId) return l;
+          return {
+              ...l,
+              tasks: l.tasks.filter(t => t.id !== taskId)
+          };
+      }));
   };
-  
+
   const addFunnel = (name: string) => {
-    if (!currentUser?.accountId) return;
+    if (!currentAccountId) return;
     const newFunnel: Funnel = {
-      id: `f_${Date.now()}`,
-      accountId: currentUser.accountId,
+      id: `f${Date.now()}`,
+      accountId: currentAccountId,
       name,
       stages: [
-        { id: `s_${Date.now()}_1`, name: 'Novo', color: 'bg-gray-100 border-gray-300', order: 0 },
-        { id: `s_${Date.now()}_2`, name: 'Ganho', color: 'bg-green-100 border-green-300', order: 1 },
+        { id: `s${Date.now()}_1`, name: 'Novo', color: 'bg-gray-100 border-gray-300', order: 0 },
+        { id: `s${Date.now()}_2`, name: 'Ganho', color: 'bg-green-100 border-green-300', order: 1 },
       ]
     };
-    setFunnels(prev => [...prev, newFunnel]);
-    // TODO: api.post('/funnels', newFunnel);
+    setMasterFunnels(prev => [...prev, newFunnel]);
+    setActiveFunnelId(newFunnel.id);
   };
 
   const updateFunnel = (id: string, updates: Partial<Funnel>) => {
-      setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
-  };
-  const addStage = (fid: string, n: string) => {
-     setFunnels(prev => prev.map(f => {
-         if (f.id !== fid) return f;
-         const newStage = { id: `s_${Date.now()}`, name: n, color: 'bg-gray-100', order: f.stages.length };
-         return { ...f, stages: [...f.stages, newStage] };
-     }));
-  };
-  const reorderStages = (funnelId: string, newStages: Stage[]) => {
-      setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages: newStages } : f));
-  };
-  const addCustomField = (field: CustomFieldDefinition) => {
-      setCustomFields(prev => [...prev, field]);
-  };
-  const deleteCustomField = (id: string) => {
-      setCustomFields(prev => prev.filter(f => f.id !== id));
-  };
-  const addUser = (u: User) => {
-      setUsers(prev => [...prev, u]);
-  };
-  const updateUser = (id: string, updates: Partial<User>) => {
-      setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u));
-  };
-  const deleteUser = (id: string) => {
-      setUsers(prev => prev.filter(u => u.id !== id));
-  };
-  const addTeam = (t: Team) => {
-      setTeams(prev => [...prev, t]);
-  };
-  const deleteTeam = (id: string) => {
-      setTeams(prev => prev.filter(t => t.id !== id));
-  };
-  const createAccount = (acc: Account) => {
-      setAllAccounts(prev => [...prev, acc]);
-  };
-  const updateAccountStatus = (id: string, status: 'active' | 'suspended') => {
-      setAllAccounts(prev => prev.map(a => a.id === id ? { ...a, status } : a));
-  };
-  const extendAccountSubscription = (id: string, months: number) => {
-      console.log("Extend", id, months);
-  };
-  const upgradePlan = async (plan: 'pro' | 'enterprise') => {
-      console.log("Upgrade", plan);
+    setMasterFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
   };
 
-  const getFunnelStats = (fid: string) => {
-      const fl = leads.filter(l => l.funnelId === fid);
-      return { totalValue: fl.reduce((a,b) => a + b.value, 0), leadCount: fl.length };
+  const addStage = (funnelId: string, name: string) => {
+    setMasterFunnels(prev => prev.map(f => {
+      if (f.id !== funnelId) return f;
+      const newStage: Stage = {
+        id: `s${Date.now()}`,
+        name,
+        color: 'bg-gray-100 border-gray-300',
+        order: f.stages.length
+      };
+      return { ...f, stages: [...f.stages, newStage] };
+    }));
+  };
+
+  const reorderStages = (funnelId: string, newStages: Stage[]) => {
+    setMasterFunnels(prev => prev.map(f => {
+      if (f.id !== funnelId) return f;
+      const updatedStages = newStages.map((stage, index) => ({
+        ...stage,
+        order: index
+      }));
+      return { ...f, stages: updatedStages };
+    }));
+  };
+
+  const addCustomField = (field: CustomFieldDefinition) => {
+    if (!currentAccountId) return;
+    setMasterCustomFields(prev => [...prev, { ...field, accountId: currentAccountId }]);
+  };
+
+  const deleteCustomField = (id: string) => {
+    setMasterCustomFields(prev => prev.filter(f => f.id !== id));
+  };
+
+  const getFunnelStats = (funnelId: string) => {
+    const funnelLeads = visibleLeads.filter(l => l.funnelId === funnelId);
+    return {
+      totalValue: funnelLeads.reduce((acc, curr) => acc + curr.value, 0),
+      leadCount: funnelLeads.length
+    };
+  };
+
+  const addUser = (user: User) => {
+    if (!currentAccountId && !isNexusAdmin) return;
+    // If user is Account Admin creating a user, force correct accountId
+    const finalUser = isNexusAdmin ? user : { ...user, accountId: currentAccountId };
+    setMasterUsers(prev => [...prev, finalUser]);
+  };
+
+  const updateUser = (id: string, updates: Partial<User>) => {
+    setMasterUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u));
+    if (currentUser?.id === id) {
+        const updated = { ...currentUser, ...updates };
+        setCurrentUser(updated);
+        localStorage.setItem('nexus_user_session', JSON.stringify(updated));
+    }
+  };
+
+  const deleteUser = (id: string) => {
+    setMasterUsers(prev => prev.filter(u => u.id !== id));
+  };
+
+  const addTeam = (team: Team) => {
+    if (!currentAccountId) return;
+    setMasterTeams(prev => [...prev, { ...team, accountId: currentAccountId }]);
+  };
+
+  const deleteTeam = (id: string) => {
+    setMasterTeams(prev => prev.filter(t => t.id !== id));
+    setMasterUsers(prev => prev.map(u => u.teamId === id ? { ...u, teamId: undefined } : u));
+  };
+
+  // --- NEXUS ADMIN ACTIONS ---
+
+  const createAccount = (account: Account, adminUser: User) => {
+      setMasterAccounts(prev => [...prev, account]);
+      setMasterUsers(prev => [...prev, adminUser]);
+      
+      // Create Default Funnel for new account
+      const defaultFunnel: Funnel = {
+        id: `f_def_${account.id}`,
+        accountId: account.id,
+        name: 'Funil Padrão',
+        stages: [
+            { id: `s_${Date.now()}_1`, name: 'Lead', color: 'bg-gray-100 border-gray-300', order: 0 },
+            { id: `s_${Date.now()}_2`, name: 'Negociação', color: 'bg-blue-50 border-blue-200', order: 1 },
+            { id: `s_${Date.now()}_3`, name: 'Ganho', color: 'bg-green-50 border-green-200', order: 2 },
+        ]
+      };
+      setMasterFunnels(prev => [...prev, defaultFunnel]);
+  };
+
+  const updateAccountStatus = (accountId: string, status: 'active' | 'suspended') => {
+      setMasterAccounts(prev => prev.map(a => a.id === accountId ? { ...a, status } : a));
+  };
+
+  const extendAccountSubscription = (accountId: string, months: number) => {
+      setMasterAccounts(prev => prev.map(a => {
+          if (a.id !== accountId) return a;
+          const currentExpiry = new Date(a.expiresAt);
+          // If already expired, start from now
+          const baseDate = currentExpiry < new Date() ? new Date() : currentExpiry;
+          baseDate.setMonth(baseDate.getMonth() + months);
+          return { ...a, expiresAt: baseDate.toISOString(), status: 'active' };
+      }));
+  };
+
+  // --- PAYMENT / UPGRADE (Mock) ---
+  const upgradePlan = async (plan: 'pro' | 'enterprise') => {
+      if (!currentAccountId) return;
+      
+      // Simulate API Call
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      setMasterAccounts(prev => prev.map(a => {
+          if (a.id !== currentAccountId) return a;
+          const newExpiry = new Date();
+          newExpiry.setFullYear(newExpiry.getFullYear() + 1); // 1 year sub
+          
+          return {
+              ...a,
+              plan,
+              subscriptionStatus: 'active',
+              expiresAt: newExpiry.toISOString()
+          };
+      }));
   };
 
   return (
     <CRMContext.Provider value={{
-      funnels, leads, users, teams, customFields, allAccounts,
-      activeFunnelId, currentUser, isLoading,
-      setActiveFunnelId, login, logout,
-      addLead, updateLead, moveLead, duplicateLead, deleteLead,
-      addTask, toggleTask, deleteTask,
-      addFunnel, updateFunnel, addStage, reorderStages,
-      addCustomField, deleteCustomField, getFunnelStats,
-      addUser, updateUser, deleteUser, addTeam, deleteTeam,
-      registerAccount, createAccount, updateAccountStatus, 
-      extendAccountSubscription, upgradePlan
+      // Filtered Views
+      funnels: visibleFunnels,
+      leads: visibleLeads,
+      users: visibleUsers,
+      teams: visibleTeams,
+      customFields: visibleCustomFields,
+      
+      // Admin Views
+      allAccounts: masterAccounts,
+
+      activeFunnelId,
+      currentUser,
+      setActiveFunnelId,
+      login,
+      registerAccount,
+      logout,
+      addLead,
+      updateLead,
+      moveLead,
+      duplicateLead,
+      deleteLead,
+      addTask,
+      toggleTask,
+      deleteTask,
+      addFunnel,
+      updateFunnel,
+      addStage,
+      reorderStages,
+      addCustomField,
+      deleteCustomField,
+      getFunnelStats,
+      addUser,
+      updateUser,
+      deleteUser,
+      addTeam,
+      deleteTeam,
+      
+      // Nexus Actions
+      createAccount,
+      updateAccountStatus,
+      extendAccountSubscription,
+      
+      // Payments
+      upgradePlan
     }}>
       {children}
     </CRMContext.Provider>
@@ -320,3 +521,4 @@ export const useCRM = () => {
   if (!context) throw new Error("useCRM must be used within a CRMProvider");
   return context;
 };
+    

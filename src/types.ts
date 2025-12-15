@@ -106,7 +106,7 @@ export interface Lead {
   tasks: Task[];
   tags: string[];
   probability: number;
-  customValues?: Record<string, unknown>; // Changed from any to unknown for strictness
+  customValues?: any;
 }
 
 export interface DashboardStats {
