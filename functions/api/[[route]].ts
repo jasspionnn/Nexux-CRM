@@ -60,8 +60,6 @@ const generateId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().
 
 // --- AUTH ---
 
-
-
 app.post('/api/auth/login', async (c) => {
   const body = await c.req.json();
   const { email, password } = body as { email?: string; password?: string };
@@ -147,44 +145,38 @@ app.post('/api/auth/register', async (c) => {
     }
 });
 
-// --- TEST DB ---
-
-app.get('/api/test-db', async (c) => {
-  try {
-    const result = await c.env.DB
-      .prepare('SELECT name FROM sqlite_master WHERE type = "table"')
-      .all();
-
-    return c.json({
-      ok: true,
-      tables: result.results
-    });
-  } catch (e: any) {
-    return c.json({
-      ok: false,
-      error: e.message
-    }, 500);
-  }
-});
-
-
 // --- SYNC ---
 
 app.get('/api/sync/:accountId', async (c) => {
   const accountId = c.req.param('accountId');
 
+  // Fetch Core Data
   const funnelsResult = await c.env.DB.prepare('SELECT * FROM funnels WHERE account_id = ?').bind(accountId).all() as D1Result<any>;
   const leadsResult = await c.env.DB.prepare('SELECT * FROM leads WHERE account_id = ?').bind(accountId).all() as D1Result<any>;
   const usersResult = await c.env.DB.prepare('SELECT * FROM users WHERE account_id = ?').bind(accountId).all() as D1Result<any>;
   const teamsResult = await c.env.DB.prepare('SELECT * FROM teams WHERE account_id = ?').bind(accountId).all() as D1Result<any>;
-  
-  const funnels = funnelsResult.results;
+  const customFieldsResult = await c.env.DB.prepare('SELECT * FROM custom_fields WHERE account_id = ?').bind(accountId).all() as D1Result<any>;
 
+  // Process Funnels & Stages
+  const funnels = funnelsResult.results;
   const funnelsWithStages = await Promise.all(funnels.map(async (f: any) => {
       const stagesResult = await c.env.DB.prepare('SELECT * FROM stages WHERE funnel_id = ? ORDER BY "order" ASC').bind(f.id).all() as D1Result<any>;
-      return { ...f, stages: stagesResult.results };
+      return { 
+          id: f.id,
+          accountId: f.account_id,
+          name: f.name,
+          stages: stagesResult.results.map((s:any) => ({
+              id: s.id,
+              name: s.name,
+              color: s.color,
+              order: s.order
+          })),
+          defaultWonStageId: f.default_won_stage_id,
+          defaultLostStageId: f.default_lost_stage_id
+      };
   }));
 
+  // Process Leads with Tasks & Notes
   const leadsRaw = leadsResult.results;
   const leads = await Promise.all(leadsRaw.map(async (l: any) => {
       const tasksRes = await c.env.DB.prepare('SELECT * FROM tasks WHERE lead_id = ?').bind(l.id).all() as D1Result<any>;
@@ -211,6 +203,7 @@ app.get('/api/sync/:accountId', async (c) => {
       };
   }));
 
+  // Process Users
   const usersCamel = usersResult.results.map((u: any) => ({
       id: u.id,
       accountId: u.account_id,
@@ -219,9 +212,11 @@ app.get('/api/sync/:accountId', async (c) => {
       role: u.role,
       avatar: u.avatar,
       status: u.status,
-      teamId: u.team_id
+      teamId: u.team_id,
+      joinedAt: u.joined_at
   }));
 
+  // Process Teams
   const teamsCamel = teamsResult.results.map((t: any) => ({
       id: t.id,
       accountId: t.account_id,
@@ -229,12 +224,24 @@ app.get('/api/sync/:accountId', async (c) => {
       goal: t.goal
   }));
 
+  // Process Custom Fields
+  const fieldsCamel = customFieldsResult.results.map((cf: any) => ({
+      id: cf.id,
+      accountId: cf.account_id,
+      name: cf.name,
+      type: cf.type,
+      context: cf.context,
+      funnelId: cf.funnel_id,
+      options: JSON.parse(cf.options || '[]'),
+      visibleStageIds: JSON.parse(cf.visible_stage_ids || '[]')
+  }));
+
   return c.json({
       funnels: funnelsWithStages,
       leads,
       users: usersCamel,
       teams: teamsCamel,
-      customFields: [] // TODO: Implement Custom Fields in SQL
+      customFields: fieldsCamel
   });
 });
 
@@ -262,6 +269,7 @@ app.patch('/api/leads/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
     
+    // Dynamic update builder
     if (data.stageId) await c.env.DB.prepare('UPDATE leads SET stage_id = ? WHERE id = ?').bind(data.stageId, id).run();
     if (data.probability !== undefined) await c.env.DB.prepare('UPDATE leads SET probability = ? WHERE id = ?').bind(data.probability, id).run();
     if (data.title) await c.env.DB.prepare('UPDATE leads SET title = ? WHERE id = ?').bind(data.title, id).run();
@@ -271,6 +279,11 @@ app.patch('/api/leads/:id', async (c) => {
     if (data.contactEmail) await c.env.DB.prepare('UPDATE leads SET contact_email = ? WHERE id = ?').bind(data.contactEmail, id).run();
     if (data.contactPhone) await c.env.DB.prepare('UPDATE leads SET contact_phone = ? WHERE id = ?').bind(data.contactPhone, id).run();
     if (data.funnelId) await c.env.DB.prepare('UPDATE leads SET funnel_id = ? WHERE id = ?').bind(data.funnelId, id).run();
+    if (data.customValues) {
+        // Need to fetch existing first to merge? Or assume frontend sends full object?
+        // Simple update:
+        await c.env.DB.prepare('UPDATE leads SET custom_values = ? WHERE id = ?').bind(JSON.stringify(data.customValues), id).run();
+    }
 
     if (data.notes && Array.isArray(data.notes) && data.notes.length > 0) {
         const newNote = data.notes[0];
