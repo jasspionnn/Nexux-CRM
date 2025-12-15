@@ -1,6 +1,11 @@
-export const onRequestGet = async () => {
+export const onRequestGet = () => {
   return new Response(
     JSON.stringify({ status: "ok" }),
-    { headers: { "Content-Type": "application/json" } }
-  );
-};
+    {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json"
+      }
+    }
+  )
+}
