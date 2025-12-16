@@ -24,12 +24,12 @@
     "noFallthroughCasesInSwitch": true,
 
     /* Types */
-    "types": ["node"],
+    "types": ["node", "vite/client"],
 
     /* Path Aliases */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["./**/*.ts", "./**/*.tsx"],
