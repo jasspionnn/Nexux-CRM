@@ -1,22 +1,18 @@
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole } from '../types';
-import { INITIAL_FUNNELS, MOCK_LEADS, MOCK_TEAMS, MOCK_USERS, MOCK_ACCOUNTS } from '../constants';
 import { api } from '../services/api';
+import { MOCK_ACCOUNTS } from '../constants'; // Ainda usamos mock para contas Admin Nexus por enquanto
 
 interface CRMContextType {
-  // Data (Filtered by Account)
   funnels: Funnel[];
   leads: Lead[];
   users: User[];
   teams: Team[];
   customFields: CustomFieldDefinition[];
-  
-  // Data (Nexus Admin Only)
   allAccounts: Account[];
-  
   activeFunnelId: string;
-  currentUser: User | null; // Auth State
+  currentUser: User | null;
   isLoading: boolean;
   
   setActiveFunnelId: (id: string) => void;
@@ -25,7 +21,6 @@ interface CRMContextType {
   logout: () => void;
   refreshData: () => Promise<void>;
 
-  // CRM Actions
   addLead: (lead: Lead) => Promise<void>;
   updateLead: (id: string, updates: Partial<Lead>) => Promise<void>;
   moveLead: (leadId: string, targetStageId: string) => Promise<void>;
@@ -43,89 +38,87 @@ interface CRMContextType {
   deleteCustomField: (id: string) => Promise<void>;
   getFunnelStats: (funnelId: string) => { totalValue: number; leadCount: number };
   
-  // User & Team Management
   addUser: (user: User) => Promise<void>;
   updateUser: (id: string, updates: Partial<User>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   addTeam: (team: Team) => Promise<void>;
   deleteTeam: (id: string) => Promise<void>;
 
-  // Nexus Admin Actions
   createAccount: (account: Account, adminUser: User) => void;
   updateAccountStatus: (accountId: string, status: 'active' | 'suspended') => void;
   extendAccountSubscription: (accountId: string, months: number) => void;
-  
-  // Payment Integration (Mock)
   upgradePlan: (plan: 'pro' | 'enterprise') => Promise<void>;
 }
 
 const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
-interface CRMProviderProps {
-  children: ReactNode;
-}
-
-export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
-  // --- STATE ---
+export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // Estado Local (Espelho do Banco de Dados)
   const [funnels, setFunnels] = useState<Funnel[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]); // Apenas para Nexus Admin
 
   const [activeFunnelId, setActiveFunnelId] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // --- INITIALIZATION ---
-
-  // 1. Load User Session
+  // 1. Carregar Sessão Local
   useEffect(() => {
     const savedUser = localStorage.getItem('nexus_user_session');
     if (savedUser) {
         try {
-            const parsed = JSON.parse(savedUser);
-            setCurrentUser(parsed);
+            setCurrentUser(JSON.parse(savedUser));
         } catch (e) {
-            console.error("Failed to parse session", e);
+            console.error("Sessão inválida", e);
+            localStorage.removeItem('nexus_user_session');
         }
     }
   }, []);
 
-  // 2. Fetch Data (Sync) when User is Logged In
+  // 2. Buscar Dados do Backend (Sync)
   const refreshData = useCallback(async () => {
-      if (!currentUser || !currentUser.accountId) return;
+      if (!currentUser) return;
+      
+      // Se for Nexus Admin, não carrega dados operacionais, apenas contas (Mockado ou endpoint específico)
+      if (currentUser.role === UserRole.NEXUS_ADMIN) {
+          setAccounts(MOCK_ACCOUNTS); 
+          return;
+      }
+
       setIsLoading(true);
       try {
-          if (currentUser.role === UserRole.NEXUS_ADMIN) {
-              setAccounts(MOCK_ACCOUNTS); 
-          } else {
-              const data = await api.get<any>(`/sync/${currentUser.accountId}`);
-              setFunnels(data.funnels || []);
-              setLeads(data.leads || []);
-              setUsers(data.users || []);
-              setTeams(data.teams || []);
-              setCustomFields(data.customFields || []);
+          // Chama o endpoint /sync/:accountId que retorna tudo de uma vez
+          const data = await api.get<any>(`/sync/${currentUser.accountId}`);
+          
+          setFunnels(data.funnels || []);
+          setLeads(data.leads || []);
+          setUsers(data.users || []);
+          setTeams(data.teams || []);
+          setCustomFields(data.customFields || []);
 
-              if (!activeFunnelId && data.funnels && data.funnels.length > 0) {
-                  setActiveFunnelId(data.funnels[0].id);
-              }
+          // Define funil ativo se não houver um
+          if (!activeFunnelId && data.funnels && data.funnels.length > 0) {
+              setActiveFunnelId(data.funnels[0].id);
           }
       } catch (error) {
-          console.error("Sync error:", error);
+          console.error("Erro ao sincronizar dados:", error);
+          if (String(error).includes('403')) logout();
       } finally {
           setIsLoading(false);
       }
   }, [currentUser, activeFunnelId]);
 
+  // Atualiza dados sempre que o usuário muda (login/refresh)
   useEffect(() => {
       if (currentUser) {
           refreshData();
       }
   }, [currentUser]);
 
-  // --- AUTH ACTIONS ---
+  // --- AÇÕES DE AUTENTICAÇÃO ---
 
   const login = async (email: string, pass: string): Promise<string | boolean> => {
       setIsLoading(true);
@@ -136,7 +129,7 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
           return true;
       } catch (error: any) {
           console.error(error);
-          return "Credenciais inválidas ou erro no servidor.";
+          return error.message || "Erro ao conectar.";
       } finally {
           setIsLoading(false);
       }
@@ -146,10 +139,11 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
       setIsLoading(true);
       try {
           await api.post('/auth/register', { userName, email, password: pass, companyName });
+          // Auto login após registro
           return await login(email, pass);
       } catch (error: any) {
           console.error(error);
-          return "Erro ao criar conta. Tente outro email.";
+          return error.message || "Erro ao registrar.";
       } finally {
           setIsLoading(false);
       }
@@ -163,15 +157,16 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
       setActiveFunnelId('');
   };
 
-  // --- LEADS & TASKS ---
+  // --- AÇÕES DO CRM (Otimistas + API) ---
 
   const addLead = async (lead: Lead) => {
+    // Atualização Otimista (Mostra na tela antes de confirmar no banco)
     setLeads(prev => [...prev, lead]);
     try {
         await api.post('/leads', lead);
     } catch (e) {
-        console.error("Failed to add lead", e);
-        refreshData(); 
+        console.error("Falha ao salvar lead", e);
+        refreshData(); // Reverte se der erro
     }
   };
 
@@ -179,7 +174,7 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
     setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
     try {
         await api.patch(`/leads/${id}`, updates);
-    } catch (e) { console.error("Failed to update lead", e); }
+    } catch (e) { console.error(e); }
   };
 
   const moveLead = async (leadId: string, targetStageId: string) => {
@@ -195,9 +190,10 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
 
     const originalFunnelName = funnels.find(f => f.id === originalLead.funnelId)?.name || 'Desconhecido';
     
+    // Cria objeto temporário
     const newLead: Lead = {
       ...originalLead,
-      id: `l_${Date.now()}`,
+      id: `l_temp_${Date.now()}`, // ID Temporário
       accountId: currentUser.accountId,
       funnelId: targetFunnelId,
       stageId: targetStageId,
@@ -213,15 +209,19 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
     };
     
     setLeads(prev => [...prev, newLead]);
+    
     try {
+        // O backend vai gerar o ID real
         const res = await api.post<{id: string}>('/leads', newLead);
+        // Atualiza o ID temporário para o real
         setLeads(prev => prev.map(l => l.id === newLead.id ? { ...l, id: res.id } : l));
     } catch (e) { refreshData(); }
   };
 
   const deleteLead = async (id: string) => {
     setLeads(prev => prev.filter(l => l.id !== id));
-    // TODO: Implement DELETE /api/leads/:id
+    // Implementar endpoint DELETE se necessário
+    // await api.delete(`/leads/${id}`);
   };
 
   const addTask = async (leadId: string, task: Task) => {
@@ -260,17 +260,17 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
       } catch (e) { console.error(e); }
   };
 
-  // --- FUNNELS & CONFIG ---
-  
+  // --- FUNIS ---
+
   const addFunnel = async (name: string) => {
     if (!currentUser?.accountId) return;
     const newFunnel: Funnel = {
-      id: `f${Date.now()}`,
+      id: `f_${Date.now()}`,
       accountId: currentUser.accountId,
       name,
       stages: [
-        { id: `s${Date.now()}_1`, name: 'Novo', color: 'bg-gray-100 border-gray-300', order: 0 },
-        { id: `s${Date.now()}_2`, name: 'Ganho', color: 'bg-green-100 border-green-300', order: 1 },
+        { id: `s_${Date.now()}_1`, name: 'Novo', color: 'bg-gray-100 border-gray-300', order: 0 },
+        { id: `s_${Date.now()}_2`, name: 'Ganho', color: 'bg-green-100 border-green-300', order: 1 },
       ]
     };
     setFunnels(prev => [...prev, newFunnel]);
@@ -290,19 +290,16 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
   const addStage = async (funnelId: string, name: string) => {
     const funnel = funnels.find(f => f.id === funnelId);
     if (!funnel) return;
-
     const newStage: Stage = {
-        id: `s${Date.now()}`,
+        id: `s_${Date.now()}`,
         name,
         color: 'bg-gray-100 border-gray-300',
         order: funnel.stages.length
     };
-    
     setFunnels(prev => prev.map(f => {
       if (f.id !== funnelId) return f;
       return { ...f, stages: [...f.stages, newStage] };
     }));
-    
     try {
         await api.post('/stages', { ...newStage, funnelId });
     } catch (e) { refreshData(); }
@@ -311,17 +308,14 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
   const reorderStages = async (funnelId: string, newStages: Stage[]) => {
     setFunnels(prev => prev.map(f => {
       if (f.id !== funnelId) return f;
-      const updatedStages = newStages.map((stage, index) => ({
-        ...stage,
-        order: index
-      }));
-      return { ...f, stages: updatedStages };
+      return { ...f, stages: newStages.map((s, i) => ({ ...s, order: i })) };
     }));
-
     try {
         await api.post('/stages/reorder', { funnelId, stages: newStages });
     } catch (e) { refreshData(); }
   };
+
+  // --- CAMPOS PERSONALIZADOS ---
 
   const addCustomField = async (field: CustomFieldDefinition) => {
     if (!currentUser?.accountId) return;
@@ -347,11 +341,11 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
     };
   };
 
-  // --- USER & TEAMS ---
+  // --- USUÁRIOS E TIMES ---
 
   const addUser = async (user: User) => {
-    if (!currentUser?.accountId && currentUser?.role !== UserRole.NEXUS_ADMIN) return;
-    const finalUser = currentUser.role === UserRole.NEXUS_ADMIN ? user : { ...user, accountId: currentUser.accountId };
+    if (!currentUser?.accountId) return;
+    const finalUser = { ...user, accountId: currentUser.accountId };
     setUsers(prev => [...prev, finalUser]);
     try {
         await api.post('/users', finalUser);
@@ -394,11 +388,10 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
     } catch (e) { refreshData(); }
   };
 
-  // --- NEXUS ADMIN (MOCK FOR NOW OR IMPLEMENT LATER) ---
-
+  // --- NEXUS ADMIN (Mockado para este exemplo, mas estrutura preparada) ---
   const createAccount = (account: Account, adminUser: User) => {
       setAccounts(prev => [...prev, account]);
-      setUsers(prev => [...prev, adminUser]);
+      // Em produção, isso chamaria uma API
   };
 
   const updateAccountStatus = (accountId: string, status: 'active' | 'suspended') => {
@@ -417,7 +410,8 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
 
   const upgradePlan = async (plan: 'pro' | 'enterprise') => {
       if (!currentUser?.accountId) return;
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      alert("Simulação: Plano atualizado com sucesso via API.");
   };
 
   return (

@@ -1,11 +1,11 @@
 
-// Fetch Wrapper para facilitar chamadas API
-// No Cloudflare Pages, chamadas para /api/... são roteadas automaticamente para as Functions
-
 export const api = {
     get: async <T>(endpoint: string): Promise<T> => {
         const res = await fetch(`/api${endpoint}`);
-        if (!res.ok) throw new Error(`API Error: ${res.statusText}`);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `API Error: ${res.statusText}`);
+        }
         return res.json();
     },
 
@@ -15,7 +15,10 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-        if (!res.ok) throw new Error(`API Error: ${res.statusText}`);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `API Error: ${res.statusText}`);
+        }
         return res.json();
     },
 
@@ -25,7 +28,10 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-        if (!res.ok) throw new Error(`API Error: ${res.statusText}`);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `API Error: ${res.statusText}`);
+        }
         return res.json();
     },
 
@@ -33,7 +39,10 @@ export const api = {
         const res = await fetch(`/api${endpoint}`, {
             method: 'DELETE',
         });
-        if (!res.ok) throw new Error(`API Error: ${res.statusText}`);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `API Error: ${res.statusText}`);
+        }
         return res.json();
     }
 };
