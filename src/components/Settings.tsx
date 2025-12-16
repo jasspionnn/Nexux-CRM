@@ -1,13 +1,14 @@
+
 import React, { useState, useRef } from 'react';
 import { useCRM } from '../context/CRMContext';
-import { Plus, GripVertical, Building, Layers, SlidersHorizontal, Trash2, CheckSquare, Type, List, ArrowRight, AlertOctagon, FileText, Users, CreditCard, Check, Sparkles, Zap, Shield, Loader2 } from 'lucide-react';
+import { Plus, GripVertical, Building, Layers, SlidersHorizontal, Trash2, CheckSquare, Type, List, ArrowRight, AlertOctagon, FileText, Users, CreditCard, Check, Sparkles, Zap, Shield, Loader2, AlertTriangle, X as XIconLucide } from 'lucide-react';
 import { CustomFieldDefinition, CustomFieldOption, CustomFieldType, CustomFieldContext } from '../types';
 import { Teams } from './Teams';
 
 type SettingsTab = 'pipeline' | 'fields' | 'teams' | 'billing';
 
 export const Settings = () => {
-  const { funnels, addFunnel, updateFunnel, addStage, reorderStages, customFields, addCustomField, deleteCustomField, currentUser, allAccounts, upgradePlan } = useCRM();
+  const { funnels, addFunnel, updateFunnel, deleteFunnel, addStage, reorderStages, deleteStage, customFields, addCustomField, deleteCustomField, leads, currentUser, allAccounts, upgradePlan } = useCRM();
   const [activeTab, setActiveTab] = useState<SettingsTab>('pipeline');
   
   // Pipeline State
@@ -16,6 +17,11 @@ export const Settings = () => {
   const [newStageName, setNewStageName] = useState('');
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
+
+  // Delete Funnel Modal State
+  const [isDeleteFunnelModalOpen, setIsDeleteFunnelModalOpen] = useState(false);
+  const [targetMigrationFunnelId, setTargetMigrationFunnelId] = useState('');
+  const [targetMigrationStageId, setTargetMigrationStageId] = useState('');
 
   // Custom Fields State
   const [fieldFunnelId, setFieldFunnelId] = useState<string>(funnels[0]?.id || '');
@@ -49,6 +55,44 @@ export const Settings = () => {
       addStage(selectedFunnelId, newStageName);
       setNewStageName('');
     }
+  };
+
+  const handleRemoveStage = (stageId: string) => {
+    // Check if stage has leads
+    const leadsInStage = leads.filter(l => l.stageId === stageId && l.funnelId === selectedFunnelId);
+    if (leadsInStage.length > 0) {
+        alert(`Não é possível excluir esta etapa pois existem ${leadsInStage.length} leads nela. Mova-os primeiro.`);
+        return;
+    }
+    if (confirm('Tem certeza que deseja excluir esta etapa?')) {
+        deleteStage(stageId);
+    }
+  };
+
+  const initiateDeleteFunnel = () => {
+      const leadsInFunnel = leads.filter(l => l.funnelId === selectedFunnelId).length;
+      if (leadsInFunnel > 0) {
+          // Pre-select the first available OTHER funnel
+          const otherFunnel = funnels.find(f => f.id !== selectedFunnelId);
+          if (otherFunnel) {
+              setTargetMigrationFunnelId(otherFunnel.id);
+              setTargetMigrationStageId(otherFunnel.stages[0]?.id || '');
+              setIsDeleteFunnelModalOpen(true);
+          } else {
+              alert('Você precisa ter outro funil para mover os leads antes de excluir este.');
+          }
+      } else {
+          // No leads, simple confirm
+          if (confirm('Excluir este funil permanentemente?')) {
+              deleteFunnel(selectedFunnelId);
+          }
+      }
+  };
+
+  const confirmDeleteFunnelWithMigration = () => {
+      if (!targetMigrationFunnelId || !targetMigrationStageId) return;
+      deleteFunnel(selectedFunnelId, targetMigrationFunnelId, targetMigrationStageId);
+      setIsDeleteFunnelModalOpen(false);
   };
 
   const handleDragStart = (position: number) => {
@@ -124,7 +168,70 @@ export const Settings = () => {
   };
 
   return (
-    <div className="p-8 h-full flex flex-col bg-gray-50 animate-fade-in">
+    <div className="p-8 h-full flex flex-col bg-gray-50 animate-fade-in relative">
+      
+      {/* Delete Funnel Migration Modal */}
+      {isDeleteFunnelModalOpen && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-scale-in">
+                  <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
+                      <AlertTriangle className="text-red-500" /> 
+                      Atenção: Leads Existentes
+                  </h3>
+                  <p className="text-gray-600 text-sm mb-6">
+                      O funil <strong>{selectedFunnel?.name}</strong> possui leads ativos. 
+                      Para excluí-lo, você deve mover esses leads para outro funil.
+                  </p>
+                  
+                  <div className="space-y-4 mb-6">
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Mover para Funil</label>
+                          <select 
+                              className="w-full border rounded-lg p-2 text-sm bg-white"
+                              value={targetMigrationFunnelId}
+                              onChange={e => {
+                                  setTargetMigrationFunnelId(e.target.value);
+                                  const f = funnels.find(fun => fun.id === e.target.value);
+                                  setTargetMigrationStageId(f?.stages[0]?.id || '');
+                              }}
+                          >
+                              {funnels.filter(f => f.id !== selectedFunnelId).map(f => (
+                                  <option key={f.id} value={f.id}>{f.name}</option>
+                              ))}
+                          </select>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Na Etapa</label>
+                          <select 
+                              className="w-full border rounded-lg p-2 text-sm bg-white"
+                              value={targetMigrationStageId}
+                              onChange={e => setTargetMigrationStageId(e.target.value)}
+                          >
+                              {funnels.find(f => f.id === targetMigrationFunnelId)?.stages.map(s => (
+                                  <option key={s.id} value={s.id}>{s.name}</option>
+                              ))}
+                          </select>
+                      </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                      <button 
+                          onClick={() => setIsDeleteFunnelModalOpen(false)}
+                          className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium"
+                      >
+                          Cancelar
+                      </button>
+                      <button 
+                          onClick={confirmDeleteFunnelWithMigration}
+                          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium shadow-sm"
+                      >
+                          Mover e Excluir
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
         <div>
             <h2 className="text-2xl font-bold text-gray-800">Configurações</h2>
@@ -344,11 +451,22 @@ export const Settings = () => {
             <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
             {selectedFunnel ? (
                 <>
-                <div className="p-6 border-b border-gray-100">
-                    <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded uppercase tracking-wider">Editando</span>
+                <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded uppercase tracking-wider">Editando</span>
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-800">{selectedFunnel.name}</h3>
                     </div>
-                    <h3 className="text-xl font-bold text-gray-800">{selectedFunnel.name}</h3>
+                    
+                    {/* Delete Funnel Button */}
+                    <button 
+                        onClick={initiateDeleteFunnel}
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
+                    >
+                        <Trash2 size={16} />
+                        Excluir Funil
+                    </button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
@@ -371,10 +489,17 @@ export const Settings = () => {
                             <div className="font-semibold text-gray-800">{stage.name}</div>
                             <div className="text-xs text-gray-500 mt-0.5">Posição {index + 1}</div>
                         </div>
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
                             <div className="px-3 py-1 bg-gray-100 text-gray-500 text-xs rounded-md">
                                 Arrastar para reordenar
                             </div>
+                            <button 
+                                onClick={() => handleRemoveStage(stage.id)}
+                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                                title="Excluir Etapa"
+                            >
+                                <Trash2 size={16} />
+                            </button>
                         </div>
                         </div>
                     ))}

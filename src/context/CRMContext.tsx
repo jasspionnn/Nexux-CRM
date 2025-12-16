@@ -31,8 +31,10 @@ interface CRMContextType {
   
   addFunnel: (name: string) => Promise<void>;
   updateFunnel: (id: string, updates: Partial<Funnel>) => Promise<void>;
+  deleteFunnel: (id: string, targetFunnelId?: string, targetStageId?: string) => Promise<void>;
   addStage: (funnelId: string, name: string) => Promise<void>;
   reorderStages: (funnelId: string, newStages: Stage[]) => Promise<void>;
+  deleteStage: (stageId: string) => Promise<void>;
   addCustomField: (field: CustomFieldDefinition) => Promise<void>;
   deleteCustomField: (id: string) => Promise<void>;
   getFunnelStats: (funnelId: string) => { totalValue: number; leadCount: number };
@@ -285,6 +287,33 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch (e) { console.error(e); }
   };
 
+  const deleteFunnel = async (id: string, targetFunnelId?: string, targetStageId?: string) => {
+      // Optimistic Updates
+      setFunnels(prev => prev.filter(f => f.id !== id));
+      
+      if (targetFunnelId && targetStageId) {
+          // Move leads in state
+          setLeads(prev => prev.map(l => {
+              if (l.funnelId === id) {
+                  return { ...l, funnelId: targetFunnelId, stageId: targetStageId };
+              }
+              return l;
+          }));
+      } else {
+          // Remove leads in state if no migration
+          setLeads(prev => prev.filter(l => l.funnelId !== id));
+      }
+
+      if (activeFunnelId === id) {
+          const remaining = funnels.filter(f => f.id !== id);
+          setActiveFunnelId(remaining.length > 0 ? remaining[0].id : '');
+      }
+
+      try {
+          await api.post(`/funnels/${id}/delete`, { targetFunnelId, targetStageId });
+      } catch (e) { refreshData(); }
+  };
+
   const addStage = async (funnelId: string, name: string) => {
     const funnel = funnels.find(f => f.id === funnelId);
     if (!funnel) return;
@@ -300,6 +329,15 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }));
     try {
         await api.post('/stages', { ...newStage, funnelId });
+    } catch (e) { refreshData(); }
+  };
+
+  const deleteStage = async (stageId: string) => {
+    setFunnels(prev => prev.map(f => {
+        return { ...f, stages: f.stages.filter(s => s.id !== stageId) };
+    }));
+    try {
+        await api.delete(`/stages/${stageId}`);
     } catch (e) { refreshData(); }
   };
 
@@ -464,8 +502,10 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       deleteTask,
       addFunnel,
       updateFunnel,
+      deleteFunnel,
       addStage,
       reorderStages,
+      deleteStage,
       addCustomField,
       deleteCustomField,
       getFunnelStats,

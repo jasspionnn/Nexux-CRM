@@ -402,6 +402,25 @@ app.patch('/api/funnels/:id', async (c) => {
     return c.json({ success: true });
 });
 
+// Delete Funnel with Migration
+app.post('/api/funnels/:id/delete', async (c) => {
+    const funnelId = c.req.param('id');
+    const { targetFunnelId, targetStageId } = await c.req.json() as any;
+
+    if (targetFunnelId && targetStageId) {
+        // Move leads
+        await c.env.DB.prepare('UPDATE leads SET funnel_id = ?, stage_id = ? WHERE funnel_id = ?')
+            .bind(targetFunnelId, targetStageId, funnelId).run();
+    }
+
+    // Delete related entities (Constraints should cascade usually, but explicitly safe)
+    await c.env.DB.prepare('DELETE FROM stages WHERE funnel_id = ?').bind(funnelId).run();
+    await c.env.DB.prepare('DELETE FROM custom_fields WHERE funnel_id = ?').bind(funnelId).run();
+    await c.env.DB.prepare('DELETE FROM funnels WHERE id = ?').bind(funnelId).run();
+
+    return c.json({ success: true });
+});
+
 app.post('/api/stages', async (c) => {
     const data = await c.req.json() as any;
     // Get max order
@@ -420,6 +439,12 @@ app.post('/api/stages/reorder', async (c) => {
         c.env.DB.prepare('UPDATE stages SET "order" = ? WHERE id = ?').bind(index, s.id)
     );
     await c.env.DB.batch(stmts);
+    return c.json({ success: true });
+});
+
+app.delete('/api/stages/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM stages WHERE id = ?').bind(id).run();
     return c.json({ success: true });
 });
 
