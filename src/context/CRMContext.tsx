@@ -2,7 +2,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole } from '../types';
 import { api } from '../services/api';
-import { MOCK_ACCOUNTS } from '../constants'; // Ainda usamos mock para contas Admin Nexus por enquanto
 
 interface CRMContextType {
   funnels: Funnel[];
@@ -44,9 +43,9 @@ interface CRMContextType {
   addTeam: (team: Team) => Promise<void>;
   deleteTeam: (id: string) => Promise<void>;
 
-  createAccount: (account: Account, adminUser: User) => void;
-  updateAccountStatus: (accountId: string, status: 'active' | 'suspended') => void;
-  extendAccountSubscription: (accountId: string, months: number) => void;
+  createAccount: (account: Account, adminUser: User) => Promise<void>;
+  updateAccountStatus: (accountId: string, status: 'active' | 'suspended') => Promise<void>;
+  extendAccountSubscription: (accountId: string, months: number) => Promise<void>;
   upgradePlan: (plan: 'pro' | 'enterprise') => Promise<void>;
 }
 
@@ -59,7 +58,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [users, setUsers] = useState<User[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>([]); // Apenas para Nexus Admin
+  const [accounts, setAccounts] = useState<Account[]>([]); 
 
   const [activeFunnelId, setActiveFunnelId] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -82,30 +81,29 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const refreshData = useCallback(async () => {
       if (!currentUser) return;
       
-      // Se for Nexus Admin, não carrega dados operacionais, apenas contas (Mockado ou endpoint específico)
-      if (currentUser.role === UserRole.NEXUS_ADMIN) {
-          setAccounts(MOCK_ACCOUNTS); 
-          return;
-      }
-
       setIsLoading(true);
       try {
-          // Chama o endpoint /sync/:accountId que retorna tudo de uma vez
-          const data = await api.get<any>(`/sync/${currentUser.accountId}`);
-          
-          setFunnels(data.funnels || []);
-          setLeads(data.leads || []);
-          setUsers(data.users || []);
-          setTeams(data.teams || []);
-          setCustomFields(data.customFields || []);
+          if (currentUser.role === UserRole.NEXUS_ADMIN) {
+               // Admin Sync: Fetch Accounts
+               const data = await api.get<{accounts: Account[]}>('/admin/accounts');
+               setAccounts(data.accounts || []);
+          } else {
+               // Standard User Sync
+               const data = await api.get<any>(`/sync/${currentUser.accountId}`);
+               
+               setFunnels(data.funnels || []);
+               setLeads(data.leads || []);
+               setUsers(data.users || []);
+               setTeams(data.teams || []);
+               setCustomFields(data.customFields || []);
 
-          // Define funil ativo se não houver um
-          if (!activeFunnelId && data.funnels && data.funnels.length > 0) {
-              setActiveFunnelId(data.funnels[0].id);
+               if (!activeFunnelId && data.funnels && data.funnels.length > 0) {
+                   setActiveFunnelId(data.funnels[0].id);
+               }
           }
       } catch (error) {
           console.error("Erro ao sincronizar dados:", error);
-          if (String(error).includes('403')) logout();
+          if (String(error).includes('403') || String(error).includes('401')) logout();
       } finally {
           setIsLoading(false);
       }
@@ -153,6 +151,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setCurrentUser(null);
       setLeads([]);
       setFunnels([]);
+      setAccounts([]);
       localStorage.removeItem('nexus_user_session');
       setActiveFunnelId('');
   };
@@ -160,7 +159,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // --- AÇÕES DO CRM (Otimistas + API) ---
 
   const addLead = async (lead: Lead) => {
-    // Atualização Otimista (Mostra na tela antes de confirmar no banco)
+    // Atualização Otimista
     setLeads(prev => [...prev, lead]);
     try {
         await api.post('/leads', lead);
@@ -211,7 +210,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setLeads(prev => [...prev, newLead]);
     
     try {
-        // O backend vai gerar o ID real
         const res = await api.post<{id: string}>('/leads', newLead);
         // Atualiza o ID temporário para o real
         setLeads(prev => prev.map(l => l.id === newLead.id ? { ...l, id: res.id } : l));
@@ -388,17 +386,35 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch (e) { refreshData(); }
   };
 
-  // --- NEXUS ADMIN (Mockado para este exemplo, mas estrutura preparada) ---
-  const createAccount = (account: Account, adminUser: User) => {
-      setAccounts(prev => [...prev, account]);
-      // Em produção, isso chamaria uma API
+  // --- NEXUS ADMIN & BILLING (Secure API Calls) ---
+
+  const createAccount = async (account: Account, adminUser: User) => {
+      // Optimistic update for UI responsiveness
+      setAccounts(prev => [account, ...prev]);
+      try {
+          // Payload combines account + owner details
+          await api.post('/admin/accounts', {
+              companyName: account.companyName,
+              ownerName: adminUser.name,
+              email: adminUser.email,
+              password: adminUser.password, // Sent securely over HTTPS
+              plan: account.plan
+          });
+      } catch (e) {
+          console.error("Failed to create account", e);
+          refreshData();
+      }
   };
 
-  const updateAccountStatus = (accountId: string, status: 'active' | 'suspended') => {
+  const updateAccountStatus = async (accountId: string, status: 'active' | 'suspended') => {
       setAccounts(prev => prev.map(a => a.id === accountId ? { ...a, status } : a));
+      try {
+          await api.patch(`/admin/accounts/${accountId}`, { status });
+      } catch (e) { refreshData(); }
   };
 
-  const extendAccountSubscription = (accountId: string, months: number) => {
+  const extendAccountSubscription = async (accountId: string, months: number) => {
+      // Optimistic update
       setAccounts(prev => prev.map(a => {
           if (a.id !== accountId) return a;
           const currentExpiry = new Date(a.expiresAt);
@@ -406,12 +422,20 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           baseDate.setMonth(baseDate.getMonth() + months);
           return { ...a, expiresAt: baseDate.toISOString(), status: 'active' };
       }));
+      try {
+          await api.patch(`/admin/accounts/${accountId}`, { extendMonths: months });
+      } catch (e) { refreshData(); }
   };
 
   const upgradePlan = async (plan: 'pro' | 'enterprise') => {
       if (!currentUser?.accountId) return;
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      alert("Simulação: Plano atualizado com sucesso via API.");
+      try {
+          await api.post('/billing/upgrade', { accountId: currentUser.accountId, plan });
+          // Force refresh to get updated account status
+          await refreshData();
+      } catch (e) {
+          console.error("Upgrade failed", e);
+      }
   };
 
   return (

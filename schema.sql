@@ -1,3 +1,4 @@
+-- 1. Accounts (Tenants)
 CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
     company_name TEXT NOT NULL,
@@ -5,12 +6,22 @@ CREATE TABLE IF NOT EXISTS accounts (
     email TEXT NOT NULL,
     status TEXT DEFAULT 'active',
     plan TEXT DEFAULT 'trial',
-    created_at TEXT NOT NULL,
-    expires_at TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    expires_at TEXT,
     stripe_customer_id TEXT,
     subscription_status TEXT
 );
 
+-- 2. Teams
+CREATE TABLE IF NOT EXISTS teams (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    goal REAL DEFAULT 0,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+-- 3. Users
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     account_id TEXT,
@@ -21,18 +32,12 @@ CREATE TABLE IF NOT EXISTS users (
     avatar TEXT,
     status TEXT DEFAULT 'active',
     team_id TEXT,
-    joined_at TEXT,
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+    joined_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL
 );
 
-CREATE TABLE IF NOT EXISTS teams (
-    id TEXT PRIMARY KEY,
-    account_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    goal REAL DEFAULT 0,
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
-);
-
+-- 4. Funnels
 CREATE TABLE IF NOT EXISTS funnels (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
@@ -42,6 +47,7 @@ CREATE TABLE IF NOT EXISTS funnels (
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 
+-- 5. Stages
 CREATE TABLE IF NOT EXISTS stages (
     id TEXT PRIMARY KEY,
     funnel_id TEXT NOT NULL,
@@ -51,6 +57,7 @@ CREATE TABLE IF NOT EXISTS stages (
     FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE
 );
 
+-- 6. Leads
 CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
@@ -64,14 +71,26 @@ CREATE TABLE IF NOT EXISTS leads (
     stage_id TEXT NOT NULL,
     assigned_user_id TEXT,
     probability INTEGER DEFAULT 0,
-    tags TEXT,
-    custom_values TEXT,
-    created_at TEXT NOT NULL,
+    tags TEXT DEFAULT '[]',
+    custom_values TEXT DEFAULT '{}',
+    created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-    FOREIGN KEY (funnel_id) REFERENCES funnels(id),
-    FOREIGN KEY (stage_id) REFERENCES stages(id)
+    FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE,
+    FOREIGN KEY (stage_id) REFERENCES stages(id) ON DELETE RESTRICT,
+    FOREIGN KEY (assigned_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- 7. Notes
+CREATE TABLE IF NOT EXISTS notes (
+    id TEXT PRIMARY KEY,
+    lead_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    author_name TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
+);
+
+-- 8. Tasks
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     lead_id TEXT NOT NULL,
@@ -82,15 +101,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS notes (
-    id TEXT PRIMARY KEY,
-    lead_id TEXT NOT NULL,
-    content TEXT NOT NULL,
-    author_name TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
-);
-
+-- 9. Custom Fields
 CREATE TABLE IF NOT EXISTS custom_fields (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
@@ -100,18 +111,6 @@ CREATE TABLE IF NOT EXISTS custom_fields (
     funnel_id TEXT NOT NULL,
     options TEXT,
     visible_stage_ids TEXT,
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
-);
-
-INSERT OR IGNORE INTO users (id, account_id, name, email, password, role, avatar, status, joined_at)
-VALUES (
-    'nexus-admin', 
-    NULL, 
-    'Super Admin Nexus', 
-    'adminnexus@nexus.com', 
-    '123', 
-    'NEXUS_ADMIN', 
-    'https://ui-avatars.com/api/?name=Nexus+Admin&background=000&color=fff', 
-    'active', 
-    datetime('now')
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE
 );

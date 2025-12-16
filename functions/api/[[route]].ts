@@ -46,6 +46,7 @@ interface DBAccount {
     id: string;
     status: string;
     plan: string;
+    expires_at: string;
 }
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -92,59 +93,100 @@ app.post('/api/auth/login', async (c) => {
   return c.json({ user: userCamel });
 });
 
-app.post('/api/auth/register', async (c) => {
-    const body = await c.req.json() as any;
-    const { userName, email, password, companyName } = body;
+// --- ADMIN ROUTES (NEXUS ADMIN ONLY) ---
 
-    if (!userName || !email || !password || !companyName) {
-        return c.json({ error: 'Preencha todos os campos' }, 400);
-    }
+app.get('/api/admin/accounts', async (c) => {
+    // In a real app, add middleware to check if user.role === 'NEXUS_ADMIN'
+    const result = await c.env.DB.prepare('SELECT * FROM accounts ORDER BY created_at DESC').all();
+    
+    const accounts = result.results.map((a: any) => ({
+        id: a.id,
+        companyName: a.company_name,
+        ownerName: a.owner_name,
+        email: a.email,
+        status: a.status,
+        plan: a.plan,
+        createdAt: a.created_at,
+        expiresAt: a.expires_at
+    }));
 
-    // Check existing
-    const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
-    if (existing) return c.json({ error: 'Email já cadastrado' }, 400);
-
-    const accountId = generateId('acc');
-    const userId = generateId('u');
-
-    try {
-        // Create Account
-        await c.env.DB.prepare(`
-            INSERT INTO accounts (id, company_name, owner_name, email, status, plan, created_at, expires_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-            accountId, companyName, userName, email, 'active', 'trial', 
-            new Date().toISOString(), 
-            new Date(Date.now() + 30*24*60*60*1000).toISOString()
-        ).run();
-
-        // Create Admin User
-        await c.env.DB.prepare(`
-            INSERT INTO users (id, account_id, name, email, password, role, avatar, status, joined_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-            userId, accountId, userName, email, password, 'ACCOUNT_ADMIN', 
-            `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=random`, 
-            'active', new Date().toISOString()
-        ).run();
-        
-        // Create Default Funnel
-        const funnelId = generateId('f');
-        await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)').bind(funnelId, accountId, 'Funil de Vendas').run();
-        
-        // Default Stages
-        await c.env.DB.batch([
-            c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(generateId('s'), funnelId, 'Novo Lead', 'bg-gray-100 border-gray-300', 0),
-            c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(generateId('s'), funnelId, 'Qualificação', 'bg-blue-50 border-blue-200', 1),
-            c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(generateId('s'), funnelId, 'Proposta', 'bg-yellow-50 border-yellow-200', 2),
-            c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(generateId('s'), funnelId, 'Fechamento', 'bg-green-50 border-green-200', 3)
-        ]);
-
-        return c.json({ success: true });
-    } catch (e: any) {
-        return c.json({ error: e.message }, 500);
-    }
+    return c.json({ accounts });
 });
+
+app.post('/api/admin/accounts', async (c) => {
+    const body = await c.req.json() as any;
+    const { companyName, ownerName, email, password, plan } = body;
+
+    // 1. Create Account
+    const accountId = generateId('acc');
+    await c.env.DB.prepare(`
+        INSERT INTO accounts (id, company_name, owner_name, email, status, plan, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+        accountId, companyName, ownerName, email, 'active', plan || 'pro',
+        new Date().toISOString(),
+        new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString()
+    ).run();
+
+    // 2. Create Owner User
+    const userId = generateId('u');
+    await c.env.DB.prepare(`
+        INSERT INTO users (id, account_id, name, email, password, role, avatar, status, joined_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+        userId, accountId, ownerName, email, password || '123', 'ACCOUNT_ADMIN',
+        `https://ui-avatars.com/api/?name=${encodeURIComponent(ownerName)}&background=random`,
+        'active', new Date().toISOString()
+    ).run();
+
+    // 3. Create Default Funnel
+    const funnelId = generateId('f');
+    await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)').bind(funnelId, accountId, 'Funil de Vendas').run();
+    
+    // Default Stages
+    await c.env.DB.batch([
+        c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(generateId('s'), funnelId, 'Novo Lead', 'bg-gray-100 border-gray-300', 0),
+        c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(generateId('s'), funnelId, 'Qualificação', 'bg-blue-50 border-blue-200', 1),
+        c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(generateId('s'), funnelId, 'Fechamento', 'bg-green-50 border-green-200', 2)
+    ]);
+
+    return c.json({ success: true, accountId });
+});
+
+app.patch('/api/admin/accounts/:id', async (c) => {
+    const accountId = c.req.param('id');
+    const body = await c.req.json() as any;
+
+    if (body.status) {
+        await c.env.DB.prepare('UPDATE accounts SET status = ? WHERE id = ?').bind(body.status, accountId).run();
+    }
+    if (body.extendMonths) {
+        const account = await c.env.DB.prepare('SELECT expires_at FROM accounts WHERE id = ?').bind(accountId).first() as { expires_at: string };
+        const currentExpiry = new Date(account.expires_at);
+        const baseDate = currentExpiry < new Date() ? new Date() : currentExpiry;
+        baseDate.setMonth(baseDate.getMonth() + body.extendMonths);
+        
+        await c.env.DB.prepare('UPDATE accounts SET expires_at = ?, status = ? WHERE id = ?')
+            .bind(baseDate.toISOString(), 'active', accountId).run();
+    }
+
+    return c.json({ success: true });
+});
+
+// --- BILLING ROUTES ---
+
+app.post('/api/billing/upgrade', async (c) => {
+    const body = await c.req.json() as any;
+    const { accountId, plan } = body;
+
+    if (!accountId || !plan) return c.json({ error: 'Dados inválidos' }, 400);
+
+    // In a real app, verify Stripe payment here.
+    await c.env.DB.prepare('UPDATE accounts SET plan = ? WHERE id = ?').bind(plan, accountId).run();
+
+    return c.json({ success: true });
+});
+
 
 // --- SYNC ---
 
@@ -452,6 +494,61 @@ app.delete('/api/custom-fields/:id', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('DELETE FROM custom_fields WHERE id = ?').bind(id).run();
     return c.json({ success: true });
+});
+
+// --- PUBLIC REGISTRATION ---
+app.post('/api/auth/register', async (c) => {
+    const body = await c.req.json() as any;
+    const { userName, email, password, companyName } = body;
+
+    if (!userName || !email || !password || !companyName) {
+        return c.json({ error: 'Preencha todos os campos' }, 400);
+    }
+
+    // Check existing
+    const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
+    if (existing) return c.json({ error: 'Email já cadastrado' }, 400);
+
+    const accountId = generateId('acc');
+    const userId = generateId('u');
+
+    try {
+        // Create Account
+        await c.env.DB.prepare(`
+            INSERT INTO accounts (id, company_name, owner_name, email, status, plan, created_at, expires_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+            accountId, companyName, userName, email, 'active', 'trial', 
+            new Date().toISOString(), 
+            new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString()
+        ).run();
+
+        // Create Admin User
+        await c.env.DB.prepare(`
+            INSERT INTO users (id, account_id, name, email, password, role, avatar, status, joined_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+            userId, accountId, userName, email, password, 'ACCOUNT_ADMIN', 
+            `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=random`, 
+            'active', new Date().toISOString()
+        ).run();
+        
+        // Create Default Funnel
+        const funnelId = generateId('f');
+        await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)').bind(funnelId, accountId, 'Funil de Vendas').run();
+        
+        // Default Stages
+        await c.env.DB.batch([
+            c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(generateId('s'), funnelId, 'Novo Lead', 'bg-gray-100 border-gray-300', 0),
+            c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(generateId('s'), funnelId, 'Qualificação', 'bg-blue-50 border-blue-200', 1),
+            c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(generateId('s'), funnelId, 'Proposta', 'bg-yellow-50 border-yellow-200', 2),
+            c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(generateId('s'), funnelId, 'Fechamento', 'bg-green-50 border-green-200', 3)
+        ]);
+
+        return c.json({ success: true });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
 });
 
 export const onRequest = handle(app);
