@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { 
   ArrowLeft, Check, X, User, Phone, Mail, Building, 
   Calendar, Clock, ChevronRight, ChevronDown, ChevronUp,
   Plus, MoreHorizontal, FileText, CheckCircle, XCircle,
-  Copy, Save, AlertCircle, ThumbsUp, Send, Paperclip, Edit2, Sparkles, Settings, Trash2, Mail as MailIcon, PhoneCall
+  Copy, Save, AlertCircle, ThumbsUp, Send, Paperclip, Edit2, Sparkles, Settings, Trash2, PhoneCall
 } from 'lucide-react';
 import { CustomFieldDefinition, Lead, Task } from '../types';
 
@@ -276,7 +277,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   const TaskIcon = ({ type }: { type: Task['type'] }) => {
       switch (type) {
           case 'call': return <PhoneCall size={16} className="text-blue-500" />;
-          case 'email': return <MailIcon size={16} className="text-yellow-500" />;
+          case 'email': return <Mail size={16} className="text-yellow-500" />; // Use Mail (not aliased)
           case 'meeting': return <User size={16} className="text-purple-500" />;
           default: return <CheckCircle size={16} className="text-green-500" />;
       }
