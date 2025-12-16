@@ -1,9 +1,3 @@
-/// <reference types="vite/client" />
-
-interface ImportMetaEnv {
-  readonly VITE_API_KEY: string;
-}
-
-interface ImportMeta {
-  readonly env: ImportMetaEnv;
-}
+// Reference to vite/client removed to fix resolution error.
+// API Key is accessed via process.env.API_KEY.
+export {};
