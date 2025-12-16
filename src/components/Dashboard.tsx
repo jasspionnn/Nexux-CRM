@@ -11,18 +11,17 @@ import {
   Legend,
 } from 'recharts';
 
-const STATUS_COLORS = {
-  won: '#10b981',
-  open: '#3b82f6',
-  lost: '#ef4444',
-};
-
 type TimeRange = 'month' | 'quarter' | 'year';
 
 export const Dashboard = () => {
   const { leads, funnels, users } = useCRM();
   const [selectedFunnelId, setSelectedFunnelId] = useState<string>('all');
   const [timeRange, setTimeRange] = useState<TimeRange>('month');
+
+  const currencyFormatter = (value: unknown) => {
+    const num = typeof value === 'number' ? value : Number(value) || 0;
+    return [`R$ ${num.toLocaleString()}`, ''];
+  };
 
   // ---------- FILTER ----------
   const filteredLeads = useMemo(() => {
@@ -46,15 +45,6 @@ export const Dashboard = () => {
       return true;
     });
   }, [leads, selectedFunnelId, timeRange]);
-
-  // ---------- KPIs ----------
-  const totalDeals = filteredLeads.length;
-
-  const wonDeals = filteredLeads.filter((l) => l.probability === 100);
-  const lostDeals = filteredLeads.filter((l) => l.probability === 0);
-  const openDeals = filteredLeads.filter((l) => l.probability > 0 && l.probability < 100);
-
-  const totalWonValue = wonDeals.reduce((sum, l) => sum + l.value, 0);
 
   // ---------- CHART DATA ----------
   const chartMainData = useMemo(() => {
@@ -90,7 +80,6 @@ export const Dashboard = () => {
         const userLeads = filteredLeads.filter((l) => l.assignedUserId === u.id);
         return {
           fullName: u.name,
-          name: u.name.split(' ')[0],
           totalValue: userLeads.reduce((a, l) => a + l.value, 0),
           wonValue: userLeads
             .filter((l) => l.probability === 100)
@@ -101,23 +90,16 @@ export const Dashboard = () => {
       .slice(0, 5);
   }, [users, filteredLeads]);
 
-  // ---------- COMPONENT ----------
   return (
     <div className="p-8 space-y-8">
 
-      {/* CHART FUNIL */}
       <div className="bg-white p-6 rounded-xl border">
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={chartMainData}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="name" />
             <YAxis />
-            <Tooltip
-              formatter={(value: number) => [
-                `R$ ${(value ?? 0).toLocaleString()}`,
-                '',
-              ]}
-            />
+            <Tooltip formatter={currencyFormatter} />
             <Legend />
             <Bar dataKey="total" name="Valor Total" fill="#e5e7eb" />
             <Bar dataKey="forecast" name="Forecast" fill="#3b82f6" />
@@ -125,25 +107,20 @@ export const Dashboard = () => {
         </ResponsiveContainer>
       </div>
 
-      {/* RANKING */}
       <div className="bg-white p-6 rounded-xl border">
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={userPerformance} layout="vertical">
             <CartesianGrid strokeDasharray="3 3" horizontal />
             <XAxis type="number" hide />
             <YAxis dataKey="fullName" type="category" width={150} />
-            <Tooltip
-              formatter={(value: number) => [
-                `R$ ${(value ?? 0).toLocaleString()}`,
-                '',
-              ]}
-            />
+            <Tooltip formatter={currencyFormatter} />
             <Legend />
             <Bar dataKey="totalValue" name="Pipeline Total" fill="#e5e7eb" />
             <Bar dataKey="wonValue" name="Fechado Ganho" fill="#10b981" />
           </BarChart>
         </ResponsiveContainer>
       </div>
+
     </div>
   );
 };
