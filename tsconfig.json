@@ -24,7 +24,13 @@
     "noFallthroughCasesInSwitch": true,
 
     /* Types */
-    "types": ["node"]
+    "types": ["node"],
+
+    /* Path Aliases */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
   "include": ["./**/*.ts", "./**/*.tsx"],
   "exclude": ["node_modules", "dist"]

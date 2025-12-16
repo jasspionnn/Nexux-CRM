@@ -1,7 +1,6 @@
-
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
-import { X, User, Phone, Mail, Building, ArrowRight, Briefcase, SlidersHorizontal, CheckCircle, XCircle, ThumbsUp, AlertCircle, Save, Copy, Link } from 'lucide-react';
+import { X, User, Phone, Mail, Building, Briefcase, SlidersHorizontal, CheckCircle, XCircle, ThumbsUp, AlertCircle, Save, Copy, Link, ArrowRight } from 'lucide-react';
 import { CustomFieldDefinition, Lead } from '../types';
 
 interface Props {

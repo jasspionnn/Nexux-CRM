@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useCRM } from '../context/CRMContext';
 import { LayoutDashboard, Kanban, Users, Settings, LogOut, Hexagon, Database, CheckSquare, Shield, ShieldCheck } from 'lucide-react';

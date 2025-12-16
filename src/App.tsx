@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { CRMProvider, useCRM } from './context/CRMContext';
 import { Sidebar } from './components/Sidebar';
@@ -53,7 +52,6 @@ const AppContent = () => {
       case 'tasks': return <TasksView onNavigate={handleNavigate} />;
       case 'settings': 
         return currentUser.role === UserRole.ACCOUNT_ADMIN ? <Settings /> : <div>Acesso restrito</div>;
-      // Removed 'teams' route, now inside Settings
       case 'lead-detail': 
         return <LeadDetailPage 
             leadId={viewData} 

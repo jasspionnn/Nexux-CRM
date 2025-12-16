@@ -106,7 +106,7 @@ export interface Lead {
   tasks: Task[];
   tags: string[];
   probability: number;
-  customValues?: any;
+  customValues?: Record<string, any>;
 }
 
 export interface DashboardStats {

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Lead } from '../types';
 import { X, User, Phone, Mail, Building, Briefcase, Calendar, ArrowRight, ExternalLink } from 'lucide-react';

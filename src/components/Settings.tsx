@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { Plus, GripVertical, Building, Layers, SlidersHorizontal, Trash2, CheckSquare, Type, List, ArrowRight, AlertOctagon, FileText, Users, CreditCard, Check, Sparkles, Zap, Shield, Loader2 } from 'lucide-react';

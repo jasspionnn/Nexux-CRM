@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Lead, User } from '../types';
-import { Calendar, DollarSign, User as UserIcon, MoreHorizontal, Sparkles } from 'lucide-react';
+import { DollarSign, User as UserIcon, MoreHorizontal, Sparkles } from 'lucide-react';
 import { generateLeadStrategy } from '../services/geminiService';
 import { useCRM } from '../context/CRMContext';
 

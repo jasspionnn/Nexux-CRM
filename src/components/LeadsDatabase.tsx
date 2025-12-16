@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { Search, Building, User, Layers, ChevronRight } from 'lucide-react';

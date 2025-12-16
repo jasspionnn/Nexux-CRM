@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { X, Save, DollarSign, Building, User } from 'lucide-react';

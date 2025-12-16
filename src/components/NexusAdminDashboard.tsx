@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { Account, User as UserType, UserRole } from '../types';

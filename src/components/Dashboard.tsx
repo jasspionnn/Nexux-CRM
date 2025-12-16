@@ -8,22 +8,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
   Legend,
 } from 'recharts';
-import {
-  DollarSign,
-  Users,
-  Target,
-  Activity,
-  Award,
-  PieChart as PieChartIcon,
-  Filter,
-} from 'lucide-react';
-
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1', '#ec4899'];
 
 const STATUS_COLORS = {
   won: '#10b981',
@@ -62,7 +48,6 @@ export const Dashboard = () => {
   }, [leads, selectedFunnelId, timeRange]);
 
   // ---------- KPIs ----------
-  const totalPipelineValue = filteredLeads.reduce((sum, l) => sum + l.value, 0);
   const totalDeals = filteredLeads.length;
 
   const wonDeals = filteredLeads.filter((l) => l.probability === 100);
@@ -70,10 +55,6 @@ export const Dashboard = () => {
   const openDeals = filteredLeads.filter((l) => l.probability > 0 && l.probability < 100);
 
   const totalWonValue = wonDeals.reduce((sum, l) => sum + l.value, 0);
-  const conversionRate = totalDeals > 0 ? ((wonDeals.length / totalDeals) * 100).toFixed(1) : '0';
-  const avgTicket = wonDeals.length > 0 ? totalWonValue / wonDeals.length : 0;
-  const weightedForecast =
-    openDeals.reduce((sum, l) => sum + l.value * (l.probability / 100), 0) + totalWonValue;
 
   // ---------- CHART DATA ----------
   const chartMainData = useMemo(() => {
@@ -120,12 +101,6 @@ export const Dashboard = () => {
       .slice(0, 5);
   }, [users, filteredLeads]);
 
-  const statusData = [
-    { name: 'Ganho', value: wonDeals.length, color: STATUS_COLORS.won },
-    { name: 'Em Aberto', value: openDeals.length, color: STATUS_COLORS.open },
-    { name: 'Perdido', value: lostDeals.length, color: STATUS_COLORS.lost },
-  ].filter((d) => d.value > 0);
-
   // ---------- COMPONENT ----------
   return (
     <div className="p-8 space-y-8">
@@ -138,7 +113,7 @@ export const Dashboard = () => {
             <XAxis dataKey="name" />
             <YAxis />
             <Tooltip
-              formatter={(value?: number) => [
+              formatter={(value: number) => [
                 `R$ ${(value ?? 0).toLocaleString()}`,
                 '',
               ]}
@@ -158,7 +133,7 @@ export const Dashboard = () => {
             <XAxis type="number" hide />
             <YAxis dataKey="fullName" type="category" width={150} />
             <Tooltip
-              formatter={(value?: number) => [
+              formatter={(value: number) => [
                 `R$ ${(value ?? 0).toLocaleString()}`,
                 '',
               ]}
