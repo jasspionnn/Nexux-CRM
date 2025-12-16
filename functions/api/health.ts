@@ -1,10 +1,4 @@
-import type { PagesFunction } from "@cloudflare/workers-types";
-
-interface Env {
-  DB: D1Database;
-}
-
-export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
+export const onRequestGet = async ({ env }: { env: { DB: D1Database } }) => {
   try {
     const result = await env.DB
       .prepare("SELECT 1 as ok")
@@ -25,7 +19,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
   } catch (error) {
     return new Response(
       JSON.stringify({
-        error: String(error)
+        status: "error",
+        message: String(error)
       }),
       { status: 500 }
     );
