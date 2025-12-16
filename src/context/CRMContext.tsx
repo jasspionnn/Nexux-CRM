@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo, useCallback } from 'react';
 import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole } from '../types';
 import { INITIAL_FUNNELS, MOCK_LEADS, MOCK_TEAMS, MOCK_USERS, MOCK_ACCOUNTS } from '../constants';
@@ -34,20 +35,20 @@ interface CRMContextType {
   toggleTask: (leadId: string, taskId: string) => Promise<void>;
   deleteTask: (leadId: string, taskId: string) => Promise<void>;
   
-  addFunnel: (name: string) => void;
-  updateFunnel: (id: string, updates: Partial<Funnel>) => void;
-  addStage: (funnelId: string, name: string) => void;
-  reorderStages: (funnelId: string, newStages: Stage[]) => void;
-  addCustomField: (field: CustomFieldDefinition) => void;
-  deleteCustomField: (id: string) => void;
+  addFunnel: (name: string) => Promise<void>;
+  updateFunnel: (id: string, updates: Partial<Funnel>) => Promise<void>;
+  addStage: (funnelId: string, name: string) => Promise<void>;
+  reorderStages: (funnelId: string, newStages: Stage[]) => Promise<void>;
+  addCustomField: (field: CustomFieldDefinition) => Promise<void>;
+  deleteCustomField: (id: string) => Promise<void>;
   getFunnelStats: (funnelId: string) => { totalValue: number; leadCount: number };
   
   // User & Team Management
-  addUser: (user: User) => void;
-  updateUser: (id: string, updates: Partial<User>) => void;
-  deleteUser: (id: string) => void;
-  addTeam: (team: Team) => void;
-  deleteTeam: (id: string) => void;
+  addUser: (user: User) => Promise<void>;
+  updateUser: (id: string, updates: Partial<User>) => Promise<void>;
+  deleteUser: (id: string) => Promise<void>;
+  addTeam: (team: Team) => Promise<void>;
+  deleteTeam: (id: string) => Promise<void>;
 
   // Nexus Admin Actions
   createAccount: (account: Account, adminUser: User) => void;
@@ -97,12 +98,9 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
       if (!currentUser || !currentUser.accountId) return;
       setIsLoading(true);
       try {
-          // Se for Nexus Admin, buscamos dados diferentes (não implementado full no backend ainda, usando mocks pra admin)
           if (currentUser.role === UserRole.NEXUS_ADMIN) {
               setAccounts(MOCK_ACCOUNTS); 
-              // TODO: Implement /api/admin/accounts endpoint
           } else {
-              // Fetch Core CRM Data
               const data = await api.get<any>(`/sync/${currentUser.accountId}`);
               setFunnels(data.funnels || []);
               setLeads(data.leads || []);
@@ -110,7 +108,6 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
               setTeams(data.teams || []);
               setCustomFields(data.customFields || []);
 
-              // Set active funnel if none selected
               if (!activeFunnelId && data.funnels && data.funnels.length > 0) {
                   setActiveFunnelId(data.funnels[0].id);
               }
@@ -126,7 +123,7 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
       if (currentUser) {
           refreshData();
       }
-  }, [currentUser]); // Remove refreshData dependency to avoid loops if not memoized correctly, relying on currentUser change
+  }, [currentUser]);
 
   // --- AUTH ACTIONS ---
 
@@ -149,7 +146,6 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
       setIsLoading(true);
       try {
           await api.post('/auth/register', { userName, email, password: pass, companyName });
-          // Auto login after register
           return await login(email, pass);
       } catch (error: any) {
           console.error(error);
@@ -167,16 +163,14 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
       setActiveFunnelId('');
   };
 
-  // --- CRM ACTIONS (API Calls + Optimistic Updates) ---
+  // --- LEADS & TASKS ---
 
   const addLead = async (lead: Lead) => {
-    // Optimistic Update
     setLeads(prev => [...prev, lead]);
     try {
         await api.post('/leads', lead);
     } catch (e) {
         console.error("Failed to add lead", e);
-        // Rollback? For simplicity in MVP, we just log.
         refreshData(); 
     }
   };
@@ -185,9 +179,7 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
     setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
     try {
         await api.patch(`/leads/${id}`, updates);
-    } catch (e) {
-        console.error("Failed to update lead", e);
-    }
+    } catch (e) { console.error("Failed to update lead", e); }
   };
 
   const moveLead = async (leadId: string, targetStageId: string) => {
@@ -205,7 +197,7 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
     
     const newLead: Lead = {
       ...originalLead,
-      id: `l_${Date.now()}`, // Temporary ID
+      id: `l_${Date.now()}`,
       accountId: currentUser.accountId,
       funnelId: targetFunnelId,
       stageId: targetStageId,
@@ -223,7 +215,6 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
     setLeads(prev => [...prev, newLead]);
     try {
         const res = await api.post<{id: string}>('/leads', newLead);
-        // Update with real ID from backend
         setLeads(prev => prev.map(l => l.id === newLead.id ? { ...l, id: res.id } : l));
     } catch (e) { refreshData(); }
   };
@@ -269,9 +260,9 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
       } catch (e) { console.error(e); }
   };
 
-  // --- LOCAL ONLY FOR NOW (Or implement endpoints similar to leads) ---
+  // --- FUNNELS & CONFIG ---
   
-  const addFunnel = (name: string) => {
+  const addFunnel = async (name: string) => {
     if (!currentUser?.accountId) return;
     const newFunnel: Funnel = {
       id: `f${Date.now()}`,
@@ -284,26 +275,40 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
     };
     setFunnels(prev => [...prev, newFunnel]);
     setActiveFunnelId(newFunnel.id);
+    try {
+        await api.post('/funnels', newFunnel);
+    } catch (e) { refreshData(); }
   };
 
-  const updateFunnel = (id: string, updates: Partial<Funnel>) => {
+  const updateFunnel = async (id: string, updates: Partial<Funnel>) => {
     setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+    try {
+        await api.patch(`/funnels/${id}`, updates);
+    } catch (e) { console.error(e); }
   };
 
-  const addStage = (funnelId: string, name: string) => {
-    setFunnels(prev => prev.map(f => {
-      if (f.id !== funnelId) return f;
-      const newStage: Stage = {
+  const addStage = async (funnelId: string, name: string) => {
+    const funnel = funnels.find(f => f.id === funnelId);
+    if (!funnel) return;
+
+    const newStage: Stage = {
         id: `s${Date.now()}`,
         name,
         color: 'bg-gray-100 border-gray-300',
-        order: f.stages.length
-      };
+        order: funnel.stages.length
+    };
+    
+    setFunnels(prev => prev.map(f => {
+      if (f.id !== funnelId) return f;
       return { ...f, stages: [...f.stages, newStage] };
     }));
+    
+    try {
+        await api.post('/stages', { ...newStage, funnelId });
+    } catch (e) { refreshData(); }
   };
 
-  const reorderStages = (funnelId: string, newStages: Stage[]) => {
+  const reorderStages = async (funnelId: string, newStages: Stage[]) => {
     setFunnels(prev => prev.map(f => {
       if (f.id !== funnelId) return f;
       const updatedStages = newStages.map((stage, index) => ({
@@ -312,15 +317,26 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
       }));
       return { ...f, stages: updatedStages };
     }));
+
+    try {
+        await api.post('/stages/reorder', { funnelId, stages: newStages });
+    } catch (e) { refreshData(); }
   };
 
-  const addCustomField = (field: CustomFieldDefinition) => {
+  const addCustomField = async (field: CustomFieldDefinition) => {
     if (!currentUser?.accountId) return;
-    setCustomFields(prev => [...prev, { ...field, accountId: currentUser.accountId! }]);
+    const fieldWithAccount = { ...field, accountId: currentUser.accountId };
+    setCustomFields(prev => [...prev, fieldWithAccount]);
+    try {
+        await api.post('/custom-fields', fieldWithAccount);
+    } catch (e) { refreshData(); }
   };
 
-  const deleteCustomField = (id: string) => {
+  const deleteCustomField = async (id: string) => {
     setCustomFields(prev => prev.filter(f => f.id !== id));
+    try {
+        await api.delete(`/custom-fields/${id}`);
+    } catch (e) { refreshData(); }
   };
 
   const getFunnelStats = (funnelId: string) => {
@@ -331,38 +347,54 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
     };
   };
 
-  // --- USER MANAGEMENT ---
+  // --- USER & TEAMS ---
 
-  const addUser = (user: User) => {
+  const addUser = async (user: User) => {
     if (!currentUser?.accountId && currentUser?.role !== UserRole.NEXUS_ADMIN) return;
     const finalUser = currentUser.role === UserRole.NEXUS_ADMIN ? user : { ...user, accountId: currentUser.accountId };
     setUsers(prev => [...prev, finalUser]);
+    try {
+        await api.post('/users', finalUser);
+    } catch (e) { refreshData(); }
   };
 
-  const updateUser = (id: string, updates: Partial<User>) => {
+  const updateUser = async (id: string, updates: Partial<User>) => {
     setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u));
     if (currentUser?.id === id) {
         const updated = { ...currentUser, ...updates };
         setCurrentUser(updated);
         localStorage.setItem('nexus_user_session', JSON.stringify(updated));
     }
+    try {
+        await api.patch(`/users/${id}`, updates);
+    } catch (e) { console.error(e); }
   };
 
-  const deleteUser = (id: string) => {
+  const deleteUser = async (id: string) => {
     setUsers(prev => prev.filter(u => u.id !== id));
+    try {
+        await api.delete(`/users/${id}`);
+    } catch (e) { refreshData(); }
   };
 
-  const addTeam = (team: Team) => {
+  const addTeam = async (team: Team) => {
     if (!currentUser?.accountId) return;
-    setTeams(prev => [...prev, { ...team, accountId: currentUser.accountId! }]);
+    const newTeam = { ...team, accountId: currentUser.accountId };
+    setTeams(prev => [...prev, newTeam]);
+    try {
+        await api.post('/teams', newTeam);
+    } catch (e) { refreshData(); }
   };
 
-  const deleteTeam = (id: string) => {
+  const deleteTeam = async (id: string) => {
     setTeams(prev => prev.filter(t => t.id !== id));
     setUsers(prev => prev.map(u => u.teamId === id ? { ...u, teamId: undefined } : u));
+    try {
+        await api.delete(`/teams/${id}`);
+    } catch (e) { refreshData(); }
   };
 
-  // --- NEXUS ADMIN ---
+  // --- NEXUS ADMIN (MOCK FOR NOW OR IMPLEMENT LATER) ---
 
   const createAccount = (account: Account, adminUser: User) => {
       setAccounts(prev => [...prev, account]);
@@ -383,11 +415,9 @@ export const CRMProvider: React.FC<CRMProviderProps> = ({ children }) => {
       }));
   };
 
-  // --- PAYMENT ---
   const upgradePlan = async (plan: 'pro' | 'enterprise') => {
       if (!currentUser?.accountId) return;
       await new Promise(resolve => setTimeout(resolve, 2000));
-      // In a real app, this would call API
   };
 
   return (

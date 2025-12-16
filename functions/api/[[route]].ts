@@ -85,7 +85,8 @@ app.post('/api/auth/login', async (c) => {
       email: user.email,
       role: user.role,
       avatar: user.avatar,
-      status: user.status
+      status: user.status,
+      teamId: user.team_id
   };
 
   return c.json({ user: userCamel });
@@ -279,9 +280,8 @@ app.patch('/api/leads/:id', async (c) => {
     if (data.contactEmail) await c.env.DB.prepare('UPDATE leads SET contact_email = ? WHERE id = ?').bind(data.contactEmail, id).run();
     if (data.contactPhone) await c.env.DB.prepare('UPDATE leads SET contact_phone = ? WHERE id = ?').bind(data.contactPhone, id).run();
     if (data.funnelId) await c.env.DB.prepare('UPDATE leads SET funnel_id = ? WHERE id = ?').bind(data.funnelId, id).run();
+    if (data.assignedUserId) await c.env.DB.prepare('UPDATE leads SET assigned_user_id = ? WHERE id = ?').bind(data.assignedUserId, id).run();
     if (data.customValues) {
-        // Need to fetch existing first to merge? Or assume frontend sends full object?
-        // Simple update:
         await c.env.DB.prepare('UPDATE leads SET custom_values = ? WHERE id = ?').bind(JSON.stringify(data.customValues), id).run();
     }
 
@@ -325,6 +325,132 @@ app.patch('/api/tasks/:taskId/toggle', async (c) => {
         const newState = task.completed === 1 ? 0 : 1;
         await c.env.DB.prepare('UPDATE tasks SET completed = ? WHERE id = ?').bind(newState, taskId).run();
     }
+    return c.json({ success: true });
+});
+
+// --- FUNNELS & STAGES ---
+
+app.post('/api/funnels', async (c) => {
+    const data = await c.req.json() as any;
+    
+    // Insert Funnel
+    await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)')
+        .bind(data.id, data.accountId, data.name).run();
+    
+    // Insert Stages if present
+    if (data.stages && data.stages.length > 0) {
+        const stmts = data.stages.map((s: any) => 
+             c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)')
+             .bind(s.id, data.id, s.name, s.color, s.order)
+        );
+        await c.env.DB.batch(stmts);
+    }
+    
+    return c.json({ success: true });
+});
+
+app.patch('/api/funnels/:id', async (c) => {
+    const id = c.req.param('id');
+    const data = await c.req.json() as any;
+    
+    if (data.name) await c.env.DB.prepare('UPDATE funnels SET name = ? WHERE id = ?').bind(data.name, id).run();
+    if (data.defaultWonStageId !== undefined) await c.env.DB.prepare('UPDATE funnels SET default_won_stage_id = ? WHERE id = ?').bind(data.defaultWonStageId, id).run();
+    if (data.defaultLostStageId !== undefined) await c.env.DB.prepare('UPDATE funnels SET default_lost_stage_id = ? WHERE id = ?').bind(data.defaultLostStageId, id).run();
+    
+    return c.json({ success: true });
+});
+
+app.post('/api/stages', async (c) => {
+    const data = await c.req.json() as any;
+    // Get max order
+    const maxOrder = await c.env.DB.prepare('SELECT MAX("order") as max FROM stages WHERE funnel_id = ?').bind(data.funnelId).first() as {max: number} | null;
+    const nextOrder = (maxOrder?.max ?? -1) + 1;
+    
+    await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)')
+        .bind(data.id, data.funnelId, data.name, data.color, nextOrder).run();
+    
+    return c.json({ success: true });
+});
+
+app.post('/api/stages/reorder', async (c) => {
+    const data = await c.req.json() as any; // Expects { funnelId: string, stages: Stage[] }
+    const stmts = data.stages.map((s: any, index: number) => 
+        c.env.DB.prepare('UPDATE stages SET "order" = ? WHERE id = ?').bind(index, s.id)
+    );
+    await c.env.DB.batch(stmts);
+    return c.json({ success: true });
+});
+
+// --- TEAMS ---
+
+app.post('/api/teams', async (c) => {
+    const data = await c.req.json() as any;
+    await c.env.DB.prepare('INSERT INTO teams (id, account_id, name, goal) VALUES (?, ?, ?, ?)')
+        .bind(data.id, data.accountId, data.name, data.goal).run();
+    return c.json({ success: true });
+});
+
+app.delete('/api/teams/:id', async (c) => {
+    const id = c.req.param('id');
+    // Remove users from team first
+    await c.env.DB.prepare('UPDATE users SET team_id = NULL WHERE team_id = ?').bind(id).run();
+    await c.env.DB.prepare('DELETE FROM teams WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+// --- USERS ---
+
+app.post('/api/users', async (c) => {
+    const data = await c.req.json() as any;
+    // Check if email exists
+    const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(data.email).first();
+    if (existing) return c.json({ error: 'Email já cadastrado' }, 400);
+
+    await c.env.DB.prepare(`
+        INSERT INTO users (id, account_id, name, email, password, role, avatar, status, team_id, joined_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+        data.id, data.accountId, data.name, data.email, data.password, 
+        data.role, data.avatar, data.status, data.teamId, data.joinedAt
+    ).run();
+
+    return c.json({ success: true });
+});
+
+app.patch('/api/users/:id', async (c) => {
+    const id = c.req.param('id');
+    const data = await c.req.json() as any;
+
+    if (data.role) await c.env.DB.prepare('UPDATE users SET role = ? WHERE id = ?').bind(data.role, id).run();
+    if (data.teamId !== undefined) await c.env.DB.prepare('UPDATE users SET team_id = ? WHERE id = ?').bind(data.teamId, id).run();
+    // More fields if needed
+    
+    return c.json({ success: true });
+});
+
+app.delete('/api/users/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+// --- CUSTOM FIELDS ---
+
+app.post('/api/custom-fields', async (c) => {
+    const data = await c.req.json() as any;
+    await c.env.DB.prepare(`
+        INSERT INTO custom_fields (id, account_id, name, type, context, funnel_id, options, visible_stage_ids)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+        data.id, data.accountId, data.name, data.type, data.context, data.funnelId,
+        JSON.stringify(data.options || []), JSON.stringify(data.visibleStageIds || [])
+    ).run();
+    return c.json({ success: true });
+});
+
+app.delete('/api/custom-fields/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM custom_fields WHERE id = ?').bind(id).run();
     return c.json({ success: true });
 });
 
