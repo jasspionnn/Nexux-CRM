@@ -89,20 +89,20 @@ export const Settings = () => {
       {/* NAVEGAÇÃO SUPERIOR */}
       <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
         <div>
-            <h2 className="text-2xl font-bold text-gray-800 tracking-tight">Configurações do CRM</h2>
-            <p className="text-gray-500 mt-1">Personalize funis, campos e a estrutura da sua equipe.</p>
+            <h2 className="text-2xl font-bold text-gray-800 tracking-tight">Configurações</h2>
+            <p className="text-gray-500 mt-1">Gestão de funis, campos, equipe e acessos da conta.</p>
         </div>
         <div className="flex bg-white rounded-xl p-1 shadow-sm border border-gray-200 overflow-x-auto max-w-full">
             {[
               { id: 'access', label: 'Equipes e Acessos', icon: ShieldCheck },
               { id: 'pipeline', label: 'Funis de Vendas', icon: Layers },
-              { id: 'fields', label: 'Campos Customizados', icon: SlidersHorizontal },
-              { id: 'billing', label: 'Assinatura', icon: CreditCard },
+              { id: 'fields', label: 'Campos', icon: SlidersHorizontal },
+              { id: 'billing', label: 'Plano', icon: CreditCard },
             ].map(tab => (
               <button 
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as SettingsTab)}
-                className={`px-4 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === tab.id ? 'bg-blue-600 text-white shadow-md shadow-blue-100' : 'text-gray-500 hover:bg-gray-50'}`}
+                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === tab.id ? 'bg-blue-600 text-white shadow-md shadow-blue-100' : 'text-gray-500 hover:bg-gray-50'}`}
               >
                 <tab.icon size={16} /> {tab.label}
               </button>
@@ -116,19 +116,19 @@ export const Settings = () => {
           {activeTab === 'access' && (
             <div className="space-y-8 animate-fade-in">
               
-              {/* BLOCO 1: GESTÃO DE USUÁRIOS E PERMISSÕES (LISTA ÚNICA) */}
+              {/* BLOCO 1: GESTÃO DE USUÁRIOS (PERMISSÕES IN-LINE) */}
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
                 <div className="p-8 border-b border-gray-100 bg-gray-50/30 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900">Membros e Acessos</h3>
-                    <p className="text-sm text-gray-500">Gerencie permissões e equipes diretamente na lista.</p>
+                    <h3 className="text-lg font-bold text-gray-900">Usuários e Permissões</h3>
+                    <p className="text-sm text-gray-500">Defina Cargo e Equipe diretamente na lista abaixo.</p>
                   </div>
 
                   <div className="flex gap-3 w-full md:w-auto">
                       <div className="relative flex-1 md:w-64">
                           <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
                           <input 
-                              placeholder="Buscar por nome ou e-mail..."
+                              placeholder="Buscar membro..."
                               value={userSearch}
                               onChange={e => setUserSearch(e.target.value)}
                               className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-50 outline-none transition-all"
@@ -138,7 +138,7 @@ export const Settings = () => {
                           onClick={() => setIsUserModalOpen(true)}
                           className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
                       >
-                          <UserPlus size={18} /> Adicionar Usuário
+                          <UserPlus size={18} /> Novo Usuário
                       </button>
                   </div>
                 </div>
@@ -147,10 +147,10 @@ export const Settings = () => {
                   <table className="w-full text-left">
                     <thead className="bg-gray-50 border-b border-gray-100 uppercase text-[10px] font-black text-gray-400 tracking-widest">
                       <tr>
-                        <th className="px-8 py-5">Colaborador</th>
-                        <th className="px-8 py-5">Equipe (Editar)</th>
-                        <th className="px-8 py-5">Nível de Acesso / Permissão</th>
-                        <th className="px-8 py-5 text-right">Ações</th>
+                        <th className="px-8 py-5">Nome</th>
+                        <th className="px-8 py-5">Equipe</th>
+                        <th className="px-8 py-5">Cargo (Permissão)</th>
+                        <th className="px-8 py-5 text-right">Ação</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
@@ -158,15 +158,13 @@ export const Settings = () => {
                         <tr key={user.id} className="hover:bg-blue-50/10 transition-colors group">
                           <td className="px-8 py-6">
                             <div className="flex items-center gap-3">
-                              <img src={user.avatar} className="w-10 h-10 rounded-full border border-gray-200 shadow-sm" alt="" />
+                              <img src={user.avatar} className="w-10 h-10 rounded-full border border-gray-200" alt="" />
                               <div>
                                 <div className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
                                   {user.name}
-                                  {user.id === currentUser?.id && <span className="text-[9px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-black tracking-tighter uppercase">Você</span>}
+                                  {user.id === currentUser?.id && <span className="text-[9px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-black uppercase">Você</span>}
                                 </div>
-                                <div className="text-xs text-gray-400 font-medium">
-                                  {user.email}
-                                </div>
+                                <div className="text-xs text-gray-400">{user.email}</div>
                               </div>
                             </div>
                           </td>
@@ -174,7 +172,7 @@ export const Settings = () => {
                             <select 
                               value={user.teamId || ''}
                               onChange={(e) => updateUser(user.id, { teamId: e.target.value || undefined })}
-                              className="text-xs font-bold bg-white border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:ring-4 focus:ring-blue-50 w-full max-w-[200px] shadow-sm hover:border-blue-300 transition-all cursor-pointer"
+                              className="text-xs font-bold bg-white border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 w-full max-w-[180px] shadow-sm cursor-pointer"
                             >
                               <option value="">Sem Equipe</option>
                               {teams.map(t => (
@@ -183,31 +181,24 @@ export const Settings = () => {
                             </select>
                           </td>
                           <td className="px-8 py-6">
-                            <div className="flex items-center gap-3">
-                              <select 
+                             <select 
                                 value={user.role}
                                 disabled={user.id === currentUser?.id}
                                 onChange={(e) => updateUser(user.id, { role: e.target.value as UserRole })}
-                                className={`text-xs font-black px-4 py-2.5 rounded-xl border outline-none transition-all shadow-sm ${
+                                className={`text-xs font-black px-4 py-2 rounded-lg border outline-none shadow-sm ${
                                   user.role === UserRole.ACCOUNT_ADMIN 
-                                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200' 
+                                  ? 'bg-purple-50 text-purple-700 border-purple-200' 
                                   : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                } ${user.id === currentUser?.id ? 'cursor-not-allowed opacity-80' : 'cursor-pointer hover:bg-white focus:ring-4 focus:ring-blue-50'}`}
+                                } ${user.id === currentUser?.id ? 'cursor-not-allowed opacity-80' : 'cursor-pointer hover:bg-white focus:ring-2 focus:ring-blue-500'}`}
                               >
                                 <option value={UserRole.USER}>Vendedor (USER)</option>
                                 <option value={UserRole.ACCOUNT_ADMIN}>Admin (ACCOUNT_ADMIN)</option>
                               </select>
-                              {user.role === UserRole.ACCOUNT_ADMIN && <Star size={16} className="text-amber-400 fill-current" />}
-                            </div>
                           </td>
                           <td className="px-8 py-6 text-right">
                              {user.id !== currentUser?.id && (
-                                <button 
-                                    onClick={() => deleteUser(user.id)}
-                                    className="p-2.5 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                                    title="Remover Colaborador"
-                                >
-                                    <Trash2 size={20} />
+                                <button onClick={() => deleteUser(user.id)} className="p-2 text-gray-300 hover:text-red-600 transition-colors">
+                                    <Trash2 size={18} />
                                 </button>
                              )}
                           </td>
@@ -218,69 +209,56 @@ export const Settings = () => {
                 </div>
               </div>
 
-              {/* BLOCO 2: GESTÃO DE EQUIPES (EDITÁVEL IN-LINE) */}
+              {/* BLOCO 2: EQUIPES (NOME E META EDITÁVEL) */}
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
                  <div className="flex justify-between items-center mb-8">
-                    <div>
-                        <h3 className="text-lg font-bold text-gray-900">Equipes e Metas</h3>
-                        <p className="text-sm text-gray-500">Personalize os times e defina metas mensais.</p>
-                    </div>
-                    <button 
-                        onClick={() => setIsTeamModalOpen(true)}
-                        className="bg-gray-100 text-gray-700 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-gray-200 transition-all"
-                    >
-                        <Plus size={18} /> Nova Equipe
+                    <h3 className="text-lg font-bold text-gray-900">Equipes e Metas</h3>
+                    <button onClick={() => setIsTeamModalOpen(true)} className="text-blue-600 text-sm font-bold flex items-center gap-1 hover:underline">
+                        <Plus size={16} /> Nova Equipe
                     </button>
                  </div>
 
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {teams.map(team => (
-                        <div key={team.id} className="p-6 rounded-2xl border border-gray-100 bg-gray-50/40 flex flex-col group relative hover:border-blue-200 hover:bg-white hover:shadow-xl hover:shadow-blue-900/5 transition-all">
-                            <button 
-                                onClick={() => deleteTeam(team.id)}
-                                className="absolute top-4 right-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-1"
-                            >
+                        <div key={team.id} className="p-6 rounded-2xl border border-gray-100 bg-gray-50/40 flex flex-col group relative hover:border-blue-200 hover:bg-white transition-all shadow-sm">
+                            <button onClick={() => deleteTeam(team.id)} className="absolute top-4 right-4 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
                                 <Trash2 size={16} />
                             </button>
                             
-                            {/* NOME DA EQUIPE EDITÁVEL */}
-                            <div className="mb-5">
-                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-1.5">Nome do Time</label>
-                                <div className="relative group/field">
+                            <div className="mb-4">
+                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-1">Nome do Time</label>
+                                <div className="flex items-center gap-2 group/input">
                                     <input 
                                         value={team.name}
                                         onChange={(e) => updateTeam(team.id, { name: e.target.value })}
-                                        className="bg-transparent font-black text-gray-800 border-b border-transparent hover:border-gray-200 focus:border-blue-500 outline-none w-full py-1.5 text-base transition-all"
-                                        placeholder="Nome da equipe"
+                                        className="bg-transparent font-bold text-gray-800 border-b border-transparent hover:border-gray-200 focus:border-blue-500 outline-none w-full py-1 text-sm"
                                     />
-                                    <Edit3 size={12} className="absolute right-0 top-3 text-gray-300 opacity-0 group-hover/field:opacity-100 pointer-events-none" />
+                                    <Edit3 size={12} className="text-gray-300 opacity-0 group-hover/input:opacity-100" />
                                 </div>
                             </div>
 
-                            {/* META DA EQUIPE EDITÁVEL */}
-                            <div className="mb-6">
-                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-1.5">Meta Mensal (Bruto)</label>
-                                <div className="relative group/field flex items-center gap-2">
-                                    <span className="text-sm font-bold text-gray-400">R$</span>
+                            <div>
+                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-1">Meta Bruta (R$)</label>
+                                <div className="flex items-center gap-1 group/input">
+                                    <span className="text-xs font-bold text-gray-400">R$</span>
                                     <input 
                                         type="number"
                                         value={team.goal}
                                         onChange={(e) => updateTeam(team.id, { goal: Number(e.target.value) })}
-                                        className="bg-transparent font-black text-xl border-b border-transparent hover:border-gray-200 focus:border-blue-500 outline-none w-full py-1.5 transition-all text-blue-600"
-                                        placeholder="0"
+                                        className="bg-transparent font-black text-lg border-b border-transparent hover:border-gray-200 focus:border-blue-500 outline-none w-full py-1 text-blue-600"
                                     />
-                                    <Target size={14} className="absolute right-0 top-3 text-gray-300 opacity-0 group-hover/field:opacity-100 pointer-events-none" />
+                                    <Edit3 size={12} className="text-gray-300 opacity-0 group-hover/input:opacity-100" />
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-3 mt-auto pt-4 border-t border-gray-100">
-                                <div className="flex -space-x-2.5">
-                                    {users.filter(u => u.teamId === team.id).slice(0, 5).map(u => (
-                                        <img key={u.id} src={u.avatar} className="w-8 h-8 rounded-full border-2 border-white shadow-sm" alt="" title={u.name} />
+                            <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100">
+                                <div className="flex -space-x-2">
+                                    {users.filter(u => u.teamId === team.id).slice(0, 4).map(u => (
+                                        <img key={u.id} src={u.avatar} className="w-7 h-7 rounded-full border-2 border-white shadow-sm" alt="" title={u.name} />
                                     ))}
                                 </div>
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-tight">
-                                    {users.filter(u => u.teamId === team.id).length} Colaboradores
+                                <span className="text-[10px] font-bold text-gray-400 uppercase">
+                                    {users.filter(u => u.teamId === team.id).length} Membros
                                 </span>
                             </div>
                         </div>
@@ -288,23 +266,23 @@ export const Settings = () => {
                  </div>
               </div>
 
-              {/* BLOCO 3: VISIBILIDADE GERAL (POLÍTICAS) */}
+              {/* BLOCO 3: VISIBILIDADE GLOBAL */}
               <div className="bg-white rounded-2xl p-8 border border-gray-200 shadow-sm">
                 <div className="flex items-center gap-3 mb-8">
                   <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
                     <Shield size={24} />
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-gray-900">Hierarquia de Visualização</h3>
-                    <p className="text-sm text-gray-500">Defina como os vendedores enxergam os leads na conta.</p>
+                    <h3 className="text-lg font-bold text-gray-900">Configuração de Visibilidade</h3>
+                    <p className="text-sm text-gray-500">Defina o nível padrão de visualização de leads da conta.</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
                   {[
-                    { id: 'private', title: 'Modo Privado', desc: 'Vendedores veem apenas seus leads.', icon: Lock, color: 'text-red-600 bg-red-50' },
-                    { id: 'team', title: 'Modo Equipe', desc: 'Vendedores veem leads do seu time.', icon: Users2, color: 'text-blue-600 bg-blue-50' },
-                    { id: 'public', title: 'Modo Geral', desc: 'Todos veem todos os leads da conta.', icon: Eye, color: 'text-emerald-600 bg-emerald-50' },
+                    { id: 'private', title: 'Privado', desc: 'Vendedores veem apenas seus leads.', icon: Lock, color: 'text-red-600 bg-red-50' },
+                    { id: 'team', title: 'Equipe', desc: 'Vendedores veem leads do seu time.', icon: Users2, color: 'text-blue-600 bg-blue-50' },
+                    { id: 'public', title: 'Geral', desc: 'Todos veem todos os leads da conta.', icon: Eye, color: 'text-emerald-600 bg-emerald-50' },
                   ].map((opt) => (
                     <button
                       key={opt.id}
@@ -349,100 +327,66 @@ export const Settings = () => {
           {activeTab === 'pipeline' && (
             <div className="flex gap-8 flex-1 animate-fade-in h-[600px]">
               <div className="w-80 bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col overflow-hidden">
-                <div className="p-6 border-b bg-gray-50 font-bold text-gray-700 flex items-center gap-2">
-                    <Building size={18} className="text-blue-600" />
-                    Meus Funis
-                </div>
+                <div className="p-6 border-b bg-gray-50 font-bold text-gray-700">Meus Funis</div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
                     {funnels.map(funnel => (
-                    <button 
-                        key={funnel.id}
-                        className="w-full text-left p-4 rounded-xl flex justify-between items-center transition-all bg-white border border-gray-100 hover:border-blue-200 hover:shadow-lg hover:shadow-blue-900/5 group"
-                    >
+                    <button key={funnel.id} className="w-full text-left p-4 rounded-xl flex justify-between items-center bg-white border border-gray-100 hover:border-blue-200 hover:shadow-lg transition-all">
                         <span className="font-bold text-gray-700 truncate">{funnel.name}</span>
-                        <ChevronRight size={16} className="text-gray-300 group-hover:text-blue-500 transition-colors" />
+                        <ChevronRight size={16} className="text-gray-300" />
                     </button>
                     ))}
-                    <button className="w-full p-4 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 font-bold flex items-center justify-center gap-2 hover:bg-white hover:border-blue-400 hover:text-blue-500 transition-all">
+                    <button className="w-full p-4 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 font-bold flex items-center justify-center gap-2 hover:bg-white hover:border-blue-400 transition-all">
                       <Plus size={18} /> Novo Funil
                     </button>
                 </div>
               </div>
-              <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-200 p-12 flex flex-col items-center justify-center text-gray-400 text-center">
-                 <div className="p-8 bg-gray-50 rounded-full mb-8">
-                    <Layers size={80} className="opacity-10" />
-                 </div>
-                 <h3 className="text-xl font-black text-gray-800 mb-2 uppercase tracking-tighter">Editor de Pipeline Multifunil</h3>
-                 <p className="max-w-xs text-sm">Selecione um funil ao lado para personalizar etapas, cores e regras de automação.</p>
+              <div className="flex-1 bg-white rounded-2xl border border-gray-200 p-12 flex flex-col items-center justify-center text-gray-400 text-center">
+                 <Layers size={80} className="opacity-10 mb-4" />
+                 <h3 className="text-xl font-black text-gray-800 mb-2">Editor de Funis</h3>
+                 <p className="max-w-xs text-sm">Selecione um funil ao lado para personalizar etapas e cores.</p>
               </div>
             </div>
           )}
           
-          {activeTab === 'fields' && <div className="bg-white p-20 rounded-2xl border-2 border-dashed border-gray-200 text-center text-gray-400 font-bold animate-fade-in">Módulo de Campos Customizados</div>}
-          {activeTab === 'billing' && <div className="bg-white p-20 rounded-2xl border-2 border-dashed border-gray-200 text-center text-gray-400 font-bold animate-fade-in">Módulo de Assinatura e Planos</div>}
+          {activeTab === 'fields' && <div className="bg-white p-20 rounded-2xl border border-gray-200 text-center text-gray-400 font-bold">Módulo de Campos em Breve</div>}
+          {activeTab === 'billing' && <div className="bg-white p-20 rounded-2xl border border-gray-200 text-center text-gray-400 font-bold">Módulo de Assinatura em Breve</div>}
         </div>
       </div>
 
       {/* MODAL: NOVO USUÁRIO */}
       {isUserModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in border border-gray-100">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
                 <div className="px-8 py-6 border-b bg-gray-50 flex justify-between items-center">
-                    <h3 className="font-black text-xl text-gray-800 flex items-center gap-2 uppercase tracking-tighter">
-                        <UserPlus className="text-blue-600" size={24} />
-                        Novo Colaborador
-                    </h3>
-                    <button onClick={() => setIsUserModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={24} /></button>
+                    <h3 className="font-black text-xl text-gray-800">Novo Colaborador</h3>
+                    <button onClick={() => setIsUserModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
                 </div>
                 <form onSubmit={handleAddUser} className="p-8 space-y-5">
                     <div>
                         <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Nome Completo</label>
-                        <input 
-                            required
-                            placeholder="Ex: Pedro Alvares"
-                            value={newUser.name}
-                            onChange={e => setNewUser({...newUser, name: e.target.value})}
-                            className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-500 transition-all font-bold text-gray-700"
-                        />
+                        <input required placeholder="Nome do vendedor" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-500 transition-all font-bold" />
                     </div>
                     <div>
                         <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">E-mail Corporativo</label>
-                        <input 
-                            required
-                            type="email"
-                            placeholder="pedro@empresa.com"
-                            value={newUser.email}
-                            onChange={e => setNewUser({...newUser, email: e.target.value})}
-                            className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-500 transition-all font-bold text-gray-700"
-                        />
+                        <input required type="email" placeholder="email@empresa.com" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-500 transition-all font-bold" />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Equipe</label>
-                            <select 
-                                value={newUser.teamId}
-                                onChange={e => setNewUser({...newUser, teamId: e.target.value})}
-                                className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none bg-white font-bold text-sm shadow-sm"
-                            >
+                            <select value={newUser.teamId} onChange={e => setNewUser({...newUser, teamId: e.target.value})} className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none bg-white font-bold text-sm">
                                 <option value="">Sem Equipe</option>
                                 {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Cargo Inicial</label>
-                            <select 
-                                value={newUser.role}
-                                onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}
-                                className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none bg-white font-bold text-sm shadow-sm"
-                            >
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Cargo</label>
+                            <select value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})} className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none bg-white font-bold text-sm">
                                 <option value={UserRole.USER}>Vendedor</option>
                                 <option value={UserRole.ACCOUNT_ADMIN}>Admin</option>
                             </select>
                         </div>
                     </div>
-                    <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 mt-4 active:scale-95">
-                        Cadastrar Agora
-                    </button>
+                    <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-200 mt-4">Cadastrar</button>
                 </form>
             </div>
         </div>
@@ -451,38 +395,21 @@ export const Settings = () => {
       {/* MODAL: NOVA EQUIPE */}
       {isTeamModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in border border-gray-100">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in">
                 <div className="px-8 py-6 border-b bg-gray-50 flex justify-between items-center">
-                    <h3 className="font-black text-xl text-gray-800 flex items-center gap-2 uppercase tracking-tighter">
-                        <Briefcase className="text-blue-600" size={24} />
-                        Criar Time
-                    </h3>
-                    <button onClick={() => setIsTeamModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={24} /></button>
+                    <h3 className="font-black text-xl text-gray-800">Criar Time</h3>
+                    <button onClick={() => setIsTeamModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
                 </div>
                 <form onSubmit={handleAddTeam} className="p-8 space-y-6">
                     <div>
                         <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Nome do Time</label>
-                        <input 
-                            required
-                            placeholder="Ex: Comercial Interno"
-                            value={newTeam.name}
-                            onChange={e => setNewTeam({...newTeam, name: e.target.value})}
-                            className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-500 transition-all font-bold text-gray-700"
-                        />
+                        <input required placeholder="Ex: Inside Sales" value={newTeam.name} onChange={e => setNewTeam({...newTeam, name: e.target.value})} className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-500 transition-all font-bold" />
                     </div>
                     <div>
-                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Meta Financeira (R$)</label>
-                        <input 
-                            type="number"
-                            placeholder="100.000"
-                            value={newTeam.goal || ''}
-                            onChange={e => setNewTeam({...newTeam, goal: Number(e.target.value)})}
-                            className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-500 transition-all font-bold text-blue-600"
-                        />
+                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Meta (R$)</label>
+                        <input type="number" placeholder="100.000" value={newTeam.goal || ''} onChange={e => setNewTeam({...newTeam, goal: Number(e.target.value)})} className="w-full border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-500 transition-all font-bold text-blue-600" />
                     </div>
-                    <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 mt-2 active:scale-95">
-                        Criar Equipe
-                    </button>
+                    <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black uppercase tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-200 mt-2">Criar Equipe</button>
                 </form>
             </div>
         </div>
