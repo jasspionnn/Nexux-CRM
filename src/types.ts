@@ -5,23 +5,30 @@ export enum UserRole {
   USER = 'USER',                 // Vendedor (Usuário final)
 }
 
+export type VisibilityLevel = 'private' | 'team' | 'public';
+
 export interface Account {
   id: string;
   companyName: string;
   ownerName: string;
-  email: string; // Login email for the account admin
+  email: string;
   status: 'active' | 'suspended';
   plan: 'trial' | 'pro' | 'enterprise';
-  expiresAt: string; // ISO Date
+  expiresAt: string;
   createdAt: string;
-  // Payment Integration Fields
+  // Configurações de visibilidade
+  visibilityConfig: {
+    level: VisibilityLevel;
+    allowUserExport: boolean;
+    showTeamGoals: boolean;
+  };
   stripeCustomerId?: string;
   subscriptionStatus?: 'active' | 'past_due' | 'canceled' | 'trialing';
 }
 
 export interface User {
   id: string;
-  accountId?: string; // Optional for Nexus Admin, Required for others
+  accountId?: string;
   name: string;
   email: string;
   password?: string;
@@ -34,7 +41,7 @@ export interface User {
 
 export interface Team {
   id: string;
-  accountId: string; // Linked to account
+  accountId: string;
   name: string;
   goal: number;
 }
@@ -48,7 +55,7 @@ export interface Stage {
 
 export interface Funnel {
   id: string;
-  accountId: string; // Linked to account
+  accountId: string;
   name: string;
   stages: Stage[];
   defaultWonStageId?: string;
@@ -80,7 +87,7 @@ export interface CustomFieldOption {
 
 export interface CustomFieldDefinition {
   id: string;
-  accountId: string; // Linked to account
+  accountId: string;
   name: string;
   type: CustomFieldType;
   context: CustomFieldContext;
@@ -91,7 +98,7 @@ export interface CustomFieldDefinition {
 
 export interface Lead {
   id: string;
-  accountId: string; // Linked to account
+  accountId: string;
   title: string;
   company: string;
   value: number;

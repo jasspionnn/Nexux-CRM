@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { Account, User as UserType, UserRole } from '../types';
@@ -36,7 +37,13 @@ export const NexusAdminDashboard = () => {
           status: 'active',
           plan: newAcc.plan,
           createdAt: new Date().toISOString(),
-          expiresAt: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString() // 1 year default
+          expiresAt: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString(), // 1 year default
+          // Fix: Adding required visibilityConfig property
+          visibilityConfig: {
+            level: 'public',
+            allowUserExport: false,
+            showTeamGoals: true
+          }
       };
 
       const adminUser: UserType = {
