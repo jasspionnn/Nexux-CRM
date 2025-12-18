@@ -86,22 +86,26 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (!currentUser) return;
       setIsLoading(true);
       try {
-          // Fix: Changed UserRole.NEX_ADMIN to UserRole.NEXUS_ADMIN to match defined types
           if (currentUser.role === UserRole.NEXUS_ADMIN) {
                const data = await api.get<{accounts: Account[]}>('/admin/accounts');
                setAccounts(data.accounts || []);
           } else {
                const data = await api.get<any>(`/sync/${currentUser.accountId}`);
-               setFunnels(data.funnels || []);
+               
+               // Garantir que as listas não sejam nulas
+               const fetchedFunnels = data.funnels || [];
+               setFunnels(fetchedFunnels);
                setLeads(data.leads || []);
                setUsers(data.users || []);
                setTeams(data.teams || []);
                setCustomFields(data.customFields || []);
-               const accData = await api.get<any>(`/admin/accounts`); 
-               setAccounts(accData.accounts || []);
 
-               if (!activeFunnelId && data.funnels && data.funnels.length > 0) {
-                   setActiveFunnelId(data.funnels[0].id);
+               // AUTO-SELEÇÃO DE FUNIL: Se não houver funil ativo ou o ativo não existir mais
+               if (fetchedFunnels.length > 0) {
+                   const exists = fetchedFunnels.some((f: any) => f.id === activeFunnelId);
+                   if (!activeFunnelId || !exists) {
+                       setActiveFunnelId(fetchedFunnels[0].id);
+                   }
                }
           }
       } catch (error) {
@@ -153,7 +157,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           localStorage.setItem('nexus_user_session', JSON.stringify(res.user));
           return true;
       } catch (error: any) {
-          return error.message || "Erro.";
+          return error.message || "Erro de login.";
       } finally {
           setIsLoading(false);
       }
@@ -180,41 +184,89 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const addLead = async (lead: Lead) => { setLeads(prev => [...prev, lead]); await api.post('/leads', lead); };
+  const addLead = async (lead: Lead) => { 
+    setLeads(prev => [...prev, lead]); 
+    await api.post('/leads', lead); 
+  };
+  
   const updateLead = async (id: string, updates: Partial<Lead>) => { 
     setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
     await api.patch(`/leads/${id}`, updates);
   };
+  
   const moveLead = async (leadId: string, targetStageId: string) => {
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stageId: targetStageId } : l));
     await api.patch(`/leads/${leadId}`, { stageId: targetStageId });
   };
-  const duplicateLead = async (originalLeadId: string, targetFunnelId: string, targetStageId: string) => { /* original logic */ };
-  const deleteLead = async (id: string) => { setLeads(prev => prev.filter(l => l.id !== id)); };
+
+  const duplicateLead = async (originalLeadId: string, targetFunnelId: string, targetStageId: string) => {
+    const original = leads.find(l => l.id === originalLeadId);
+    if (!original) return;
+    
+    const copy: Lead = {
+      ...original,
+      id: `l-${Date.now()}`,
+      funnelId: targetFunnelId,
+      stageId: targetStageId,
+      createdAt: new Date().toISOString(),
+      notes: [{
+        id: `n-${Date.now()}`,
+        content: `Lead duplicado a partir de: ${original.title}`,
+        createdAt: new Date().toISOString(),
+        authorName: 'Sistema'
+      }]
+    };
+    
+    setLeads(prev => [...prev, copy]);
+    await api.post('/leads', copy);
+  };
+
+  const deleteLead = async (id: string) => { 
+    setLeads(prev => prev.filter(l => l.id !== id));
+    await api.delete(`/leads/${id}`);
+  };
+
   const addTask = async (leadId: string, task: Task) => {
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: [...(l.tasks || []), task] } : l));
     await api.post('/tasks', { ...task, leadId });
   };
+  
   const toggleTask = async (leadId: string, taskId: string) => {
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: l.tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t) } : l));
     await api.patch(`/tasks/${taskId}/toggle`, {});
   };
+  
   const deleteTask = async (leadId: string, taskId: string) => {
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: l.tasks.filter(t => t.id !== taskId) } : l));
     await api.delete(`/tasks/${taskId}`);
   };
+
   const addFunnel = async (name: string) => { 
-    const nf: Funnel = { id: `f${Date.now()}`, accountId: currentUser?.accountId!, name, stages: [] };
-    setFunnels(prev => [...prev, nf]); setActiveFunnelId(nf.id); await api.post('/funnels', nf); 
+    const nf: Funnel = { 
+      id: `f${Date.now()}`, 
+      accountId: currentUser?.accountId!, 
+      name, 
+      stages: [
+        { id: `s1-${Date.now()}`, name: 'Lead', color: 'bg-blue-500', order: 0 },
+        { id: `s2-${Date.now()}`, name: 'Venda', color: 'bg-green-500', order: 1 }
+      ] 
+    };
+    setFunnels(prev => [...prev, nf]); 
+    setActiveFunnelId(nf.id); 
+    await api.post('/funnels', nf); 
   };
+
   const updateFunnel = async (id: string, updates: Partial<Funnel>) => {
     setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
     await api.patch(`/funnels/${id}`, updates);
   };
+
   const deleteFunnel = async (id: string, tf?: string, ts?: string) => {
     setFunnels(prev => prev.filter(f => f.id !== id));
-    await api.post(`/funnels/${id}/delete`, { targetFunnelId: tf, targetStageId: ts });
+    if (activeFunnelId === id) setActiveFunnelId('');
+    await api.delete(`/funnels/${id}`);
   };
+
   const addStage = async (funnelId: string, name: string) => { /* logic */ };
   const deleteStage = async (id: string) => { /* logic */ };
   const reorderStages = async (fid: string, stages: Stage[]) => { /* logic */ };

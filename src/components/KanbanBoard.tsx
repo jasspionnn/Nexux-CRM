@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { LeadCard } from './LeadCard';
-import { Plus, MoreVertical, Layout, Filter, User } from 'lucide-react';
+import { Plus, MoreVertical, Layout, Filter, User, Layers, AlertCircle, Loader2 } from 'lucide-react';
 import { NewLeadModal } from './NewLeadModal';
 
 interface Props {
@@ -10,7 +10,7 @@ interface Props {
 }
 
 export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
-  const { funnels, activeFunnelId, visibleLeads, moveLead, visibleUsers, setActiveFunnelId, currentUser } = useCRM();
+  const { funnels, activeFunnelId, visibleLeads, moveLead, visibleUsers, setActiveFunnelId, currentUser, isLoading, addFunnel } = useCRM();
   const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
   const [userFilter, setUserFilter] = useState<string>('all');
 
@@ -28,9 +28,54 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
     e.preventDefault();
   };
 
-  if (!activeFunnel) return <div className="p-8 text-center text-gray-500">Nenhum funil ativo encontrado.</div>;
+  // ESTADO DE CARREGAMENTO
+  if (isLoading && funnels.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
+        <Loader2 className="animate-spin text-blue-500" size={48} />
+        <p className="font-bold">Sincronizando seus funis...</p>
+      </div>
+    );
+  }
 
-  // Filtragem local adicional (pelo cabeçalho do Kanban)
+  // ESTADO SEM FUNIL
+  if (!activeFunnel) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-8 text-center animate-fade-in">
+        <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-gray-200 shadow-sm max-w-md">
+           <Layers className="mx-auto text-gray-200 mb-6" size={80} />
+           <h3 className="text-xl font-bold text-gray-800 mb-2">Nenhum funil ativo encontrado</h3>
+           <p className="text-gray-500 mb-8 text-sm leading-relaxed">
+             Parece que você ainda não tem um funil de vendas configurado ou ele não foi selecionado.
+           </p>
+           {funnels.length > 0 ? (
+             <div className="space-y-3">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Selecione um existente:</p>
+                {funnels.map(f => (
+                  <button 
+                    key={f.id}
+                    onClick={() => setActiveFunnelId(f.id)}
+                    className="w-full p-4 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded-xl font-bold text-gray-700 transition-all text-sm flex justify-between items-center"
+                  >
+                    {f.name}
+                    <Plus size={16} className="text-blue-500" />
+                  </button>
+                ))}
+             </div>
+           ) : (
+             <button 
+              onClick={() => addFunnel('Vendas Geral')}
+              className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex items-center gap-2 mx-auto"
+             >
+               <Plus size={20} /> Criar Meu Primeiro Funil
+             </button>
+           )}
+        </div>
+      </div>
+    );
+  }
+
+  // Filtragem local adicional
   const leadsToDisplay = visibleLeads.filter(l => {
     if (l.funnelId !== activeFunnelId) return false;
     if (userFilter !== 'all' && l.assignedUserId !== userFilter) return false;
@@ -40,14 +85,14 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
   return (
     <div className="h-full flex flex-col bg-gray-50/50">
       {/* Header Toolbar */}
-      <div className="h-16 bg-white border-b px-6 flex items-center justify-between shadow-sm z-10">
+      <div className="h-16 bg-white border-b px-6 flex items-center justify-between shadow-sm z-10 shrink-0">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2 text-gray-700">
             <Layout className="w-5 h-5 text-blue-600" />
             <select 
               value={activeFunnelId}
               onChange={(e) => setActiveFunnelId(e.target.value)}
-              className="bg-transparent font-bold text-gray-800 text-lg focus:outline-none cursor-pointer p-1 rounded transition-all"
+              className="bg-transparent font-bold text-gray-800 text-lg focus:outline-none cursor-pointer p-1 rounded transition-all max-w-[200px] truncate"
             >
               {funnels.map(f => (
                 <option key={f.id} value={f.id}>{f.name}</option>
@@ -64,7 +109,7 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
               onChange={(e) => setUserFilter(e.target.value)}
               className="text-sm bg-gray-50 border-none focus:ring-0 text-gray-600 font-medium py-1 px-2 rounded cursor-pointer hover:bg-gray-100"
             >
-              <option value="all">Todos os Vendedores</option>
+              <option value="all">Vendedores: Todos</option>
               {visibleUsers.map(u => (
                 <option key={u.id} value={u.id}>{u.name === currentUser?.name ? 'Meus Leads' : u.name}</option>
               ))}
@@ -73,12 +118,12 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
         </div>
         
         <div className="flex items-center gap-4">
-           <div className="text-sm text-gray-500 hidden sm:block">
-              {leadsToDisplay.length} leads visíveis
+           <div className="text-xs font-bold text-gray-400 uppercase tracking-widest hidden lg:block">
+              {leadsToDisplay.length} oportunidades
            </div>
            <button 
              onClick={() => setIsNewLeadModalOpen(true)}
-             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-sm active:transform active:scale-95"
+             className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-md shadow-blue-100 active:transform active:scale-95"
            >
              <Plus size={18} />
              Novo Lead
@@ -96,18 +141,18 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
             return (
               <div 
                 key={stage.id}
-                className="w-80 flex flex-col h-full max-h-full rounded-xl bg-gray-100/50 border border-gray-200/60"
+                className="w-80 flex flex-col h-full max-h-full rounded-2xl bg-gray-100/40 border border-gray-200/60"
                 onDrop={(e) => handleDrop(e, stage.id)}
                 onDragOver={handleDragOver}
               >
-                <div className={`p-4 border-b border-gray-200/50 rounded-t-xl bg-white sticky top-0 z-10 border-t-4 ${stage.color.replace('bg-', 'border-t-').split(' ')[0]}`}>
+                <div className={`p-4 border-b border-gray-200/50 rounded-t-2xl bg-white sticky top-0 z-10 border-t-4 ${stage.color.replace('bg-', 'border-t-').split(' ')[0]}`}>
                   <div className="flex justify-between items-center mb-1">
-                    <h3 className="font-semibold text-gray-700 truncate">{stage.name}</h3>
-                    <MoreVertical size={16} className="text-gray-400" />
+                    <h3 className="font-bold text-gray-700 truncate text-sm">{stage.name}</h3>
+                    <span className="bg-gray-100 text-gray-500 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">{stageLeads.length}</span>
                   </div>
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>{stageLeads.length} leads</span>
-                    <span className="font-medium">R$ {totalValue.toLocaleString()}</span>
+                  <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
+                    <span>Bruto</span>
+                    <span className="text-gray-600">R$ {totalValue.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -122,6 +167,11 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
                       stageName={stage.name}
                     />
                   ))}
+                  {stageLeads.length === 0 && (
+                    <div className="h-24 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-[10px] font-bold text-gray-300 uppercase">
+                       Sem leads aqui
+                    </div>
+                  )}
                 </div>
               </div>
             );

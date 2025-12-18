@@ -1,7 +1,9 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { Lead } from "../types";
 
 export const generateLeadStrategy = async (lead: Lead, funnelName: string, stageName: string): Promise<string> => {
+  // Use gemini-3-pro-preview for complex reasoning tasks like senior strategist personas
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const prompt = `
@@ -20,7 +22,7 @@ export const generateLeadStrategy = async (lead: Lead, funnelName: string, stage
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
     });
     return response.text || "Não foi possível gerar uma estratégia no momento.";
