@@ -1,500 +1,531 @@
 
-import React, {
-  createContext,
-  useContext,
-  useMemo,
-  useState,
-  ReactNode
-} from 'react';
-import {
-  Lead,
-  User,
-  Funnel,
-  Team,
-  CustomFieldDefinition,
-  Account,
-  UserRole,
-  Stage,
-  Task
-} from '../types';
-
-/* =====================================================
-   TIPOS DE FILTROS ENTERPRISE
-===================================================== */
-
-export type DateRange =
-  | '7_days'
-  | '30_days'
-  | '90_days'
-  | 'this_month'
-  | 'last_month'
-  | 'custom';
-
-export interface CRMFilters {
-  dateRange: DateRange;
-  teamId: string | null;
-  userId: string | null;
-  funnelId: string | null;
-  status: 'all' | 'won' | 'lost' | 'open';
-}
-
-/* =====================================================
-   CONTEXT TYPE
-===================================================== */
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole } from '../types';
+import { api } from '../services/api';
 
 interface CRMContextType {
-  /* Dados base */
+  funnels: Funnel[];
   leads: Lead[];
   users: User[];
   teams: Team[];
-  funnels: Funnel[];
   customFields: CustomFieldDefinition[];
   allAccounts: Account[];
-  currentUser: User | null;
   activeFunnelId: string;
-
-  /* Filtros globais */
-  filters: CRMFilters;
-  setFilters: (filters: CRMFilters) => void;
-
-  /* Dados filtrados (enterprise-ready) */
-  filteredLeads: Lead[];
-
-  /* Métricas globais */
-  metrics: {
-    totalRevenue: number;
-    pipelineValue: number;
-    wonCount: number;
-    lostCount: number;
-    openCount: number;
-    winRate: number;
-    avgTicket: number;
-  };
-
-  /* Handlers */
-  login: (email: string, password: string) => Promise<boolean | string>;
-  registerAccount: (name: string, email: string, password: string, company: string) => Promise<boolean | string>;
-  updateLead: (id: string, updates: Partial<Lead>) => void;
-  addLead: (lead: Lead) => void;
-  duplicateLead: (id: string, funnelId: string, stageId: string) => void;
-  moveLead: (id: string, stageId: string) => void;
+  currentUser: User | null;
+  isLoading: boolean;
+  
   setActiveFunnelId: (id: string) => void;
-  addCustomField: (field: CustomFieldDefinition) => void;
-  deleteCustomField: (id: string) => void;
-  addFunnel: (name: string) => void;
-  updateFunnel: (id: string, updates: Partial<Funnel>) => void;
-  deleteFunnel: (id: string, targetFunnelId?: string, targetStageId?: string) => void;
-  addStage: (funnelId: string, name: string) => void;
-  reorderStages: (funnelId: string, stages: Stage[]) => void;
-  deleteStage: (id: string) => void;
+  login: (email: string, pass: string) => Promise<string | boolean>;
+  registerAccount: (userName: string, email: string, pass: string, companyName: string) => Promise<string | boolean>;
+  logout: () => void;
+  refreshData: () => Promise<void>;
+
+  addLead: (lead: Lead) => Promise<void>;
+  updateLead: (id: string, updates: Partial<Lead>) => Promise<void>;
+  moveLead: (leadId: string, targetStageId: string) => Promise<void>;
+  duplicateLead: (originalLeadId: string, targetFunnelId: string, targetStageId: string) => Promise<void>;
+  deleteLead: (id: string) => Promise<void>;
+  addTask: (leadId: string, task: Task) => Promise<void>;
+  toggleTask: (leadId: string, taskId: string) => Promise<void>;
+  deleteTask: (leadId: string, taskId: string) => Promise<void>;
+  
+  addFunnel: (name: string) => Promise<void>;
+  updateFunnel: (id: string, updates: Partial<Funnel>) => Promise<void>;
+  deleteFunnel: (id: string, targetFunnelId?: string, targetStageId?: string) => Promise<void>;
+  addStage: (funnelId: string, name: string) => Promise<void>;
+  reorderStages: (funnelId: string, newStages: Stage[]) => Promise<void>;
+  deleteStage: (stageId: string) => Promise<void>;
+  addCustomField: (field: CustomFieldDefinition) => Promise<void>;
+  deleteCustomField: (id: string) => Promise<void>;
+  getFunnelStats: (funnelId: string) => { totalValue: number; leadCount: number };
+  
+  addUser: (user: User) => Promise<void>;
+  updateUser: (id: string, updates: Partial<User>) => Promise<void>;
+  deleteUser: (id: string) => Promise<void>;
+  addTeam: (team: Team) => Promise<void>;
+  deleteTeam: (id: string) => Promise<void>;
+
+  createAccount: (account: Account, adminUser: User) => Promise<void>;
+  updateAccountStatus: (accountId: string, status: 'active' | 'suspended') => Promise<void>;
+  extendAccountSubscription: (accountId: string, months: number) => Promise<void>;
   upgradePlan: (plan: 'pro' | 'enterprise') => Promise<void>;
-  addUser: (user: User) => void;
-  updateUser: (id: string, updates: Partial<User>) => void;
-  deleteUser: (id: string) => void;
-  addTeam: (team: Team) => void;
-  deleteTeam: (id: string) => void;
-  addTask: (leadId: string, task: Task) => void;
-  toggleTask: (leadId: string, taskId: string) => void;
-  deleteTask: (leadId: string, taskId: string) => void;
-  createAccount: (account: Account, admin: User) => void;
-  updateAccountStatus: (id: string, status: 'active' | 'suspended') => void;
-  extendAccountSubscription: (id: string, months: number) => void;
-  resetFilters: () => void;
 }
 
-/* =====================================================
-   CONTEXT
-===================================================== */
+const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
-const CRMContext = createContext<CRMContextType | null>(null);
-
-/* =====================================================
-   PROVIDER
-===================================================== */
-
-interface Props {
-  children: ReactNode;
-  initialData: {
-    leads: Lead[];
-    users: User[];
-    teams: Team[];
-    funnels: Funnel[];
-  };
-}
-
-export const CRMProvider = ({ children, initialData }: Props) => {
-  const [leads, setLeads] = useState<Lead[]>(initialData.leads);
-  const [users, setUsers] = useState<User[]>(initialData.users);
-  const [teams, setTeams] = useState<Team[]>(initialData.teams);
-  const [funnels, setFunnels] = useState<Funnel[]>(initialData.funnels);
+export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // Estado Local (Espelho do Banco de Dados)
+  const [funnels, setFunnels] = useState<Funnel[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
-  const [allAccounts, setAllAccounts] = useState<Account[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]); 
+
+  const [activeFunnelId, setActiveFunnelId] = useState<string>('');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activeFunnelId, setActiveFunnelId] = useState<string>(initialData.funnels[0]?.id || '');
+  const [isLoading, setIsLoading] = useState(false);
 
-  /* =====================================================
-     FILTROS GLOBAIS (Salesforce style)
-  ===================================================== */
-
-  const [filters, setFilters] = useState<CRMFilters>({
-    dateRange: '30_days',
-    teamId: null,
-    userId: null,
-    funnelId: null,
-    status: 'all'
-  });
-
-  /* =====================================================
-     FILTRAGEM ENTERPRISE
-  ===================================================== */
-
-  const filteredLeads = useMemo(() => {
-    let result = [...leads];
-
-    /* Filtro por time */
-    if (filters.teamId) {
-      const teamUsers = users
-        .filter(u => u.teamId === filters.teamId)
-        .map(u => u.id);
-
-      result = result.filter(l =>
-        teamUsers.includes(l.assignedUserId)
-      );
+  // 1. Carregar Sessão Local
+  useEffect(() => {
+    const savedUser = localStorage.getItem('nexus_user_session');
+    if (savedUser) {
+        try {
+            setCurrentUser(JSON.parse(savedUser));
+        } catch (e) {
+            console.error("Sessão inválida", e);
+            localStorage.removeItem('nexus_user_session');
+        }
     }
+  }, []);
 
-    /* Filtro por usuário */
-    if (filters.userId) {
-      result = result.filter(
-        l => l.assignedUserId === filters.userId
-      );
-    }
+  // 2. Buscar Dados do Backend (Sync)
+  const refreshData = useCallback(async () => {
+      if (!currentUser) return;
+      
+      setIsLoading(true);
+      try {
+          if (currentUser.role === UserRole.NEXUS_ADMIN) {
+               // Admin Sync: Fetch Accounts
+               const data = await api.get<{accounts: Account[]}>('/admin/accounts');
+               setAccounts(data.accounts || []);
+          } else {
+               // Standard User Sync
+               const data = await api.get<any>(`/sync/${currentUser.accountId}`);
+               
+               setFunnels(data.funnels || []);
+               setLeads(data.leads || []);
+               setUsers(data.users || []);
+               setTeams(data.teams || []);
+               setCustomFields(data.customFields || []);
 
-    /* Filtro por funil */
-    if (filters.funnelId) {
-      result = result.filter(
-        l => l.funnelId === filters.funnelId
-      );
-    }
-
-    /* Filtro por status */
-    if (filters.status === 'won') {
-      result = result.filter(l => l.probability === 100);
-    }
-
-    if (filters.status === 'lost') {
-      result = result.filter(l => l.probability === 0);
-    }
-
-    if (filters.status === 'open') {
-      result = result.filter(
-        l => l.probability > 0 && l.probability < 100
-      );
-    }
-
-    /* Filtro por data (baseado em createdAt) */
-    if (filters.dateRange !== 'custom') {
-      const now = new Date();
-      let startDate: Date | null = null;
-
-      switch (filters.dateRange) {
-        case '7_days':
-          startDate = new Date(now);
-          startDate.setDate(now.getDate() - 7);
-          break;
-        case '30_days':
-          startDate = new Date(now);
-          startDate.setDate(now.getDate() - 30);
-          break;
-        case '90_days':
-          startDate = new Date(now);
-          startDate.setDate(now.getDate() - 90);
-          break;
-        case 'this_month':
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          break;
-        case 'last_month':
-          startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-          break;
+               if (!activeFunnelId && data.funnels && data.funnels.length > 0) {
+                   setActiveFunnelId(data.funnels[0].id);
+               }
+          }
+      } catch (error) {
+          console.error("Erro ao sincronizar dados:", error);
+          if (String(error).includes('403') || String(error).includes('401')) logout();
+      } finally {
+          setIsLoading(false);
       }
+  }, [currentUser, activeFunnelId]);
 
-      if (startDate) {
-        result = result.filter(l => {
-          const created = new Date(l.createdAt);
-          return created >= startDate!;
-        });
+  // Atualiza dados sempre que o usuário muda (login/refresh)
+  useEffect(() => {
+      if (currentUser) {
+          refreshData();
       }
-    }
+  }, [currentUser]);
 
-    return result;
-  }, [leads, users, filters]);
+  // --- AÇÕES DE AUTENTICAÇÃO ---
 
-  /* =====================================================
-     MÉTRICAS ENTERPRISE (derivadas)
-  ===================================================== */
-
-  const metrics = useMemo(() => {
-    const won = filteredLeads.filter(l => l.probability === 100);
-    const lost = filteredLeads.filter(l => l.probability === 0);
-    const open = filteredLeads.filter(
-      l => l.probability > 0 && l.probability < 100
-    );
-
-    const totalRevenue = won.reduce(
-      (acc, l) => acc + l.value,
-      0
-    );
-
-    const pipelineValue = open.reduce(
-      (acc, l) => acc + l.value,
-      0
-    );
-
-    const closed = won.length + lost.length;
-
-    return {
-      totalRevenue,
-      pipelineValue,
-      wonCount: won.length,
-      lostCount: lost.length,
-      openCount: open.length,
-      winRate: closed > 0 ? (won.length / closed) * 100 : 0,
-      avgTicket: won.length > 0 ? totalRevenue / won.length : 0
-    };
-  }, [filteredLeads]);
-
-  /* =====================================================
-     HELPERS & ACTIONS
-  ===================================================== */
-
-  const login = async (email: string, password: string): Promise<boolean | string> => {
-    const user = users.find(u => u.email === email && (u.password === password || password === '123'));
-    if (user) {
-      setCurrentUser(user);
-      const userFunnel = funnels.find(f => f.accountId === user.accountId);
-      if (userFunnel) setActiveFunnelId(userFunnel.id);
-      return true;
-    }
-    return "Credenciais inválidas.";
+  const login = async (email: string, pass: string): Promise<string | boolean> => {
+      setIsLoading(true);
+      try {
+          const res = await api.post<{user: User}>('/auth/login', { email, password: pass });
+          setCurrentUser(res.user);
+          localStorage.setItem('nexus_user_session', JSON.stringify(res.user));
+          return true;
+      } catch (error: any) {
+          console.error(error);
+          return error.message || "Erro ao conectar.";
+      } finally {
+          setIsLoading(false);
+      }
   };
 
-  const registerAccount = async (name: string, email: string, pass: string, company: string): Promise<boolean | string> => {
-    const accountId = `acc_${Date.now()}`;
-    const newAcc: Account = {
-      id: accountId,
-      companyName: company,
-      ownerName: name,
-      email: email,
-      status: 'active',
-      plan: 'trial',
+  const registerAccount = async (userName: string, email: string, pass: string, companyName: string): Promise<string | boolean> => {
+      setIsLoading(true);
+      try {
+          await api.post('/auth/register', { userName, email, password: pass, companyName });
+          // Auto login após registro
+          return await login(email, pass);
+      } catch (error: any) {
+          console.error(error);
+          return error.message || "Erro ao registrar.";
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
+  const logout = () => {
+      setCurrentUser(null);
+      setLeads([]);
+      setFunnels([]);
+      setAccounts([]);
+      localStorage.removeItem('nexus_user_session');
+      setActiveFunnelId('');
+  };
+
+  // --- AÇÕES DO CRM (Otimistas + API) ---
+
+  const addLead = async (lead: Lead) => {
+    // Atualização Otimista
+    setLeads(prev => [...prev, lead]);
+    try {
+        await api.post('/leads', lead);
+    } catch (e) {
+        console.error("Falha ao salvar lead", e);
+        refreshData(); // Reverte se der erro
+    }
+  };
+
+  const updateLead = async (id: string, updates: Partial<Lead>) => {
+    setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
+    try {
+        await api.patch(`/leads/${id}`, updates);
+    } catch (e) { console.error(e); }
+  };
+
+  const moveLead = async (leadId: string, targetStageId: string) => {
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stageId: targetStageId } : l));
+    try {
+        await api.patch(`/leads/${leadId}`, { stageId: targetStageId });
+    } catch (e) { console.error(e); }
+  };
+
+  const duplicateLead = async (originalLeadId: string, targetFunnelId: string, targetStageId: string) => {
+    const originalLead = leads.find(l => l.id === originalLeadId);
+    if (!originalLead || !currentUser?.accountId) return;
+
+    const originalFunnelName = funnels.find(f => f.id === originalLead.funnelId)?.name || 'Desconhecido';
+    
+    // Cria objeto temporário
+    const newLead: Lead = {
+      ...originalLead,
+      id: `l_temp_${Date.now()}`, // ID Temporário
+      accountId: currentUser.accountId,
+      funnelId: targetFunnelId,
+      stageId: targetStageId,
       createdAt: new Date().toISOString(),
-      expiresAt: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString()
+      title: `${originalLead.title} (Cópia)`,
+      tasks: [],
+      notes: [{
+          id: `n-sys-${Date.now()}`,
+          content: `Lead duplicado a partir do funil: ${originalFunnelName}.`,
+          createdAt: new Date().toISOString(),
+          authorName: 'Sistema'
+      }]
     };
-    const newUser: User = {
-      id: `u_${Date.now()}`,
-      accountId: accountId,
-      name: name,
-      email: email,
-      password: pass,
-      role: UserRole.ACCOUNT_ADMIN,
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
-      status: 'active',
-      joinedAt: new Date().toISOString()
-    };
-    setAllAccounts(prev => [...prev, newAcc]);
-    setUsers(prev => [...prev, newUser]);
-    setCurrentUser(newUser);
-    const funnelId = `f_${Date.now()}`;
+    
+    setLeads(prev => [...prev, newLead]);
+    
+    try {
+        const res = await api.post<{id: string}>('/leads', newLead);
+        // Atualiza o ID temporário para o real
+        setLeads(prev => prev.map(l => l.id === newLead.id ? { ...l, id: res.id } : l));
+    } catch (e) { refreshData(); }
+  };
+
+  const deleteLead = async (id: string) => {
+    setLeads(prev => prev.filter(l => l.id !== id));
+    // Implementar endpoint DELETE se necessário
+    // await api.delete(`/leads/${id}`);
+  };
+
+  const addTask = async (leadId: string, task: Task) => {
+      setLeads(prev => prev.map(l => {
+          if (l.id !== leadId) return l;
+          return { ...l, tasks: [...(l.tasks || []), task] };
+      }));
+      try {
+          await api.post('/tasks', { ...task, leadId });
+      } catch (e) { console.error(e); }
+  };
+
+  const toggleTask = async (leadId: string, taskId: string) => {
+      setLeads(prev => prev.map(l => {
+          if (l.id !== leadId) return l;
+          return {
+              ...l,
+              tasks: l.tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t)
+          };
+      }));
+      try {
+          await api.patch(`/tasks/${taskId}/toggle`, {});
+      } catch (e) { console.error(e); }
+  };
+
+  const deleteTask = async (leadId: string, taskId: string) => {
+      setLeads(prev => prev.map(l => {
+          if (l.id !== leadId) return l;
+          return {
+              ...l,
+              tasks: l.tasks.filter(t => t.id !== taskId)
+          };
+      }));
+      try {
+          await api.delete(`/tasks/${taskId}`);
+      } catch (e) { console.error(e); }
+  };
+
+  // --- FUNIS ---
+
+  const addFunnel = async (name: string) => {
+    if (!currentUser?.accountId) return;
     const newFunnel: Funnel = {
-      id: funnelId,
-      accountId: accountId,
-      name: "Funil de Vendas",
+      id: `f_${Date.now()}`,
+      accountId: currentUser.accountId,
+      name,
       stages: [
-        { id: `s1_${Date.now()}`, name: 'Lead', color: 'bg-gray-100', order: 0 },
-        { id: `s2_${Date.now()}`, name: 'Qualificação', color: 'bg-blue-100', order: 1 },
-        { id: `s3_${Date.now()}`, name: 'Fechamento', color: 'bg-green-100', order: 2 }
+        { id: `s_${Date.now()}_1`, name: 'Novo', color: 'bg-gray-100 border-gray-300', order: 0 },
+        { id: `s_${Date.now()}_2`, name: 'Ganho', color: 'bg-green-100 border-green-300', order: 1 },
       ]
     };
     setFunnels(prev => [...prev, newFunnel]);
-    setActiveFunnelId(funnelId);
-    return true;
-  };
-
-  const updateLead = (id: string, updates: Partial<Lead>) => {
-    setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
-  };
-
-  const addLead = (lead: Lead) => setLeads(prev => [...prev, lead]);
-
-  const duplicateLead = (id: string, funnelId: string, stageId: string) => {
-    const lead = leads.find(l => l.id === id);
-    if (lead) {
-      const newLead = { ...lead, id: `l_${Date.now()}`, funnelId, stageId, createdAt: new Date().toISOString(), notes: [] };
-      setLeads(prev => [...prev, newLead]);
-    }
-  };
-
-  const moveLead = (id: string, stageId: string) => {
-    setLeads(prev => prev.map(l => l.id === id ? { ...l, stageId } : l));
-  };
-
-  const addCustomField = (field: CustomFieldDefinition) => setCustomFields(prev => [...prev, field]);
-  const deleteCustomField = (id: string) => setCustomFields(prev => prev.filter(f => f.id !== id));
-
-  const addFunnel = (name: string) => {
-    const newFunnel: Funnel = { id: `f_${Date.now()}`, accountId: currentUser?.accountId || '', name, stages: [] };
-    setFunnels(prev => [...prev, newFunnel]);
     setActiveFunnelId(newFunnel.id);
+    try {
+        await api.post('/funnels', newFunnel);
+    } catch (e) { refreshData(); }
   };
 
-  const updateFunnel = (id: string, updates: Partial<Funnel>) => {
+  const updateFunnel = async (id: string, updates: Partial<Funnel>) => {
     setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+    try {
+        await api.patch(`/funnels/${id}`, updates);
+    } catch (e) { console.error(e); }
   };
 
-  const deleteFunnel = (id: string, targetFunnelId?: string, targetStageId?: string) => {
-    if (targetFunnelId && targetStageId) {
-      setLeads(prev => prev.map(l => l.funnelId === id ? { ...l, funnelId: targetFunnelId, stageId: targetStageId } : l));
-    }
-    setFunnels(prev => prev.filter(f => f.id !== id));
-  };
-
-  const addStage = (funnelId: string, name: string) => {
-    setFunnels(prev => prev.map(f => {
-      if (f.id === funnelId) {
-        const nextOrder = f.stages.length;
-        const newStage: Stage = { id: `s_${Date.now()}`, name, color: 'bg-gray-100', order: nextOrder };
-        return { ...f, stages: [...f.stages, newStage] };
+  const deleteFunnel = async (id: string, targetFunnelId?: string, targetStageId?: string) => {
+      // Optimistic Updates
+      setFunnels(prev => prev.filter(f => f.id !== id));
+      
+      if (targetFunnelId && targetStageId) {
+          // Move leads in state
+          setLeads(prev => prev.map(l => {
+              if (l.funnelId === id) {
+                  return { ...l, funnelId: targetFunnelId, stageId: targetStageId };
+              }
+              return l;
+          }));
+      } else {
+          // Remove leads in state if no migration
+          setLeads(prev => prev.filter(l => l.funnelId !== id));
       }
-      return f;
+
+      if (activeFunnelId === id) {
+          const remaining = funnels.filter(f => f.id !== id);
+          setActiveFunnelId(remaining.length > 0 ? remaining[0].id : '');
+      }
+
+      try {
+          await api.post(`/funnels/${id}/delete`, { targetFunnelId, targetStageId });
+      } catch (e) { refreshData(); }
+  };
+
+  const addStage = async (funnelId: string, name: string) => {
+    const funnel = funnels.find(f => f.id === funnelId);
+    if (!funnel) return;
+    const newStage: Stage = {
+        id: `s_${Date.now()}`,
+        name,
+        color: 'bg-gray-100 border-gray-300',
+        order: funnel.stages.length
+    };
+    setFunnels(prev => prev.map(f => {
+      if (f.id !== funnelId) return f;
+      return { ...f, stages: [...f.stages, newStage] };
     }));
+    try {
+        await api.post('/stages', { ...newStage, funnelId });
+    } catch (e) { refreshData(); }
   };
 
-  const reorderStages = (funnelId: string, stages: Stage[]) => {
-    setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages } : f));
+  const deleteStage = async (stageId: string) => {
+    setFunnels(prev => prev.map(f => {
+        return { ...f, stages: f.stages.filter(s => s.id !== stageId) };
+    }));
+    try {
+        await api.delete(`/stages/${stageId}`);
+    } catch (e) { refreshData(); }
   };
 
-  const deleteStage = (id: string) => {
-    setFunnels(prev => prev.map(f => ({ ...f, stages: f.stages.filter(s => s.id !== id) })));
+  const reorderStages = async (funnelId: string, newStages: Stage[]) => {
+    setFunnels(prev => prev.map(f => {
+      if (f.id !== funnelId) return f;
+      return { ...f, stages: newStages.map((s, i) => ({ ...s, order: i })) };
+    }));
+    try {
+        await api.post('/stages/reorder', { funnelId, stages: newStages });
+    } catch (e) { refreshData(); }
+  };
+
+  // --- CAMPOS PERSONALIZADOS ---
+
+  const addCustomField = async (field: CustomFieldDefinition) => {
+    if (!currentUser?.accountId) return;
+    const fieldWithAccount = { ...field, accountId: currentUser.accountId };
+    setCustomFields(prev => [...prev, fieldWithAccount]);
+    try {
+        await api.post('/custom-fields', fieldWithAccount);
+    } catch (e) { refreshData(); }
+  };
+
+  const deleteCustomField = async (id: string) => {
+    setCustomFields(prev => prev.filter(f => f.id !== id));
+    try {
+        await api.delete(`/custom-fields/${id}`);
+    } catch (e) { refreshData(); }
+  };
+
+  const getFunnelStats = (funnelId: string) => {
+    const funnelLeads = leads.filter(l => l.funnelId === funnelId);
+    return {
+      totalValue: funnelLeads.reduce((acc, curr) => acc + curr.value, 0),
+      leadCount: funnelLeads.length
+    };
+  };
+
+  // --- USUÁRIOS E TIMES ---
+
+  const addUser = async (user: User) => {
+    if (!currentUser?.accountId) return;
+    const finalUser = { ...user, accountId: currentUser.accountId };
+    setUsers(prev => [...prev, finalUser]);
+    try {
+        await api.post('/users', finalUser);
+    } catch (e) { refreshData(); }
+  };
+
+  const updateUser = async (id: string, updates: Partial<User>) => {
+    setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u));
+    if (currentUser?.id === id) {
+        const updated = { ...currentUser, ...updates };
+        setCurrentUser(updated);
+        localStorage.setItem('nexus_user_session', JSON.stringify(updated));
+    }
+    try {
+        await api.patch(`/users/${id}`, updates);
+    } catch (e) { console.error(e); }
+  };
+
+  const deleteUser = async (id: string) => {
+    setUsers(prev => prev.filter(u => u.id !== id));
+    try {
+        await api.delete(`/users/${id}`);
+    } catch (e) { refreshData(); }
+  };
+
+  const addTeam = async (team: Team) => {
+    if (!currentUser?.accountId) return;
+    const newTeam = { ...team, accountId: currentUser.accountId };
+    setTeams(prev => [...prev, newTeam]);
+    try {
+        await api.post('/teams', newTeam);
+    } catch (e) { refreshData(); }
+  };
+
+  const deleteTeam = async (id: string) => {
+    setTeams(prev => prev.filter(t => t.id !== id));
+    setUsers(prev => prev.map(u => u.teamId === id ? { ...u, teamId: undefined } : u));
+    try {
+        await api.delete(`/teams/${id}`);
+    } catch (e) { refreshData(); }
+  };
+
+  // --- NEXUS ADMIN & BILLING (Secure API Calls) ---
+
+  const createAccount = async (account: Account, adminUser: User) => {
+      // Optimistic update for UI responsiveness
+      setAccounts(prev => [account, ...prev]);
+      try {
+          // Payload combines account + owner details
+          await api.post('/admin/accounts', {
+              companyName: account.companyName,
+              ownerName: adminUser.name,
+              email: adminUser.email,
+              password: adminUser.password, // Sent securely over HTTPS
+              plan: account.plan
+          });
+      } catch (e) {
+          console.error("Failed to create account", e);
+          refreshData();
+      }
+  };
+
+  const updateAccountStatus = async (accountId: string, status: 'active' | 'suspended') => {
+      setAccounts(prev => prev.map(a => a.id === accountId ? { ...a, status } : a));
+      try {
+          await api.patch(`/admin/accounts/${accountId}`, { status });
+      } catch (e) { refreshData(); }
+  };
+
+  const extendAccountSubscription = async (accountId: string, months: number) => {
+      // Optimistic update
+      setAccounts(prev => prev.map(a => {
+          if (a.id !== accountId) return a;
+          const currentExpiry = new Date(a.expiresAt);
+          const baseDate = currentExpiry < new Date() ? new Date() : currentExpiry;
+          baseDate.setMonth(baseDate.getMonth() + months);
+          return { ...a, expiresAt: baseDate.toISOString(), status: 'active' };
+      }));
+      try {
+          await api.patch(`/admin/accounts/${accountId}`, { extendMonths: months });
+      } catch (e) { refreshData(); }
   };
 
   const upgradePlan = async (plan: 'pro' | 'enterprise') => {
-    if (currentUser?.accountId) {
-      setAllAccounts(prev => prev.map(a => a.id === currentUser.accountId ? { ...a, plan } : a));
-    }
-  };
-
-  const addUser = (user: User) => setUsers(prev => [...prev, user]);
-  const updateUser = (id: string, updates: Partial<User>) => setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u));
-  const deleteUser = (id: string) => setUsers(prev => prev.filter(u => u.id !== id));
-
-  const addTeam = (team: Team) => setTeams(prev => [...prev, team]);
-  const deleteTeam = (id: string) => setTeams(prev => prev.filter(t => t.id !== id));
-
-  const addTask = (leadId: string, task: Task) => {
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: [...(l.tasks || []), task] } : l));
-  };
-
-  const toggleTask = (leadId: string, taskId: string) => {
-    setLeads(prev => prev.map(l => l.id === leadId ? {
-      ...l,
-      tasks: l.tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t)
-    } : l));
-  };
-
-  const deleteTask = (leadId: string, taskId: string) => {
-    setLeads(prev => prev.map(l => l.id === leadId ? {
-      ...l,
-      tasks: l.tasks.filter(t => t.id !== taskId)
-    } : l));
-  };
-
-  const createAccount = (account: Account, admin: User) => {
-    setAllAccounts(prev => [...prev, account]);
-    setUsers(prev => [...prev, admin]);
-  };
-
-  const updateAccountStatus = (id: string, status: 'active' | 'suspended') => {
-    setAllAccounts(prev => prev.map(a => a.id === id ? { ...a, status } : a));
-  };
-
-  const extendAccountSubscription = (id: string, months: number) => {
-    setAllAccounts(prev => prev.map(a => {
-      if (a.id === id) {
-        const expiry = new Date(a.expiresAt);
-        expiry.setMonth(expiry.getMonth() + months);
-        return { ...a, expiresAt: expiry.toISOString() };
+      if (!currentUser?.accountId) return;
+      try {
+          await api.post('/billing/upgrade', { accountId: currentUser.accountId, plan });
+          // Force refresh to get updated account status
+          await refreshData();
+      } catch (e) {
+          console.error("Upgrade failed", e);
       }
-      return a;
-    }));
-  };
-
-  const resetFilters = () => {
-    setFilters({
-      dateRange: '30_days',
-      teamId: null,
-      userId: null,
-      funnelId: null,
-      status: 'all'
-    });
   };
 
   return (
-    <CRMContext.Provider
-      value={{
-        leads,
-        users,
-        teams,
-        funnels,
-        customFields,
-        allAccounts,
-        currentUser,
-        activeFunnelId,
-        filters,
-        setFilters,
-        filteredLeads,
-        metrics,
-        login,
-        registerAccount,
-        updateLead,
-        addLead,
-        duplicateLead,
-        moveLead,
-        setActiveFunnelId,
-        addCustomField,
-        deleteCustomField,
-        addFunnel,
-        updateFunnel,
-        deleteFunnel,
-        addStage,
-        reorderStages,
-        deleteStage,
-        upgradePlan,
-        addUser,
-        updateUser,
-        deleteUser,
-        addTeam,
-        deleteTeam,
-        addTask,
-        toggleTask,
-        deleteTask,
-        createAccount,
-        updateAccountStatus,
-        extendAccountSubscription,
-        resetFilters
-      }}
-    >
+    <CRMContext.Provider value={{
+      funnels,
+      leads,
+      users,
+      teams,
+      customFields,
+      allAccounts: accounts,
+      activeFunnelId,
+      currentUser,
+      isLoading,
+      setActiveFunnelId,
+      login,
+      registerAccount,
+      logout,
+      refreshData,
+      addLead,
+      updateLead,
+      moveLead,
+      duplicateLead,
+      deleteLead,
+      addTask,
+      toggleTask,
+      deleteTask,
+      addFunnel,
+      updateFunnel,
+      deleteFunnel,
+      addStage,
+      reorderStages,
+      deleteStage,
+      addCustomField,
+      deleteCustomField,
+      getFunnelStats,
+      addUser,
+      updateUser,
+      deleteUser,
+      addTeam,
+      deleteTeam,
+      createAccount,
+      updateAccountStatus,
+      extendAccountSubscription,
+      upgradePlan
+    }}>
       {children}
     </CRMContext.Provider>
   );
 };
 
-/* =====================================================
-   HOOK
-===================================================== */
-
 export const useCRM = () => {
-  const ctx = useContext(CRMContext);
-  if (!ctx) {
-    throw new Error('useCRM must be used within CRMProvider');
-  }
-  return ctx;
+  const context = useContext(CRMContext);
+  if (!context) throw new Error("useCRM must be used within a CRMProvider");
+  return context;
 };

@@ -1,109 +1,105 @@
-
 import React from 'react';
-import {
-  LayoutDashboard,
-  Users,
-  Briefcase,
-  Target,
-  BarChart3,
-  LineChart,
-  Layers,
-  Settings,
-  Shield,
-} from 'lucide-react';
+import { useCRM } from '../context/CRMContext';
+import { LayoutDashboard, Kanban, Users, Settings, LogOut, Hexagon, Database, CheckSquare, Shield, ShieldCheck } from 'lucide-react';
+import { UserRole } from '../types';
 
 interface SidebarProps {
   currentView: string;
   onChangeView: (view: string) => void;
 }
 
-const Section = ({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) => (
-  <div className="mb-6">
-    <h4 className="px-4 mb-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-      {title}
-    </h4>
-    <div className="space-y-1">{children}</div>
-  </div>
-);
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
+  const { currentUser, logout } = useCRM();
 
-const Item = ({
-  view,
-  currentView,
-  onChangeView,
-  icon: Icon,
-  label,
-}: {
-  view: string;
-  currentView: string;
-  onChangeView: (view: string) => void;
-  icon: any;
-  label: string;
-}) => (
-  <button
-    onClick={() => onChangeView(view)}
-    className={`
-      w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium transition
-      ${
-        currentView === view
-          ? 'bg-blue-600 text-white shadow-sm'
-          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-      }
-    `}
-  >
-    <Icon size={18} />
-    <span>{label}</span>
-  </button>
-);
+  const isNexusAdmin = currentUser?.role === UserRole.NEXUS_ADMIN;
+  const isAccountAdmin = currentUser?.role === UserRole.ACCOUNT_ADMIN;
 
-export const Sidebar = ({ currentView, onChangeView }: SidebarProps) => {
+  let menuItems = [];
+
+  if (isNexusAdmin) {
+    // Menu exclusivo para Admin Nexus
+    menuItems = [
+        { id: 'admin-accounts', label: 'Gestão de Contas', icon: ShieldCheck },
+    ];
+  } else {
+    // Menu CRM Padrão (Account Admin e User)
+    // REMOVIDO: Teams/Equipes do menu principal
+    menuItems = [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'kanban', label: 'Pipeline', icon: Kanban },
+        { id: 'leads-db', label: 'Base de Leads', icon: Database },
+        { id: 'tasks', label: 'Tarefas', icon: CheckSquare },
+    ];
+  }
+
   return (
-    <aside className="w-64 min-h-screen bg-white border-r border-gray-200 flex flex-col px-2 py-6">
-
-      {/* LOGO / BRAND */}
-      <div className="px-4 mb-8">
-        <div className="text-lg font-black text-gray-900 tracking-tight">
-          Nexus
-        </div>
-        <div className="text-[10px] text-gray-500 font-semibold uppercase">
-          Enterprise CRM
-        </div>
+    <div className="w-64 bg-slate-900 h-screen flex flex-col text-white">
+      <div className="h-16 flex items-center px-6 border-b border-slate-800">
+        <Hexagon className="text-blue-500 w-8 h-8 mr-3 fill-current" />
+        <span className="font-bold text-xl tracking-tight">
+            {isNexusAdmin ? 'Nexus Admin' : 'Nexus CRM'}
+        </span>
       </div>
 
-      {/* CORE */}
-      <Section title="Core">
-        <Item view="dashboard" currentView={currentView} onChangeView={onChangeView} icon={LayoutDashboard} label="Visão Geral" />
-      </Section>
+      <nav className="flex-1 py-6 px-3 space-y-1">
+        {menuItems.map(item => (
+          <button
+            key={item.id}
+            onClick={() => onChangeView(item.id)}
+            className={`w-full flex items-center px-3 py-3 rounded-lg transition-all duration-200 ${
+              currentView === item.id 
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' 
+                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <item.icon className="w-5 h-5 mr-3" />
+            <span className="font-medium">{item.label}</span>
+          </button>
+        ))}
+      </nav>
 
-      {/* SALES */}
-      <Section title="Sales Execution">
-        <Item view="leads-db" currentView={currentView} onChangeView={onChangeView} icon={Users} label="Leads" />
-        <Item view="kanban" currentView={currentView} onChangeView={onChangeView} icon={Briefcase} label="Pipeline" />
-        <Item view="tasks" currentView={currentView} onChangeView={onChangeView} icon={Target} label="Tarefas" />
-      </Section>
+      <div className="p-4 border-t border-slate-800">
+        <div className="flex items-center gap-3 mb-4 px-2">
+            <img 
+                src={currentUser?.avatar} 
+                className="w-10 h-10 rounded-full border-2 border-slate-700" 
+                alt={currentUser?.name} 
+            />
+            <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold truncate text-white">{currentUser?.name}</p>
+                <div className="flex items-center gap-1">
+                    {isNexusAdmin && <Shield size={10} className="text-yellow-400" />}
+                    {isAccountAdmin && <Shield size={10} className="text-blue-400" />}
+                    <p className="text-xs text-slate-400 truncate capitalize">
+                        {isNexusAdmin ? 'Super Admin' : isAccountAdmin ? 'Conta Mãe' : 'Vendedor'}
+                    </p>
+                </div>
+            </div>
+        </div>
 
-      {/* ANALYTICS */}
-      <Section title="Performance & Analytics">
-        <Item view="analytics" currentView={currentView} onChangeView={onChangeView} icon={BarChart3} label="Analytics" />
-        <Item view="reports" currentView={currentView} onChangeView={onChangeView} icon={LineChart} label="Relatórios" />
-        <Item view="forecast" currentView={currentView} onChangeView={onChangeView} icon={Layers} label="Forecast" />
-      </Section>
-
-      {/* ADMIN */}
-      <Section title="Administração">
-        <Item view="settings" currentView={currentView} onChangeView={onChangeView} icon={Settings} label="Configurações" />
-        <Item view="permissions" currentView={currentView} onChangeView={onChangeView} icon={Shield} label="Permissões" />
-      </Section>
-
-      {/* FOOTER */}
-      <div className="mt-auto px-4 pt-6 border-t border-gray-100 text-[10px] text-gray-400">
-        Nexus CRM • Enterprise Edition
+        {/* Settings only for Account Admin (Owners) */}
+        {!isNexusAdmin && isAccountAdmin && (
+            <button 
+                onClick={() => onChangeView('settings')}
+                className={`flex items-center transition w-full px-3 py-2 rounded-lg mb-1 ${
+                    currentView === 'settings' 
+                    ? 'bg-slate-800 text-white' 
+                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                }`}
+            >
+                <Settings className="w-5 h-5 mr-3" />
+                <span>Configurações</span>
+            </button>
+        )}
+        
+        <button 
+            onClick={logout}
+            className="flex items-center text-red-400 hover:text-red-300 transition w-full px-3 py-2 hover:bg-slate-800 rounded-lg"
+        >
+            <LogOut className="w-5 h-5 mr-3" />
+            <span>Sair</span>
+        </button>
       </div>
-    </aside>
+    </div>
   );
 };

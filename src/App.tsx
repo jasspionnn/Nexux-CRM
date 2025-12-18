@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { CRMProvider, useCRM } from './context/CRMContext';
 import { Sidebar } from './components/Sidebar';
@@ -75,7 +74,7 @@ const AppContent = () => {
 
 export default function App() {
   return (
-    <CRMProvider initialData={{ leads: [], users: [], teams: [], funnels: [] }}>
+    <CRMProvider>
       <AppContent />
     </CRMProvider>
   );
