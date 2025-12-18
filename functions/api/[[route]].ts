@@ -71,7 +71,8 @@ app.post('/api/auth/login', async (c) => {
         role: user.role,
         avatar: user.avatar,
         teamId: user.team_id,
-        status: user.status
+        status: user.status,
+        lastLogin: new Date().toISOString() // Simular último acesso no login
     };
 
     return c.json({ user: formattedUser });
@@ -94,7 +95,7 @@ app.get('/api/sync/:accountId', async (c) => {
     }
 
     const leads = await c.env.DB.prepare('SELECT * FROM leads WHERE account_id = ?').bind(accountId).all();
-    const users = await c.env.DB.prepare('SELECT id, name, email, role, team_id as teamId, avatar, status FROM users WHERE account_id = ?').bind(accountId).all();
+    const users = await c.env.DB.prepare('SELECT id, name, email, role, team_id as teamId, avatar, status, joined_at as lastLogin FROM users WHERE account_id = ?').bind(accountId).all();
     const teams = await c.env.DB.prepare('SELECT * FROM teams WHERE account_id = ?').bind(accountId).all();
 
     // Formatar funis com suas etapas

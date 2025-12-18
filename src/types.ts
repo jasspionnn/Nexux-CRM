@@ -16,7 +16,6 @@ export interface Account {
   plan: 'trial' | 'pro' | 'enterprise';
   expiresAt: string;
   createdAt: string;
-  // Configurações de visibilidade
   visibilityConfig: {
     level: VisibilityLevel;
     allowUserExport: boolean;
@@ -37,6 +36,7 @@ export interface User {
   teamId?: string;
   status: 'active' | 'pending' | 'inactive';
   joinedAt?: string;
+  lastLogin?: string; // Adicionado para a nova UI
 }
 
 export interface Team {
