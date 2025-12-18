@@ -1,59 +1,102 @@
+/* ======================================================
+   NEXUS CRM — ENTERPRISE TYPES
+   Single Account (prepared for future multi-account)
+====================================================== */
+
+/* =========================
+   CORE ENUMS
+========================= */
 
 export enum UserRole {
-  NEXUS_ADMIN = 'NEXUS_ADMIN',   // Super Admin (Gere as contas)
-  ACCOUNT_ADMIN = 'ACCOUNT_ADMIN', // Conta Mãe (Dono da empresa)
-  USER = 'USER',                 // Vendedor (Usuário final)
+  NEXUS_ADMIN = 'NEXUS_ADMIN',        // Super Admin Nexus
+  ACCOUNT_ADMIN = 'ACCOUNT_ADMIN',    // Dono da empresa
+  MANAGER = 'MANAGER',                // Gestor de time
+  USER = 'USER',                      // Vendedor
 }
+
+export enum EntityStatus {
+  ACTIVE = 'active',
+  INACTIVE = 'inactive',
+  PENDING = 'pending',
+  SUSPENDED = 'suspended',
+}
+
+export enum DealOutcome {
+  WON = 'WON',
+  LOST = 'LOST',
+  OPEN = 'OPEN',
+}
+
+/* =========================
+   ACCOUNT (SINGLE ACCOUNT MODE)
+========================= */
 
 export interface Account {
   id: string;
   companyName: string;
   ownerName: string;
-  email: string; // Login email for the account admin
-  status: 'active' | 'suspended';
+  email: string;
+  status: EntityStatus;
   plan: 'trial' | 'pro' | 'enterprise';
-  expiresAt: string; // ISO Date
+  expiresAt: string; // ISO
   createdAt: string;
-  // Payment Integration Fields
+
+  // Billing (future-proof)
   stripeCustomerId?: string;
   subscriptionStatus?: 'active' | 'past_due' | 'canceled' | 'trialing';
 }
 
+/* =========================
+   USER & HIERARCHY
+========================= */
+
 export interface User {
   id: string;
-  accountId?: string; // Optional for Nexus Admin, Required for others
+  accountId?: string; // optional for Nexus Admin
   name: string;
   email: string;
-  password?: string;
   role: UserRole;
-  avatar: string;
+  avatar?: string;
   teamId?: string;
-  status: 'active' | 'pending' | 'inactive';
+  status: EntityStatus;
   joinedAt?: string;
 }
 
+/* =========================
+   TEAM
+========================= */
+
 export interface Team {
   id: string;
-  accountId: string; // Linked to account
+  accountId: string;
   name: string;
   goal: number;
 }
+
+/* =========================
+   FUNNEL & STAGES
+========================= */
 
 export interface Stage {
   id: string;
   name: string;
   color: string;
   order: number;
+  outcome?: DealOutcome; // WON | LOST | OPEN
 }
 
 export interface Funnel {
   id: string;
-  accountId: string; // Linked to account
+  accountId: string;
   name: string;
   stages: Stage[];
   defaultWonStageId?: string;
   defaultLostStageId?: string;
 }
+
+/* =========================
+   NOTES & TASKS
+========================= */
 
 export interface Note {
   id: string;
@@ -70,6 +113,10 @@ export interface Task {
   type: 'call' | 'email' | 'meeting' | 'todo';
 }
 
+/* =========================
+   CUSTOM FIELDS (ENTERPRISE)
+========================= */
+
 export type CustomFieldType = 'text' | 'select' | 'multiselect';
 export type CustomFieldContext = 'lead_detail' | 'lost_reason';
 
@@ -80,7 +127,7 @@ export interface CustomFieldOption {
 
 export interface CustomFieldDefinition {
   id: string;
-  accountId: string; // Linked to account
+  accountId: string;
   name: string;
   type: CustomFieldType;
   context: CustomFieldContext;
@@ -89,29 +136,79 @@ export interface CustomFieldDefinition {
   visibleStageIds: string[];
 }
 
+/* =========================
+   LEAD (CORE CRM ENTITY)
+========================= */
+
 export interface Lead {
   id: string;
-  accountId: string; // Linked to account
+  accountId: string;
+
   title: string;
   company: string;
   value: number;
+
   contactName: string;
   contactEmail: string;
   contactPhone: string;
+
   funnelId: string;
   stageId: string;
   assignedUserId: string;
-  createdAt: string;
+
+  probability: number; // 0–100
+  outcome?: DealOutcome;
+
+  tags: string[];
   notes: Note[];
   tasks: Task[];
-  tags: string[];
-  probability: number;
+
   customValues?: Record<string, any>;
+
+  createdAt: string;
 }
 
-export interface DashboardStats {
+/* =========================
+   DASHBOARD & ANALYTICS
+========================= */
+
+export interface DashboardKPIs {
   totalRevenue: number;
+  pipelineValue: number;
   dealsWon: number;
-  conversionRate: number;
+  dealsLost: number;
+  openDeals: number;
+  winRate: number;
   avgDealSize: number;
+}
+
+export interface TimeSeriesPoint {
+  date: string;
+  value: number;
+}
+
+export interface FunnelStageMetric {
+  stageId: string;
+  stageName: string;
+  count: number;
+  value: number;
+  conversionFromPrevious?: number;
+}
+
+/* =========================
+   GLOBAL FILTERS (ENTERPRISE)
+========================= */
+
+export interface GlobalFilters {
+  dateRange: {
+    from: string | null;
+    to: string | null;
+  };
+  funnelId?: string;
+  teamId?: string;
+  userId?: string;
+  tags?: string[];
+  minValue?: number;
+  maxValue?: number;
+  outcome?: DealOutcome;
 }

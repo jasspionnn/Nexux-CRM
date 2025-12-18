@@ -1,105 +1,157 @@
 import React from 'react';
-import { useCRM } from '../context/CRMContext';
-import { LayoutDashboard, Kanban, Users, Settings, LogOut, Hexagon, Database, CheckSquare, Shield, ShieldCheck } from 'lucide-react';
-import { UserRole } from '../types';
+import {
+  LayoutDashboard,
+  Briefcase,
+  Users,
+  Target,
+  BarChart3,
+  Settings,
+  Layers,
+  ClipboardList,
+  Sliders,
+} from 'lucide-react';
+import { NavLink } from 'react-router-dom';
 
-interface SidebarProps {
-  currentView: string;
-  onChangeView: (view: string) => void;
+interface NavItem {
+  label: string;
+  path: string;
+  icon: React.ElementType;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
-  const { currentUser, logout } = useCRM();
+interface NavSection {
+  title: string;
+  items: NavItem[];
+}
 
-  const isNexusAdmin = currentUser?.role === UserRole.NEXUS_ADMIN;
-  const isAccountAdmin = currentUser?.role === UserRole.ACCOUNT_ADMIN;
+const sections: NavSection[] = [
+  {
+    title: 'Sales',
+    items: [
+      {
+        label: 'Visão Geral',
+        path: '/dashboard',
+        icon: LayoutDashboard,
+      },
+      {
+        label: 'Leads',
+        path: '/leads',
+        icon: Briefcase,
+      },
+      {
+        label: 'Funis',
+        path: '/funnels',
+        icon: Layers,
+      },
+      {
+        label: 'Metas',
+        path: '/goals',
+        icon: Target,
+      },
+    ],
+  },
+  {
+    title: 'Operations',
+    items: [
+      {
+        label: 'Times',
+        path: '/teams',
+        icon: Users,
+      },
+      {
+        label: 'Atividades',
+        path: '/activities',
+        icon: ClipboardList,
+      },
+    ],
+  },
+  {
+    title: 'Insights',
+    items: [
+      {
+        label: 'Relatórios',
+        path: '/reports',
+        icon: BarChart3,
+      },
+    ],
+  },
+  {
+    title: 'Admin',
+    items: [
+      {
+        label: 'Configurações',
+        path: '/settings',
+        icon: Settings,
+      },
+      {
+        label: 'Campos Customizados',
+        path: '/custom-fields',
+        icon: Sliders,
+      },
+    ],
+  },
+];
 
-  let menuItems = [];
-
-  if (isNexusAdmin) {
-    // Menu exclusivo para Admin Nexus
-    menuItems = [
-        { id: 'admin-accounts', label: 'Gestão de Contas', icon: ShieldCheck },
-    ];
-  } else {
-    // Menu CRM Padrão (Account Admin e User)
-    // REMOVIDO: Teams/Equipes do menu principal
-    menuItems = [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'kanban', label: 'Pipeline', icon: Kanban },
-        { id: 'leads-db', label: 'Base de Leads', icon: Database },
-        { id: 'tasks', label: 'Tarefas', icon: CheckSquare },
-    ];
-  }
-
+export const Sidebar = () => {
   return (
-    <div className="w-64 bg-slate-900 h-screen flex flex-col text-white">
-      <div className="h-16 flex items-center px-6 border-b border-slate-800">
-        <Hexagon className="text-blue-500 w-8 h-8 mr-3 fill-current" />
-        <span className="font-bold text-xl tracking-tight">
-            {isNexusAdmin ? 'Nexus Admin' : 'Nexus CRM'}
-        </span>
+    <aside className="w-64 bg-gray-900 text-gray-100 h-screen flex flex-col border-r border-gray-800">
+
+      {/* BRAND */}
+      <div className="px-6 py-5 border-b border-gray-800">
+        <h2 className="text-lg font-bold tracking-tight">
+          Nexus CRM
+        </h2>
+        <p className="text-xs text-gray-400 mt-1">
+          Enterprise Platform
+        </p>
       </div>
 
-      <nav className="flex-1 py-6 px-3 space-y-1">
-        {menuItems.map(item => (
-          <button
-            key={item.id}
-            onClick={() => onChangeView(item.id)}
-            className={`w-full flex items-center px-3 py-3 rounded-lg transition-all duration-200 ${
-              currentView === item.id 
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' 
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <item.icon className="w-5 h-5 mr-3" />
-            <span className="font-medium">{item.label}</span>
-          </button>
+      {/* NAV */}
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
+
+        {sections.map(section => (
+          <div key={section.title}>
+            <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+              {section.title}
+            </p>
+
+            <ul className="space-y-1">
+              {section.items.map(item => (
+                <li key={item.path}>
+                  <NavLink
+                    to={item.path}
+                    className={({ isActive }) =>
+                      `
+                      flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
+                      ${
+                        isActive
+                          ? 'bg-gray-800 text-white'
+                          : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800/60'
+                      }
+                      `
+                    }
+                  >
+                    <item.icon size={18} />
+                    <span>{item.label}</span>
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </div>
         ))}
+
       </nav>
 
-      <div className="p-4 border-t border-slate-800">
-        <div className="flex items-center gap-3 mb-4 px-2">
-            <img 
-                src={currentUser?.avatar} 
-                className="w-10 h-10 rounded-full border-2 border-slate-700" 
-                alt={currentUser?.name} 
-            />
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold truncate text-white">{currentUser?.name}</p>
-                <div className="flex items-center gap-1">
-                    {isNexusAdmin && <Shield size={10} className="text-yellow-400" />}
-                    {isAccountAdmin && <Shield size={10} className="text-blue-400" />}
-                    <p className="text-xs text-slate-400 truncate capitalize">
-                        {isNexusAdmin ? 'Super Admin' : isAccountAdmin ? 'Conta Mãe' : 'Vendedor'}
-                    </p>
-                </div>
-            </div>
+      {/* FOOTER / CONTEXT */}
+      <div className="px-6 py-4 border-t border-gray-800 text-xs text-gray-400">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-green-500" />
+          Conta ativa
         </div>
-
-        {/* Settings only for Account Admin (Owners) */}
-        {!isNexusAdmin && isAccountAdmin && (
-            <button 
-                onClick={() => onChangeView('settings')}
-                className={`flex items-center transition w-full px-3 py-2 rounded-lg mb-1 ${
-                    currentView === 'settings' 
-                    ? 'bg-slate-800 text-white' 
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                }`}
-            >
-                <Settings className="w-5 h-5 mr-3" />
-                <span>Configurações</span>
-            </button>
-        )}
-        
-        <button 
-            onClick={logout}
-            className="flex items-center text-red-400 hover:text-red-300 transition w-full px-3 py-2 hover:bg-slate-800 rounded-lg"
-        >
-            <LogOut className="w-5 h-5 mr-3" />
-            <span>Sair</span>
-        </button>
+        <div className="mt-1">
+          Plano: Enterprise
+        </div>
       </div>
-    </div>
+
+    </aside>
   );
 };
