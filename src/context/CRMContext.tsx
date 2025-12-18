@@ -14,7 +14,6 @@ interface CRMContextType {
   currentUser: User | null;
   isLoading: boolean;
   
-  // Novos dados computados (respeitando visibilidade)
   visibleLeads: Lead[];
   visibleUsers: User[];
   currentAccount: Account | null;
@@ -48,6 +47,7 @@ interface CRMContextType {
   updateUser: (id: string, updates: Partial<User>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   addTeam: (team: Team) => Promise<void>;
+  updateTeam: (id: string, updates: Partial<Team>) => Promise<void>;
   deleteTeam: (id: string) => Promise<void>;
 
   createAccount: (account: Account, adminUser: User) => Promise<void>;
@@ -86,6 +86,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (!currentUser) return;
       setIsLoading(true);
       try {
+          // Fix: Changed UserRole.NEX_ADMIN to UserRole.NEXUS_ADMIN to match defined types
           if (currentUser.role === UserRole.NEXUS_ADMIN) {
                const data = await api.get<{accounts: Account[]}>('/admin/accounts');
                setAccounts(data.accounts || []);
@@ -96,7 +97,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                setUsers(data.users || []);
                setTeams(data.teams || []);
                setCustomFields(data.customFields || []);
-               // Accounts sync for non-nexus admin just to get visibility config
                const accData = await api.get<any>(`/admin/accounts`); 
                setAccounts(accData.accounts || []);
 
@@ -115,8 +115,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (currentUser) refreshData();
   }, [currentUser]);
 
-  // --- COMPPUTED DATA (VISIBILITY LOGIC) ---
-  
   const currentAccount = useMemo(() => {
     if (!currentUser?.accountId) return null;
     return accounts.find(a => a.id === currentUser.accountId) || null;
@@ -127,9 +125,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (currentUser.role === UserRole.NEXUS_ADMIN || currentUser.role === UserRole.ACCOUNT_ADMIN) {
       return leads;
     }
-
     const level = currentAccount?.visibilityConfig?.level || 'public';
-
     if (level === 'public') return leads;
     if (level === 'private') return leads.filter(l => l.assignedUserId === currentUser.id);
     if (level === 'team') {
@@ -148,8 +144,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (level === 'public' || level === 'team') return users;
     return users.filter(u => u.id === currentUser.id);
   }, [users, currentUser, currentAccount]);
-
-  // --- ACTIONS ---
 
   const login = async (email: string, pass: string): Promise<string | boolean> => {
       setIsLoading(true);
@@ -186,7 +180,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Rest of original implementation (leads, funnels, etc.) simplified for clarity
   const addLead = async (lead: Lead) => { setLeads(prev => [...prev, lead]); await api.post('/leads', lead); };
   const updateLead = async (id: string, updates: Partial<Lead>) => { 
     setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l));
@@ -228,14 +221,21 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const addCustomField = async (f: CustomFieldDefinition) => { setCustomFields(prev => [...prev, f]); await api.post('/custom-fields', f); };
   const deleteCustomField = async (id: string) => { setCustomFields(prev => prev.filter(f => f.id !== id)); await api.delete(`/custom-fields/${id}`); };
   const getFunnelStats = (fid: string) => ({ totalValue: visibleLeads.filter(l => l.funnelId === fid).reduce((a, b) => a + b.value, 0), leadCount: visibleLeads.filter(l => l.funnelId === fid).length });
+  
   const addUser = async (u: User) => { setUsers(prev => [...prev, u]); await api.post('/users', u); };
   const updateUser = async (id: string, updates: Partial<User>) => { 
     setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u));
     await api.patch(`/users/${id}`, updates);
   };
   const deleteUser = async (id: string) => { setUsers(prev => prev.filter(u => u.id !== id)); await api.delete(`/users/${id}`); };
+  
   const addTeam = async (t: Team) => { setTeams(prev => [...prev, t]); await api.post('/teams', t); };
+  const updateTeam = async (id: string, updates: Partial<Team>) => {
+    setTeams(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    await api.patch(`/teams/${id}`, updates);
+  };
   const deleteTeam = async (id: string) => { setTeams(prev => prev.filter(t => t.id !== id)); await api.delete(`/teams/${id}`); };
+
   const createAccount = async (a: Account, u: User) => { setAccounts(prev => [a, ...prev]); await api.post('/admin/accounts', { companyName: a.companyName, ownerName: u.name, email: u.email, password: u.password, plan: a.plan }); };
   const updateAccountStatus = async (id: string, s: any) => { setAccounts(prev => prev.map(a => a.id === id ? { ...a, status: s } : a)); await api.patch(`/admin/accounts/${id}`, { status: s }); };
   const extendAccountSubscription = async (id: string, m: number) => { /* logic */ };
@@ -250,7 +250,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       addLead, updateLead, moveLead, duplicateLead, deleteLead, addTask, toggleTask, deleteTask,
       addFunnel, updateFunnel, deleteFunnel, addStage, reorderStages, deleteStage,
       addCustomField, deleteCustomField, getFunnelStats, addUser, updateUser, deleteUser,
-      addTeam, deleteTeam, createAccount, updateAccountStatus, extendAccountSubscription, upgradePlan,
+      addTeam, updateTeam, deleteTeam, createAccount, updateAccountStatus, extendAccountSubscription, upgradePlan,
       updateVisibilitySettings
     }}>
       {children}
