@@ -1,34 +1,3 @@
-import { Lead, User, Team, Funnel, UserRole } from './types';
-
-const mockData = {
-  leads: [] as Lead[],
-  users: [
-    {
-      id: 'u1',
-      name: 'Admin Nexus',
-      email: 'admin@nexus.com',
-      role: UserRole.ACCOUNT_ADMIN,
-      avatar: '',
-      status: 'active',
-    },
-  ] as User[],
-  teams: [
-    {
-      id: 't1',
-      accountId: 'acc1',
-      name: 'Time Comercial',
-      goal: 100000,
-    },
-  ] as Team[],
-  funnels: [
-    {
-      id: 'f1',
-      accountId: 'acc1',
-      name: 'Funil Principal',
-      stages: [],
-    },
-  ] as Funnel[],
-};
 
 import React, { useState, useEffect } from 'react';
 import { CRMProvider, useCRM } from './context/CRMContext';
@@ -106,9 +75,8 @@ const AppContent = () => {
 
 export default function App() {
   return (
-    <CRMProvider initialData={mockData}>
-     <AppContent />
+    <CRMProvider initialData={{ leads: [], users: [], teams: [], funnels: [] }}>
+      <AppContent />
     </CRMProvider>
-
   );
 }

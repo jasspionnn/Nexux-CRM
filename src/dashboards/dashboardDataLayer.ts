@@ -1,15 +1,6 @@
-import { Lead, Team } from '../types';
+import { Lead, User, Team, Funnel } from '../types';
 
-/* =====================================================
-   TYPES — ENTERPRISE DATA LAYER
-===================================================== */
-
-export interface RevenueEvolutionPoint {
-  date: string;
-  value: number;
-}
-
-export interface DashboardMetrics {
+export type DashboardMetrics = {
   revenue: number;
   pipeline: number;
   wonCount: number;
@@ -17,125 +8,67 @@ export interface DashboardMetrics {
   openCount: number;
   winRate: number;
   avgTicket: number;
-
   goal: number;
   goalProgress: number;
-
-  evolution: RevenueEvolutionPoint[];
-}
-
-/* =====================================================
-   HELPERS
-===================================================== */
-
-function formatDayMonth(date: Date) {
-  return date.toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit'
-  });
-}
-
-/* =====================================================
-   MAIN BUILDER — SALESFORCE STYLE
-===================================================== */
+  evolution: { date: string; value: number }[];
+};
 
 export function buildDashboardMetrics({
   leads,
   teams,
-  days = 7
 }: {
   leads: Lead[];
   teams: Team[];
-  days?: number;
 }): DashboardMetrics {
 
-  /* ---------------------------
-     Deal Segmentation
-  ---------------------------- */
+  const won = leads.filter(l => l.probability === 100);
+  const lost = leads.filter(l => l.probability === 0);
+  const open = leads.filter(l => l.probability > 0 && l.probability < 100);
 
-  const wonLeads = leads.filter(l => l.probability === 100);
-  const lostLeads = leads.filter(l => l.probability === 0);
-  const openLeads = leads.filter(
-    l => l.probability > 0 && l.probability < 100
-  );
+  const revenue = won.reduce((a, b) => a + b.value, 0);
+  const pipeline = open.reduce((a, b) => a + b.value, 0);
 
-  /* ---------------------------
-     Revenue Metrics
-  ---------------------------- */
+  const totalClosed = won.length + lost.length;
+  const winRate = totalClosed > 0 ? (won.length / totalClosed) * 100 : 0;
+  const avgTicket = won.length > 0 ? revenue / won.length : 0;
 
-  const revenue = wonLeads.reduce(
-    (acc, lead) => acc + lead.value,
-    0
-  );
+  const goal = teams.reduce((a, t) => a + t.goal, 0);
+  const goalProgress = goal > 0 ? (revenue / goal) * 100 : 0;
 
-  const pipeline = openLeads.reduce(
-    (acc, lead) => acc + lead.value,
-    0
-  );
-
-  const totalClosed = wonLeads.length + lostLeads.length;
-
-  const winRate =
-    totalClosed > 0
-      ? (wonLeads.length / totalClosed) * 100
-      : 0;
-
-  const avgTicket =
-    wonLeads.length > 0
-      ? revenue / wonLeads.length
-      : 0;
-
-  /* ---------------------------
-     Goal Metrics
-  ---------------------------- */
-
-  const goal = teams.reduce(
-    (acc, team) => acc + team.goal,
-    0
-  );
-
-  const goalProgress =
-    goal > 0
-      ? (revenue / goal) * 100
-      : 0;
-
-  /* ---------------------------
-     Revenue Evolution
-  ---------------------------- */
-
+  // evolução últimos 7 dias
   const evolutionMap: Record<string, number> = {};
-
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    evolutionMap[formatDayMonth(date)] = 0;
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    evolutionMap[key] = 0;
   }
 
-  wonLeads.forEach(lead => {
-    const key = formatDayMonth(new Date(lead.createdAt));
+  won.forEach(l => {
+    const key = new Date(l.createdAt).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+    });
     if (evolutionMap[key] !== undefined) {
-      evolutionMap[key] += lead.value;
+      evolutionMap[key] += l.value;
     }
   });
 
-  const evolution = Object.entries(evolutionMap).map(
-    ([date, value]) => ({ date, value })
-  );
-
-  /* ---------------------------
-     FINAL OBJECT
-  ---------------------------- */
+  const evolution = Object.entries(evolutionMap).map(([date, value]) => ({
+    date,
+    value,
+  }));
 
   return {
     revenue,
     pipeline,
-    wonCount: wonLeads.length,
-    lostCount: lostLeads.length,
-    openCount: openLeads.length,
+    wonCount: won.length,
+    lostCount: lost.length,
+    openCount: open.length,
     winRate,
     avgTicket,
     goal,
     goalProgress,
-    evolution
+    evolution,
   };
 }

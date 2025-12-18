@@ -1,157 +1,109 @@
+
 import React from 'react';
 import {
   LayoutDashboard,
-  Briefcase,
   Users,
+  Briefcase,
   Target,
   BarChart3,
-  Settings,
+  LineChart,
   Layers,
-  ClipboardList,
-  Sliders,
+  Settings,
+  Shield,
 } from 'lucide-react';
-import { NavLink } from 'react-router-dom';
 
-interface NavItem {
-  label: string;
-  path: string;
-  icon: React.ElementType;
+interface SidebarProps {
+  currentView: string;
+  onChangeView: (view: string) => void;
 }
 
-interface NavSection {
+const Section = ({
+  title,
+  children,
+}: {
   title: string;
-  items: NavItem[];
-}
+  children: React.ReactNode;
+}) => (
+  <div className="mb-6">
+    <h4 className="px-4 mb-2 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+      {title}
+    </h4>
+    <div className="space-y-1">{children}</div>
+  </div>
+);
 
-const sections: NavSection[] = [
-  {
-    title: 'Sales',
-    items: [
-      {
-        label: 'Visão Geral',
-        path: '/dashboard',
-        icon: LayoutDashboard,
-      },
-      {
-        label: 'Leads',
-        path: '/leads',
-        icon: Briefcase,
-      },
-      {
-        label: 'Funis',
-        path: '/funnels',
-        icon: Layers,
-      },
-      {
-        label: 'Metas',
-        path: '/goals',
-        icon: Target,
-      },
-    ],
-  },
-  {
-    title: 'Operations',
-    items: [
-      {
-        label: 'Times',
-        path: '/teams',
-        icon: Users,
-      },
-      {
-        label: 'Atividades',
-        path: '/activities',
-        icon: ClipboardList,
-      },
-    ],
-  },
-  {
-    title: 'Insights',
-    items: [
-      {
-        label: 'Relatórios',
-        path: '/reports',
-        icon: BarChart3,
-      },
-    ],
-  },
-  {
-    title: 'Admin',
-    items: [
-      {
-        label: 'Configurações',
-        path: '/settings',
-        icon: Settings,
-      },
-      {
-        label: 'Campos Customizados',
-        path: '/custom-fields',
-        icon: Sliders,
-      },
-    ],
-  },
-];
+const Item = ({
+  view,
+  currentView,
+  onChangeView,
+  icon: Icon,
+  label,
+}: {
+  view: string;
+  currentView: string;
+  onChangeView: (view: string) => void;
+  icon: any;
+  label: string;
+}) => (
+  <button
+    onClick={() => onChangeView(view)}
+    className={`
+      w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium transition
+      ${
+        currentView === view
+          ? 'bg-blue-600 text-white shadow-sm'
+          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+      }
+    `}
+  >
+    <Icon size={18} />
+    <span>{label}</span>
+  </button>
+);
 
-export const Sidebar = () => {
+export const Sidebar = ({ currentView, onChangeView }: SidebarProps) => {
   return (
-    <aside className="w-64 bg-gray-900 text-gray-100 h-screen flex flex-col border-r border-gray-800">
+    <aside className="w-64 min-h-screen bg-white border-r border-gray-200 flex flex-col px-2 py-6">
 
-      {/* BRAND */}
-      <div className="px-6 py-5 border-b border-gray-800">
-        <h2 className="text-lg font-bold tracking-tight">
-          Nexus CRM
-        </h2>
-        <p className="text-xs text-gray-400 mt-1">
-          Enterprise Platform
-        </p>
-      </div>
-
-      {/* NAV */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
-
-        {sections.map(section => (
-          <div key={section.title}>
-            <p className="px-3 mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
-              {section.title}
-            </p>
-
-            <ul className="space-y-1">
-              {section.items.map(item => (
-                <li key={item.path}>
-                  <NavLink
-                    to={item.path}
-                    className={({ isActive }) =>
-                      `
-                      flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition
-                      ${
-                        isActive
-                          ? 'bg-gray-800 text-white'
-                          : 'text-gray-400 hover:text-gray-100 hover:bg-gray-800/60'
-                      }
-                      `
-                    }
-                  >
-                    <item.icon size={18} />
-                    <span>{item.label}</span>
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-
-      </nav>
-
-      {/* FOOTER / CONTEXT */}
-      <div className="px-6 py-4 border-t border-gray-800 text-xs text-gray-400">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-green-500" />
-          Conta ativa
+      {/* LOGO / BRAND */}
+      <div className="px-4 mb-8">
+        <div className="text-lg font-black text-gray-900 tracking-tight">
+          Nexus
         </div>
-        <div className="mt-1">
-          Plano: Enterprise
+        <div className="text-[10px] text-gray-500 font-semibold uppercase">
+          Enterprise CRM
         </div>
       </div>
 
+      {/* CORE */}
+      <Section title="Core">
+        <Item view="dashboard" currentView={currentView} onChangeView={onChangeView} icon={LayoutDashboard} label="Visão Geral" />
+      </Section>
+
+      {/* SALES */}
+      <Section title="Sales Execution">
+        <Item view="leads-db" currentView={currentView} onChangeView={onChangeView} icon={Users} label="Leads" />
+        <Item view="kanban" currentView={currentView} onChangeView={onChangeView} icon={Briefcase} label="Pipeline" />
+        <Item view="tasks" currentView={currentView} onChangeView={onChangeView} icon={Target} label="Tarefas" />
+      </Section>
+
+      {/* ANALYTICS */}
+      <Section title="Performance & Analytics">
+        <Item view="analytics" currentView={currentView} onChangeView={onChangeView} icon={BarChart3} label="Analytics" />
+        <Item view="reports" currentView={currentView} onChangeView={onChangeView} icon={LineChart} label="Relatórios" />
+        <Item view="forecast" currentView={currentView} onChangeView={onChangeView} icon={Layers} label="Forecast" />
+      </Section>
+
+      {/* ADMIN */}
+      <Section title="Administração">
+        <Item view="settings" currentView={currentView} onChangeView={onChangeView} icon={Settings} label="Configurações" />
+        <Item view="permissions" currentView={currentView} onChangeView={onChangeView} icon={Shield} label="Permissões" />
+      </Section>
+
+      {/* FOOTER */}
+      <div className="mt-auto px-4 pt-6 border-t border-gray-100 text-[10px] text-gray-400">
+        Nexus CRM • Enterprise Edition
+      </div>
     </aside>
   );
 };
