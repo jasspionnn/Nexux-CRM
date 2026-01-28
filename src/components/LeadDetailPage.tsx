@@ -97,33 +97,19 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   // States
   const [activeTab, setActiveTab] = useState<'notes' | 'tasks'>('notes');
   const [noteText, setNoteText] = useState('');
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    negotiation: true,
-    contact: true,
-    custom: true
-  });
   
   // Tasks Form State
   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
   const [newTaskData, setNewTaskData] = useState<{title: string, date: string, type: 'call' | 'email' | 'meeting' | 'todo'}>({
       title: '',
-      date: '',
+      date: new Date().toISOString().slice(0, 16),
       type: 'todo'
   });
   
-  // Modals / Overlays states
-  const [showLostConfirm, setShowLostConfirm] = useState(false);
-  const [lostFormValues, setLostFormValues] = useState<Record<string, any>>({});
-  const [showDuplicateUI, setShowDuplicateUI] = useState(false);
-  const [duplicateFunnelId, setDuplicateFunnelId] = useState('');
-  const [duplicateStageId, setDuplicateStageId] = useState('');
-
   if (!lead) return <div className="p-8">Lead não encontrado. <button onClick={onBack} className="text-blue-500 underline">Voltar</button></div>;
 
   const currentFunnel = funnels.find(f => f.id === lead.funnelId);
   const currentStageIndex = currentFunnel?.stages.findIndex(s => s.id === lead.stageId) ?? -1;
-
-  // --- Logic Helpers ---
 
   const handleSaveNote = () => {
     if (!noteText.trim()) return;
@@ -149,7 +135,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
           completed: false
       });
       
-      setNewTaskData({ title: '', date: '', type: 'todo' });
+      setNewTaskData({ title: '', date: new Date().toISOString().slice(0, 16), type: 'todo' });
       setIsTaskFormOpen(false);
   };
 
@@ -169,64 +155,17 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
     updateLead(lead.id, { notes: [newNote, ...lead.notes] });
   };
 
-  const initiateMarkAsLost = () => {
-      const hasLostFields = customFields.some(
-          f => f.funnelId === lead.funnelId && f.context === 'lost_reason'
-      );
-      if (hasLostFields) {
-          setShowLostConfirm(true);
-      } else {
-          confirmMarkAsLost();
-      }
-  };
-
-  const confirmMarkAsLost = () => {
-    const mergedCustomValues = { ...lead.customValues, ...lostFormValues };
-    const updates: Partial<Lead> = { probability: 0, customValues: mergedCustomValues };
-    if (currentFunnel?.defaultLostStageId) updates.stageId = currentFunnel.defaultLostStageId;
-    const newNote = { id: `sys-${Date.now()}`, content: `🔴 Negócio marcado como PERDIDO.`, createdAt: new Date().toISOString(), authorName: 'Sistema' };
-    updateLead(lead.id, { ...updates, notes: [newNote, ...lead.notes] });
-    setShowLostConfirm(false);
-  };
-
   const handleTransferFunnel = (targetFunnelId: string) => {
       const targetFunnel = funnels.find(f => f.id === targetFunnelId);
       if (!targetFunnel) return;
-      
-      // Ao trocar de funil, movemos para a primeira etapa do novo funil por padrão
       const targetStageId = targetFunnel.stages[0]?.id || '';
-      
       const newNote = {
           id: `sys-mov-${Date.now()}`,
           content: `🔄 Lead encaminhado do funil "${currentFunnel?.name}" para o funil "${targetFunnel.name}".`,
           createdAt: new Date().toISOString(),
           authorName: 'Sistema'
       };
-      
-      updateLead(lead.id, { 
-          funnelId: targetFunnelId, 
-          stageId: targetStageId,
-          notes: [newNote, ...lead.notes]
-      });
-  };
-
-  const visibleStandardFields = customFields.filter(field => {
-      if (field.context === 'lost_reason') return false; 
-      if (field.funnelId !== lead.funnelId) return false;
-      if (field.visibleStageIds.length > 0 && !field.visibleStageIds.includes(lead.stageId)) return false;
-      return true;
-  });
-
-  const getCustomValue = (fieldId: string) => lead.customValues?.[fieldId];
-
-  const handleCustomFieldChange = (field: CustomFieldDefinition, value: any) => {
-      const currentValues = lead.customValues || {};
-      let newValue = value;
-      if (field.type === 'multiselect') {
-          const currentArray = (currentValues[field.id] as string[]) || [];
-          newValue = currentArray.includes(value) ? currentArray.filter(v => v !== value) : [...currentArray, value];
-      }
-      updateLead(lead.id, { customValues: { ...currentValues, [field.id]: newValue } });
+      updateLead(lead.id, { funnelId: targetFunnelId, stageId: targetStageId, notes: [newNote, ...lead.notes] });
   };
 
   const isWon = lead.probability === 100;
@@ -234,8 +173,6 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
 
   return (
     <div className="flex flex-col h-full bg-gray-50 overflow-hidden animate-fade-in relative">
-        
-        {/* === HEADER === */}
         <header className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shrink-0 shadow-sm z-20">
             <div className="flex items-center gap-5 flex-1">
                 <button onClick={onBack} className="bg-gray-50 p-3 rounded-xl hover:bg-gray-100 text-gray-500 transition-all border border-gray-100">
@@ -271,16 +208,10 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                      </div>
                  ) : (
                     <>
-                        <button 
-                            onClick={initiateMarkAsLost}
-                            className="flex items-center gap-2 px-5 py-3 border border-red-100 text-red-600 hover:bg-red-50 rounded-xl font-bold text-sm transition-all"
-                        >
+                        <button onClick={() => updateLead(lead.id, { probability: 0 })} className="flex items-center gap-2 px-5 py-3 border border-red-100 text-red-600 hover:bg-red-50 rounded-xl font-bold text-sm transition-all">
                             <X size={18} /> Perda
                         </button>
-                        <button 
-                            onClick={handleMarkAsWon}
-                            className="flex items-center gap-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-green-100"
-                        >
+                        <button onClick={handleMarkAsWon} className="flex items-center gap-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-green-100">
                             <ThumbsUp size={18} /> Ganho
                         </button>
                     </>
@@ -288,7 +219,6 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
             </div>
         </header>
 
-        {/* === PIPELINE BAR === */}
         <div className="bg-white border-b border-gray-100 px-8 py-5 shrink-0 overflow-x-auto">
              <div className="flex w-full min-w-[700px] h-10 rounded-xl overflow-hidden shadow-inner bg-gray-50 border border-gray-100">
                  {currentFunnel?.stages.map((stage, index) => {
@@ -298,18 +228,10 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                      else if (index < currentStageIndex) status = 'completed';
                      else if (index === currentStageIndex) status = 'current';
 
-                     const bgColor = 
-                        status === 'completed' ? 'bg-green-50 text-green-600' :
-                        status === 'current' ? 'bg-blue-600 text-white' :
-                        status === 'lost' ? 'bg-red-600 text-white' :
-                        'bg-transparent text-gray-400';
+                     const bgColor = status === 'completed' ? 'bg-green-50 text-green-600' : status === 'current' ? 'bg-blue-600 text-white' : status === 'lost' ? 'bg-red-600 text-white' : 'bg-transparent text-gray-400';
 
                      return (
-                         <div 
-                            key={stage.id} 
-                            onClick={() => !isWon && !isLost && updateLead(lead.id, { stageId: stage.id })}
-                            className={`flex-1 flex items-center justify-center text-[10px] font-black uppercase tracking-widest cursor-pointer transition-all border-r border-gray-100 last:border-r-0 ${bgColor} ${status === 'current' ? 'shadow-lg z-10' : ''}`}
-                         >
+                         <div key={stage.id} onClick={() => !isWon && !isLost && updateLead(lead.id, { stageId: stage.id })} className={`flex-1 flex items-center justify-center text-[10px] font-black uppercase tracking-widest cursor-pointer transition-all border-r border-gray-100 last:border-r-0 ${bgColor} ${status === 'current' ? 'shadow-lg z-10' : ''}`}>
                              {status === 'completed' && <Check size={14} className="mr-1.5" strokeWidth={4} />}
                              {status === 'lost' && <X size={14} className="mr-1.5" strokeWidth={4} />}
                              <span className="truncate px-2">{stage.name}</span>
@@ -319,51 +241,28 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
              </div>
         </div>
 
-        {/* === MAIN CONTENT === */}
         <div className="flex-1 flex overflow-hidden">
-            
-            {/* LEFT COLUMN: PROPERTIES */}
             <div className="w-[360px] bg-white border-r border-gray-200 overflow-y-auto shrink-0 p-8 space-y-8">
-                
-                {/* Encaminhar Funil */}
                 <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100/50">
                     <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4 flex items-center gap-2">
                         <Layers size={14} /> Encaminhar para Funil
                     </h4>
-                    <select 
-                        value={lead.funnelId}
-                        onChange={(e) => handleTransferFunnel(e.target.value)}
-                        className="w-full bg-white border border-blue-200 text-gray-800 text-sm font-bold rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 transition-all shadow-sm"
-                    >
+                    <select value={lead.funnelId} onChange={(e) => handleTransferFunnel(e.target.value)} className="w-full bg-white border border-blue-200 text-gray-800 text-sm font-bold rounded-xl p-3 outline-none focus:ring-4 focus:ring-blue-100 transition-all shadow-sm">
                         {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                     </select>
-                    <p className="text-[9px] text-blue-400 font-bold mt-2 px-1 uppercase leading-tight">Mova este lead para outro fluxo de vendas instantaneamente.</p>
                 </div>
-
                 <div className="space-y-6">
                     <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest flex items-center gap-2 border-b border-gray-50 pb-2">
-                        <Briefcase size={16} className="text-blue-500" />
-                        Negociação
+                        <Briefcase size={16} className="text-blue-500" /> Negociação
                     </h3>
                     <div className="space-y-4">
                         <EditableField label="Empresa" value={lead.company} onChange={(v) => updateLead(lead.id, { company: v })} icon={Building} />
                         <EditableField label="Valor Esperado" value={lead.value} type="number" onChange={(v) => updateLead(lead.id, { value: Number(v) })} icon={DollarSign} />
-                        <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
-                            <span className="text-[10px] font-bold text-gray-400 uppercase">Probabilidade</span>
-                            <span className={`text-sm font-black ${isWon ? 'text-green-600' : isLost ? 'text-red-600' : 'text-blue-600'}`}>{lead.probability}%</span>
-                        </div>
-                        <input 
-                            type="range" min="0" max="100" value={lead.probability}
-                            onChange={(e) => updateLead(lead.id, { probability: Number(e.target.value) })}
-                            className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                        />
                     </div>
                 </div>
-
                 <div className="space-y-6">
                     <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest flex items-center gap-2 border-b border-gray-50 pb-2">
-                        <User size={16} className="text-blue-500" />
-                        Contato Direto
+                        <User size={16} className="text-blue-500" /> Contato Direto
                     </h3>
                     <div className="space-y-4">
                         <EditableField label="Nome do Contato" value={lead.contactName} onChange={(v) => updateLead(lead.id, { contactName: v })} icon={User} />
@@ -373,16 +272,11 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                 </div>
             </div>
 
-            {/* RIGHT COLUMN: TIMELINE */}
             <div className="flex-1 bg-gray-50 flex flex-col min-w-0">
                 <div className="bg-white border-b border-gray-100 px-8 pt-4">
                     <div className="flex gap-8">
                         {['notes', 'tasks'].map((tab) => (
-                            <button 
-                                key={tab}
-                                onClick={() => setActiveTab(tab as any)}
-                                className={`pb-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
-                            >
+                            <button key={tab} onClick={() => setActiveTab(tab as any)} className={`pb-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
                                 {tab === 'notes' ? 'Histórico de Notas' : 'Tarefas e Lembretes'}
                             </button>
                         ))}
@@ -393,24 +287,11 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                     {activeTab === 'notes' && (
                         <div className="space-y-6 max-w-3xl mx-auto">
                             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                                <textarea 
-                                    value={noteText}
-                                    onChange={e => setNoteText(e.target.value)}
-                                    placeholder="Adicione um detalhe importante sobre esta venda..."
-                                    className="w-full text-sm font-medium outline-none resize-none min-h-[100px] placeholder-gray-300"
-                                />
-                                <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-50">
-                                    <span className="text-[10px] text-gray-400 font-bold uppercase">Nexus CRM Smart Notes</span>
-                                    <button 
-                                        onClick={handleSaveNote}
-                                        disabled={!noteText.trim()}
-                                        className="bg-gray-900 text-white px-6 py-2 rounded-xl text-sm font-bold hover:bg-black disabled:opacity-30 transition-all shadow-lg"
-                                    >
-                                        Salvar Nota
-                                    </button>
+                                <textarea value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Adicione um detalhe importante sobre esta venda..." className="w-full text-sm font-medium outline-none resize-none min-h-[100px] placeholder-gray-300" />
+                                <div className="flex justify-end mt-4 pt-4 border-t border-gray-50">
+                                    <button onClick={handleSaveNote} disabled={!noteText.trim()} className="bg-gray-900 text-white px-6 py-2 rounded-xl text-sm font-bold hover:bg-black disabled:opacity-30 transition-all shadow-lg">Salvar Nota</button>
                                 </div>
                             </div>
-
                             <div className="space-y-4">
                                 {lead.notes.map(note => (
                                     <div key={note.id} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm flex gap-4 animate-fade-in">
@@ -432,26 +313,53 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
 
                     {activeTab === 'tasks' && (
                         <div className="max-w-3xl mx-auto">
-                           <button 
-                                onClick={() => setIsTaskFormOpen(!isTaskFormOpen)}
-                                className="w-full py-4 bg-white border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 font-bold hover:border-blue-400 hover:text-blue-500 transition-all flex items-center justify-center gap-2 mb-6"
-                            >
-                                <Plus size={20} /> Adicionar Nova Atividade
-                            </button>
+                           {isTaskFormOpen ? (
+                               <div className="bg-white p-6 rounded-2xl border border-blue-200 shadow-xl shadow-blue-50 mb-6 animate-scale-in">
+                                   <div className="flex justify-between items-center mb-4">
+                                       <h4 className="font-bold text-gray-800">Nova Atividade</h4>
+                                       <button onClick={() => setIsTaskFormOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+                                   </div>
+                                   <form onSubmit={handleCreateTask} className="space-y-4">
+                                       <input required value={newTaskData.title} onChange={e => setNewTaskData({...newTaskData, title: e.target.value})} placeholder="O que precisa ser feito?" className="w-full border-b-2 border-gray-100 focus:border-blue-500 py-2 outline-none font-bold text-gray-700" />
+                                       <div className="grid grid-cols-2 gap-4">
+                                           <div>
+                                               <label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Data e Hora</label>
+                                               <input type="datetime-local" value={newTaskData.date} onChange={e => setNewTaskData({...newTaskData, date: e.target.value})} className="w-full bg-gray-50 rounded-lg p-2 text-sm outline-none" />
+                                           </div>
+                                           <div>
+                                               <label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Tipo</label>
+                                               <select value={newTaskData.type} onChange={e => setNewTaskData({...newTaskData, type: e.target.value as any})} className="w-full bg-gray-50 rounded-lg p-2 text-sm outline-none">
+                                                   <option value="todo">Tarefa</option>
+                                                   <option value="call">Ligação</option>
+                                                   <option value="meeting">Reunião</option>
+                                                   <option value="email">E-mail</option>
+                                               </select>
+                                           </div>
+                                       </div>
+                                       <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg">Criar Tarefa</button>
+                                   </form>
+                               </div>
+                           ) : (
+                               <button onClick={() => setIsTaskFormOpen(true)} className="w-full py-4 bg-white border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 font-bold hover:border-blue-400 hover:text-blue-500 transition-all flex items-center justify-center gap-2 mb-6">
+                                   <Plus size={20} /> Adicionar Nova Atividade
+                               </button>
+                           )}
                             
                             <div className="space-y-3">
                                 {lead.tasks.map(task => (
-                                    <div key={task.id} className={`p-4 bg-white border rounded-2xl flex items-center gap-4 transition-all ${task.completed ? 'opacity-50 border-gray-100' : 'border-gray-200 shadow-sm'}`}>
+                                    <div key={task.id} className={`p-4 bg-white border rounded-2xl flex items-center gap-4 transition-all ${task.completed ? 'opacity-50 border-gray-100' : 'border-gray-200 shadow-sm hover:border-blue-200'}`}>
                                         <button onClick={() => toggleTask(lead.id, task.id)} className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${task.completed ? 'bg-green-500 border-green-500 text-white' : 'border-gray-200 hover:border-blue-500'}`}>
                                             <Check size={14} strokeWidth={4} />
                                         </button>
                                         <div className="flex-1">
                                             <div className={`text-sm font-bold ${task.completed ? 'line-through text-gray-400' : 'text-gray-800'}`}>{task.title}</div>
                                             <div className="text-[10px] text-gray-400 font-black uppercase flex items-center gap-2 mt-0.5">
+                                                {task.type === 'call' && <PhoneCall size={10} />}
+                                                {task.type === 'email' && <Mail size={10} />}
                                                 <Calendar size={10} /> {new Date(task.dueDate).toLocaleString()}
                                             </div>
                                         </div>
-                                        <button onClick={() => deleteTask(lead.id, task.id)} className="p-2 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
+                                        <button onClick={() => deleteTask(lead.id, task.id)} className="p-2 text-gray-200 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
                                     </div>
                                 ))}
                             </div>

@@ -1,94 +1,92 @@
+
 import React, { useState, useMemo } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { 
     CheckCircle, Circle, Clock, Calendar, 
     AlertCircle, PhoneCall, Mail, User, 
-    Briefcase, ChevronRight, CheckSquare, Search
+    Briefcase, ChevronRight, CheckSquare, Search, Plus, X, Layers, Filter, Trash2
 } from 'lucide-react';
-import { Task } from '../types';
+import { Task, Lead } from '../types';
 
 interface Props {
   onNavigate: (view: string, data?: any) => void;
 }
 
 type FilterType = 'all' | 'today' | 'tomorrow' | 'week' | 'month' | 'overdue' | 'completed';
+type TaskTypeFilter = 'all' | 'call' | 'email' | 'meeting' | 'todo';
 
 export const TasksView: React.FC<Props> = ({ onNavigate }) => {
-  const { leads, toggleTask, deleteTask } = useCRM();
+  const { leads, toggleTask, deleteTask, addTask } = useCRM();
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [typeFilter, setTypeFilter] = useState<TaskTypeFilter>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newTaskData, setNewTaskData] = useState({
+      title: '',
+      date: new Date().toISOString().slice(0, 16),
+      type: 'todo' as Task['type'],
+      leadId: ''
+  });
 
-  // Helper to flatten tasks
+  // Flatten and filter tasks
   const allTasks = useMemo(() => {
     const tasks: Array<{ task: Task; leadId: string; leadTitle: string; leadCompany: string }> = [];
-    
     leads.forEach(lead => {
-      if (lead.tasks && lead.tasks.length > 0) {
-        lead.tasks.forEach(t => {
-          tasks.push({
-            task: t,
-            leadId: lead.id,
-            leadTitle: lead.title,
-            leadCompany: lead.company
-          });
-        });
-      }
+      (lead.tasks || []).forEach(t => {
+        tasks.push({ task: t, leadId: lead.id, leadTitle: lead.title, leadCompany: lead.company });
+      });
     });
-
     return tasks.sort((a, b) => new Date(a.task.dueDate).getTime() - new Date(b.task.dueDate).getTime());
   }, [leads]);
 
-  // Filtering Logic
   const filteredTasks = useMemo(() => {
     const now = new Date();
-    now.setHours(0, 0, 0, 0); // Start of today
-
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const nextWeek = new Date(now);
-    nextWeek.setDate(nextWeek.getDate() + 7);
-
-    const nextMonth = new Date(now);
-    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    now.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+    const nextWeek = new Date(now); nextWeek.setDate(nextWeek.getDate() + 7);
+    const nextMonth = new Date(now); nextMonth.setMonth(nextMonth.getMonth() + 1);
 
     return allTasks.filter(item => {
       const taskDate = new Date(item.task.dueDate);
-      const taskDateOnly = new Date(taskDate);
-      taskDateOnly.setHours(0, 0, 0, 0);
+      const taskDateOnly = new Date(taskDate); taskDateOnly.setHours(0, 0, 0, 0);
 
-      const matchesSearch = 
-        item.task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.leadTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.leadCompany.toLowerCase().includes(searchTerm.toLowerCase());
-
+      // Search
+      const matchesSearch = item.task.title.toLowerCase().includes(searchTerm.toLowerCase()) || item.leadTitle.toLowerCase().includes(searchTerm.toLowerCase()) || item.leadCompany.toLowerCase().includes(searchTerm.toLowerCase());
       if (!matchesSearch) return false;
 
-      // Handle 'completed' filter separately
-      if (activeFilter === 'completed') {
-        return item.task.completed;
-      }
+      // Type Filter
+      if (typeFilter !== 'all' && item.task.type !== typeFilter) return false;
 
-      // For all other time-based filters, only show incomplete tasks
+      // Status/Time Filter
+      if (activeFilter === 'completed') return item.task.completed;
       if (item.task.completed) return false;
 
       switch (activeFilter) {
-        case 'overdue':
-          return taskDate < new Date() && !item.task.completed;
-        case 'today':
-          return taskDateOnly.getTime() === now.getTime();
-        case 'tomorrow':
-          return taskDateOnly.getTime() === tomorrow.getTime();
-        case 'week':
-          return taskDate >= now && taskDate <= nextWeek;
-        case 'month':
-          return taskDate >= now && taskDate <= nextMonth;
-        case 'all':
-        default:
-          return true;
+        case 'overdue': return taskDate < new Date();
+        case 'today': return taskDateOnly.getTime() === now.getTime();
+        case 'tomorrow': return taskDateOnly.getTime() === tomorrow.getTime();
+        case 'week': return taskDate >= now && taskDate <= nextWeek;
+        case 'month': return taskDate >= now && taskDate <= nextMonth;
+        default: return true;
       }
     });
-  }, [allTasks, activeFilter, searchTerm]);
+  }, [allTasks, activeFilter, typeFilter, searchTerm]);
+
+  const handleCreateTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskData.title || !newTaskData.leadId) return;
+    addTask(newTaskData.leadId, {
+        id: `t-${Date.now()}`,
+        title: newTaskData.title,
+        dueDate: newTaskData.date,
+        type: newTaskData.type,
+        completed: false
+    });
+    setNewTaskData({ title: '', date: new Date().toISOString().slice(0, 16), type: 'todo', leadId: '' });
+    setIsModalOpen(false);
+  };
 
   const TaskIcon = ({ type }: { type: Task['type'] }) => {
       switch (type) {
@@ -99,158 +97,123 @@ export const TasksView: React.FC<Props> = ({ onNavigate }) => {
       }
   };
 
-  const getDueDateLabel = (dateStr: string) => {
-      const date = new Date(dateStr);
-      const now = new Date();
-      const isOverdue = date < now;
-      
-      return (
-          <span className={`flex items-center gap-1 text-xs font-medium ${isOverdue ? 'text-red-600' : 'text-gray-500'}`}>
-              <Calendar size={12} />
-              {date.toLocaleDateString()} às {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              {isOverdue && <span className="text-[10px] bg-red-100 px-1.5 rounded ml-1">Atrasada</span>}
-          </span>
-      );
-  };
-
-  // Stats
-  const stats = useMemo(() => {
-      const pending = allTasks.filter(t => !t.task.completed).length;
-      const overdue = allTasks.filter(t => !t.task.completed && new Date(t.task.dueDate) < new Date()).length;
-      const today = allTasks.filter(t => {
-          const d = new Date(t.task.dueDate);
-          const now = new Date();
-          return !t.task.completed && d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-      }).length;
-      return { pending, overdue, today };
-  }, [allTasks]);
-
   return (
     <div className="h-full flex flex-col bg-gray-50 animate-fade-in">
-      
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-8 py-6">
-         <div className="flex justify-between items-start mb-6">
+      <div className="bg-white border-b border-gray-200 px-8 py-6 shadow-sm z-10">
+         <div className="flex justify-between items-center mb-6">
              <div>
                  <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                     <CheckSquare className="text-blue-600" />
-                     Minhas Tarefas
+                     <CheckSquare className="text-blue-600" /> Minhas Tarefas
                  </h2>
-                 <p className="text-gray-500 mt-1">Gerencie suas atividades diárias e follow-ups.</p>
+                 <p className="text-gray-500 mt-1 text-sm font-medium">Acompanhe seus compromissos e não perca prazos.</p>
              </div>
-             
-             {/* Summary Cards */}
-             <div className="flex gap-4">
-                 <div className="bg-blue-50 border border-blue-100 px-4 py-2 rounded-lg flex flex-col items-center min-w-[100px]">
-                     <span className="text-2xl font-bold text-blue-600">{stats.today}</span>
-                     <span className="text-xs text-blue-400 font-bold uppercase">Hoje</span>
-                 </div>
-                 <div className="bg-red-50 border border-red-100 px-4 py-2 rounded-lg flex flex-col items-center min-w-[100px]">
-                     <span className="text-2xl font-bold text-red-600">{stats.overdue}</span>
-                     <span className="text-xs text-red-400 font-bold uppercase">Atrasadas</span>
-                 </div>
-                 <div className="bg-gray-50 border border-gray-200 px-4 py-2 rounded-lg flex flex-col items-center min-w-[100px]">
-                     <span className="text-2xl font-bold text-gray-700">{stats.pending}</span>
-                     <span className="text-xs text-gray-400 font-bold uppercase">Pendentes</span>
-                 </div>
-             </div>
+             <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg shadow-blue-100">
+                <Plus size={20} /> Nova Tarefa
+             </button>
          </div>
 
-         <div className="flex justify-between items-end">
-             {/* Filters */}
-             <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
-                 {(['all', 'today', 'tomorrow', 'week', 'month', 'overdue', 'completed'] as FilterType[]).map((filter) => (
-                     <button
-                        key={filter}
-                        onClick={() => setActiveFilter(filter)}
-                        className={`px-4 py-1.5 rounded-md text-xs font-bold uppercase transition-all ${
-                            activeFilter === filter 
-                            ? 'bg-white text-blue-600 shadow-sm' 
-                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
-                        }`}
-                     >
-                        {filter === 'all' && 'Todas'}
-                        {filter === 'today' && 'Hoje'}
-                        {filter === 'tomorrow' && 'Amanhã'}
-                        {filter === 'week' && 'Esta Semana'}
-                        {filter === 'month' && 'Este Mês'}
-                        {filter === 'overdue' && 'Atrasadas'}
-                        {filter === 'completed' && 'Concluídas'}
+         <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
+             <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+                 {(['all', 'today', 'tomorrow', 'week', 'overdue', 'completed'] as FilterType[]).map((f) => (
+                     <button key={f} onClick={() => setActiveFilter(f)} className={`px-4 py-2 rounded-lg text-xs font-black uppercase tracking-tight transition-all ${activeFilter === f ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                        {f === 'all' ? 'Tudo' : f === 'today' ? 'Hoje' : f === 'tomorrow' ? 'Amanhã' : f === 'week' ? 'Semana' : f === 'overdue' ? 'Atrasadas' : 'Concluídas'}
                      </button>
                  ))}
              </div>
 
-             <div className="relative w-64">
-                <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
-                <input 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Buscar tarefas..."
-                    className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:border-blue-500 bg-white"
-                />
+             <div className="flex items-center gap-4 w-full lg:w-auto">
+                 <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+                    {(['all', 'call', 'email', 'meeting', 'todo'] as TaskTypeFilter[]).map((t) => (
+                        <button key={t} onClick={() => setTypeFilter(t)} className={`p-2 rounded-lg transition-all ${typeFilter === t ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`} title={t}>
+                            {t === 'all' ? <Filter size={16} /> : <TaskIcon type={t as any} />}
+                        </button>
+                    ))}
+                 </div>
+                 <div className="relative flex-1 lg:w-64">
+                    <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+                    <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar..." className="w-full pl-9 pr-4 py-2 text-sm border-none rounded-xl outline-none bg-gray-100 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all" />
+                 </div>
              </div>
          </div>
       </div>
 
-      {/* Task List */}
       <div className="flex-1 overflow-y-auto p-8">
           <div className="max-w-4xl mx-auto space-y-3">
               {filteredTasks.length === 0 ? (
-                  <div className="text-center py-20 text-gray-400">
-                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <CheckCircle size={32} className="opacity-20" />
-                      </div>
-                      <h3 className="text-lg font-medium text-gray-600">Tudo limpo por aqui!</h3>
-                      <p className="text-sm">Nenhuma tarefa encontrada para este filtro.</p>
+                  <div className="text-center py-20 text-gray-400 bg-white rounded-3xl border-2 border-dashed border-gray-100">
+                      <CheckCircle size={48} className="opacity-10 mx-auto mb-4" />
+                      <h3 className="text-lg font-bold text-gray-800">Nada para exibir</h3>
+                      <p className="text-sm font-medium">Relaxe! Você está em dia com suas tarefas.</p>
                   </div>
               ) : (
                   filteredTasks.map((item) => (
-                      <div 
-                        key={item.task.id}
-                        className={`bg-white border rounded-xl p-4 flex items-center gap-4 hover:shadow-md transition-all group ${item.task.completed ? 'opacity-60 bg-gray-50 border-gray-200' : 'border-gray-200 hover:border-blue-300'}`}
-                      >
-                          <button 
-                             onClick={() => toggleTask(item.leadId, item.task.id)}
-                             className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
-                                 item.task.completed 
-                                 ? 'bg-green-500 border-green-500 text-white' 
-                                 : 'border-gray-300 text-transparent hover:border-blue-500'
-                             }`}
-                          >
+                      <div key={item.task.id} className={`bg-white border rounded-2xl p-4 flex items-center gap-4 hover:shadow-lg transition-all group ${item.task.completed ? 'opacity-60 grayscale bg-gray-50' : 'border-gray-200 hover:border-blue-300 shadow-sm'}`}>
+                          <button onClick={() => toggleTask(item.leadId, item.task.id)} className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${item.task.completed ? 'bg-green-500 border-green-500 text-white' : 'border-gray-200 hover:border-blue-500 text-transparent'}`}>
                              <CheckCircle size={14} fill="currentColor" />
                           </button>
-
                           <div className="flex-1 min-w-0">
-                              <div className={`text-base font-semibold ${item.task.completed ? 'line-through text-gray-500' : 'text-gray-800'}`}>
-                                  {item.task.title}
-                              </div>
-                              <div className="flex items-center gap-4 mt-1">
-                                  {getDueDateLabel(item.task.dueDate)}
-                                  <div className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
-                                     <TaskIcon type={item.task.type} />
-                                     <span className="uppercase">{item.task.type === 'todo' ? 'Tarefa' : item.task.type === 'call' ? 'Ligação' : item.task.type === 'meeting' ? 'Reunião' : 'Email'}</span>
+                              <div className={`text-base font-bold truncate ${item.task.completed ? 'line-through text-gray-400' : 'text-gray-800'}`}>{item.task.title}</div>
+                              <div className="flex items-center gap-3 mt-1.5">
+                                  <span className={`flex items-center gap-1 text-[10px] font-black uppercase ${new Date(item.task.dueDate) < new Date() && !item.task.completed ? 'text-red-500' : 'text-gray-400'}`}>
+                                      <Calendar size={12} /> {new Date(item.task.dueDate).toLocaleString()}
+                                  </span>
+                                  <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-gray-400 bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
+                                     <TaskIcon type={item.task.type} /> {item.task.type}
                                   </div>
                               </div>
                           </div>
-
                           <div className="flex flex-col items-end gap-2">
-                             <button 
-                                onClick={() => onNavigate('lead-detail', item.leadId)}
-                                className="flex items-center gap-2 text-sm text-gray-600 hover:text-blue-600 transition-colors bg-gray-50 hover:bg-blue-50 px-3 py-1.5 rounded-lg border border-transparent hover:border-blue-100"
-                             >
-                                <Briefcase size={14} />
-                                <span className="max-w-[150px] truncate">{item.leadTitle}</span>
-                                <ChevronRight size={14} className="text-gray-400" />
+                             <button onClick={() => onNavigate('lead-detail', item.leadId)} className="text-[10px] font-black uppercase tracking-tight text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-600 hover:text-white transition-all flex items-center gap-1">
+                                <Briefcase size={10} /> {item.leadTitle} <ChevronRight size={10} />
                              </button>
-                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
-                                 {item.leadCompany}
-                             </span>
+                             <button onClick={() => deleteTask(item.leadId, item.task.id)} className="p-2 text-gray-200 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
                           </div>
                       </div>
                   ))
               )}
           </div>
       </div>
+
+      {/* MODAL NOVA TAREFA */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                    <h3 className="text-xl font-black text-gray-800 tracking-tight">Agendar Atividade</h3>
+                    <button onClick={() => setIsModalOpen(false)} className="bg-white p-2 rounded-xl text-gray-400 hover:text-gray-600 shadow-sm border border-gray-200"><X size={20} /></button>
+                </div>
+                <form onSubmit={handleCreateTask} className="p-8 space-y-6">
+                    <div>
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Lead / Negócio</label>
+                        <select required value={newTaskData.leadId} onChange={e => setNewTaskData({...newTaskData, leadId: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm font-bold outline-none focus:ring-4 focus:ring-blue-100 transition-all">
+                            <option value="">Selecione o Lead...</option>
+                            {leads.map(l => <option key={l.id} value={l.id}>{l.title} ({l.company})</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">O que precisa ser feito?</label>
+                        <input required value={newTaskData.title} onChange={e => setNewTaskData({...newTaskData, title: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm font-bold outline-none focus:ring-4 focus:ring-blue-100 transition-all" placeholder="Ex: Retornar ligação da proposta" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Data</label>
+                            <input type="datetime-local" value={newTaskData.date} onChange={e => setNewTaskData({...newTaskData, date: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm font-bold outline-none focus:ring-4 focus:ring-blue-100" />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Tipo</label>
+                            <select value={newTaskData.type} onChange={e => setNewTaskData({...newTaskData, type: e.target.value as any})} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm font-bold outline-none bg-white">
+                                <option value="todo">Tarefa</option>
+                                <option value="call">Ligação</option>
+                                <option value="meeting">Reunião</option>
+                                <option value="email">E-mail</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all active:scale-95">Salvar Atividade</button>
+                </form>
+            </div>
+        </div>
+      )}
     </div>
   );
 };
