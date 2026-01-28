@@ -37,8 +37,9 @@ interface CRMContextType {
   updateFunnel: (id: string, updates: Partial<Funnel>) => Promise<void>;
   deleteFunnel: (id: string, targetFunnelId?: string, targetStageId?: string) => Promise<void>;
   addStage: (funnelId: string, name: string) => Promise<void>;
+  updateStage: (funnelId: string, stageId: string, updates: Partial<Stage>) => Promise<void>;
   reorderStages: (funnelId: string, newStages: Stage[]) => Promise<void>;
-  deleteStage: (stageId: string) => Promise<void>;
+  deleteStage: (funnelId: string, stageId: string) => Promise<void>;
   addCustomField: (field: CustomFieldDefinition) => Promise<void>;
   deleteCustomField: (id: string) => Promise<void>;
   getFunnelStats: (funnelId: string) => { totalValue: number; leadCount: number };
@@ -91,8 +92,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                setAccounts(data.accounts || []);
           } else {
                const data = await api.get<any>(`/sync/${currentUser.accountId}`);
-               
-               // Garantir que as listas não sejam nulas
                const fetchedFunnels = data.funnels || [];
                setFunnels(fetchedFunnels);
                setLeads(data.leads || []);
@@ -100,7 +99,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                setTeams(data.teams || []);
                setCustomFields(data.customFields || []);
 
-               // AUTO-SELEÇÃO DE FUNIL: Se não houver funil ativo ou o ativo não existir mais
                if (fetchedFunnels.length > 0) {
                    const exists = fetchedFunnels.some((f: any) => f.id === activeFunnelId);
                    if (!activeFunnelId || !exists) {
@@ -261,17 +259,53 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await api.patch(`/funnels/${id}`, updates);
   };
 
-  const deleteFunnel = async (id: string, tf?: string, ts?: string) => {
+  const deleteFunnel = async (id: string) => {
     setFunnels(prev => prev.filter(f => f.id !== id));
     if (activeFunnelId === id) setActiveFunnelId('');
     await api.delete(`/funnels/${id}`);
   };
 
-  const addStage = async (funnelId: string, name: string) => { /* logic */ };
-  const deleteStage = async (id: string) => { /* logic */ };
-  const reorderStages = async (fid: string, stages: Stage[]) => { /* logic */ };
-  const addCustomField = async (f: CustomFieldDefinition) => { setCustomFields(prev => [...prev, f]); await api.post('/custom-fields', f); };
-  const deleteCustomField = async (id: string) => { setCustomFields(prev => prev.filter(f => f.id !== id)); await api.delete(`/custom-fields/${id}`); };
+  const addStage = async (funnelId: string, name: string) => {
+    const funnel = funnels.find(f => f.id === funnelId);
+    if (!funnel) return;
+    const newStage: Stage = {
+        id: `s-${Date.now()}`,
+        name,
+        color: 'bg-gray-500',
+        order: funnel.stages.length
+    };
+    const updatedStages = [...funnel.stages, newStage];
+    updateFunnel(funnelId, { stages: updatedStages });
+  };
+
+  const updateStage = async (funnelId: string, stageId: string, updates: Partial<Stage>) => {
+    const funnel = funnels.find(f => f.id === funnelId);
+    if (!funnel) return;
+    const updatedStages = funnel.stages.map(s => s.id === stageId ? { ...s, ...updates } : s);
+    updateFunnel(funnelId, { stages: updatedStages });
+  };
+
+  const deleteStage = async (funnelId: string, stageId: string) => {
+    const funnel = funnels.find(f => f.id === funnelId);
+    if (!funnel) return;
+    const updatedStages = funnel.stages.filter(s => s.id !== stageId);
+    updateFunnel(funnelId, { stages: updatedStages });
+  };
+
+  const reorderStages = async (funnelId: string, newStages: Stage[]) => {
+    updateFunnel(funnelId, { stages: newStages });
+  };
+
+  const addCustomField = async (f: CustomFieldDefinition) => { 
+    setCustomFields(prev => [...prev, f]); 
+    await api.post('/custom-fields', f); 
+  };
+
+  const deleteCustomField = async (id: string) => { 
+    setCustomFields(prev => prev.filter(f => f.id !== id)); 
+    await api.delete(`/custom-fields/${id}`); 
+  };
+
   const getFunnelStats = (fid: string) => ({ totalValue: visibleLeads.filter(l => l.funnelId === fid).reduce((a, b) => a + b.value, 0), leadCount: visibleLeads.filter(l => l.funnelId === fid).length });
   
   const addUser = async (u: User) => { setUsers(prev => [...prev, u]); await api.post('/users', u); };
@@ -300,7 +334,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       activeFunnelId, currentUser, isLoading, visibleLeads, visibleUsers, currentAccount,
       setActiveFunnelId, login, registerAccount, logout, refreshData,
       addLead, updateLead, moveLead, duplicateLead, deleteLead, addTask, toggleTask, deleteTask,
-      addFunnel, updateFunnel, deleteFunnel, addStage, reorderStages, deleteStage,
+      addFunnel, updateFunnel, deleteFunnel, addStage, updateStage, reorderStages, deleteStage,
       addCustomField, deleteCustomField, getFunnelStats, addUser, updateUser, deleteUser,
       addTeam, updateTeam, deleteTeam, createAccount, updateAccountStatus, extendAccountSubscription, upgradePlan,
       updateVisibilitySettings
