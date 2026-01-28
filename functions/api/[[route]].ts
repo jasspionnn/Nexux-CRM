@@ -15,7 +15,6 @@ app.post('/api/auth/register', async (c) => {
     const accountId = `acc_${Date.now()}`;
     const userId = `u_${Date.now()}`;
 
-    // 1. Criar Conta
     await c.env.DB.prepare(
         'INSERT INTO accounts (id, company_name, owner_name, email, status, plan, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
@@ -23,7 +22,6 @@ app.post('/api/auth/register', async (c) => {
         new Date().toISOString(), new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
     ).run();
 
-    // 2. Criar Usuário Admin
     await c.env.DB.prepare(
         'INSERT INTO users (id, account_id, name, email, password, role, avatar, status, joined_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
@@ -32,12 +30,10 @@ app.post('/api/auth/register', async (c) => {
         'active', new Date().toISOString()
     ).run();
 
-    // 3. Criar Funil Padrão
     const funnelId = `f_${Date.now()}`;
     await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)')
         .bind(funnelId, accountId, 'Vendas Geral').run();
 
-    // 4. Criar Etapas Padrão
     const stages = [
         { id: `s1_${Date.now()}`, name: 'Lead', color: 'bg-blue-500' },
         { id: `s2_${Date.now()}`, name: 'Qualificação', color: 'bg-purple-500' },
@@ -58,11 +54,8 @@ app.post('/api/auth/login', async (c) => {
     const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ? AND password = ?')
         .bind(email, password).first() as any;
 
-    if (!user) {
-        return c.json({ error: 'Credenciais inválidas' }, 401);
-    }
+    if (!user) return c.json({ error: 'Credenciais inválidas' }, 401);
 
-    // Converter snake_case do DB para camelCase do Frontend
     const formattedUser = {
         id: user.id,
         accountId: user.account_id,
@@ -72,7 +65,7 @@ app.post('/api/auth/login', async (c) => {
         avatar: user.avatar,
         teamId: user.team_id,
         status: user.status,
-        lastLogin: new Date().toISOString() // Simular último acesso no login
+        lastLogin: new Date().toISOString()
     };
 
     return c.json({ user: formattedUser });
@@ -97,10 +90,22 @@ app.get('/api/sync/:accountId', async (c) => {
     const leads = await c.env.DB.prepare('SELECT * FROM leads WHERE account_id = ?').bind(accountId).all();
     const users = await c.env.DB.prepare('SELECT id, name, email, role, team_id as teamId, avatar, status, joined_at as lastLogin FROM users WHERE account_id = ?').bind(accountId).all();
     const teams = await c.env.DB.prepare('SELECT * FROM teams WHERE account_id = ?').bind(accountId).all();
+    const customFields = await c.env.DB.prepare('SELECT * FROM custom_fields WHERE account_id = ?').bind(accountId).all();
+    
+    const leadIds = leads.results.map((l: any) => l.id);
+    let tasks: any[] = [];
+    if (leadIds.length > 0) {
+        const placeholders = leadIds.map(() => '?').join(',');
+        const tasksData = await c.env.DB.prepare(`SELECT * FROM tasks WHERE lead_id IN (${placeholders})`).bind(...leadIds).all();
+        tasks = tasksData.results;
+    }
 
-    // Formatar funis com suas etapas
     const formattedFunnels = funnels.results.map((f: any) => ({
-        ...f,
+        id: f.id,
+        accountId: f.account_id,
+        name: f.name,
+        defaultWonStageId: f.default_won_stage_id,
+        defaultLostStageId: f.default_lost_stage_id,
         stages: stages.filter((s: any) => s.funnel_id === f.id).map((s: any) => ({
             id: s.id,
             name: s.name,
@@ -109,7 +114,6 @@ app.get('/api/sync/:accountId', async (c) => {
         }))
     }));
 
-    // Formatar leads (converter snake_case para camelCase se necessário)
     const formattedLeads = leads.results.map((l: any) => ({
         id: l.id,
         accountId: l.account_id,
@@ -125,8 +129,26 @@ app.get('/api/sync/:accountId', async (c) => {
         createdAt: l.created_at,
         probability: l.probability,
         notes: JSON.parse(l.notes || '[]'),
-        tasks: JSON.parse(l.tasks || '[]'),
-        tags: JSON.parse(l.tags || '[]')
+        tasks: tasks.filter((t: any) => t.lead_id === l.id).map((t: any) => ({
+            id: t.id,
+            title: t.title,
+            dueDate: t.due_date,
+            completed: !!t.completed,
+            type: t.type
+        })),
+        tags: JSON.parse(l.tags || '[]'),
+        customValues: JSON.parse(l.custom_values || '{}')
+    }));
+
+    const formattedFields = customFields.results.map((cf: any) => ({
+        id: cf.id,
+        accountId: cf.account_id,
+        name: cf.name,
+        type: cf.type,
+        context: cf.context,
+        funnelId: cf.funnel_id,
+        options: JSON.parse(cf.options || '[]'),
+        visibleStageIds: JSON.parse(cf.visible_stage_ids || '[]')
     }));
 
     return c.json({
@@ -134,11 +156,100 @@ app.get('/api/sync/:accountId', async (c) => {
         leads: formattedLeads,
         users: users.results,
         teams: teams.results,
-        customFields: []
+        customFields: formattedFields
     });
 });
 
-// --- TEAMS ---
+// --- FUNNELS & STAGES ---
+
+app.post('/api/funnels', async (c) => {
+    const f = await c.req.json() as any;
+    await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)')
+        .bind(f.id, f.accountId, f.name).run();
+    
+    if (f.stages) {
+        for (const s of f.stages) {
+            await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)')
+                .bind(s.id, f.id, s.name, s.color, s.order).run();
+        }
+    }
+    return c.json({ success: true });
+});
+
+app.patch('/api/funnels/:id', async (c) => {
+    const id = c.req.param('id');
+    const data = await c.req.json() as any;
+
+    if (data.name || data.defaultWonStageId || data.defaultLostStageId) {
+        const fields = [];
+        const values = [];
+        if (data.name) { fields.push('name = ?'); values.push(data.name); }
+        if (data.defaultWonStageId) { fields.push('default_won_stage_id = ?'); values.push(data.defaultWonStageId); }
+        if (data.defaultLostStageId) { fields.push('default_lost_stage_id = ?'); values.push(data.defaultLostStageId); }
+        
+        await c.env.DB.prepare(`UPDATE funnels SET ${fields.join(', ')} WHERE id = ?`)
+            .bind(...values, id).run();
+    }
+
+    if (data.stages) {
+        // Sync stages: Delete all and re-insert (Simple way for D1)
+        await c.env.DB.prepare('DELETE FROM stages WHERE funnel_id = ?').bind(id).run();
+        for (const s of data.stages) {
+            await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)')
+                .bind(s.id, id, s.name, s.color, s.order).run();
+        }
+    }
+
+    return c.json({ success: true });
+});
+
+app.delete('/api/funnels/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM funnels WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+// --- CUSTOM FIELDS ---
+
+app.post('/api/custom-fields', async (c) => {
+    const cf = await c.req.json() as any;
+    await c.env.DB.prepare(
+        'INSERT INTO custom_fields (id, account_id, name, type, context, funnel_id, options, visible_stage_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+        cf.id, cf.accountId, cf.name, cf.type, cf.context, cf.funnelId, 
+        JSON.stringify(cf.options || []), JSON.stringify(cf.visibleStageIds || [])
+    ).run();
+    return c.json({ success: true });
+});
+
+app.delete('/api/custom-fields/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM custom_fields WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+// --- TASKS ---
+
+app.post('/api/tasks', async (c) => {
+    const t = await c.req.json() as any;
+    await c.env.DB.prepare('INSERT INTO tasks (id, lead_id, title, due_date, completed, type) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(t.id, t.leadId, t.title, t.dueDate, t.completed ? 1 : 0, t.type).run();
+    return c.json({ success: true });
+});
+
+app.patch('/api/tasks/:id/toggle', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('UPDATE tasks SET completed = 1 - completed WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+app.delete('/api/tasks/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+// --- TEAMS, USERS, LEADS --- (Manter o que já existia e corrigir campos se necessário)
 
 app.post('/api/teams', async (c) => {
     const data = await c.req.json() as any;
@@ -150,15 +261,10 @@ app.post('/api/teams', async (c) => {
 app.patch('/api/teams/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
-    
-    if (data.name !== undefined && data.goal !== undefined) {
-        await c.env.DB.prepare('UPDATE teams SET name = ?, goal = ? WHERE id = ?').bind(data.name, data.goal, id).run();
-    } else if (data.name !== undefined) {
-        await c.env.DB.prepare('UPDATE teams SET name = ? WHERE id = ?').bind(data.name, id).run();
-    } else if (data.goal !== undefined) {
-        await c.env.DB.prepare('UPDATE teams SET goal = ? WHERE id = ?').bind(data.goal, id).run();
-    }
-    
+    const fields = []; const values = [];
+    if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
+    if (data.goal !== undefined) { fields.push('goal = ?'); values.push(data.goal); }
+    if (fields.length) await c.env.DB.prepare(`UPDATE teams SET ${fields.join(', ')} WHERE id = ?`).bind(...values, id).run();
     return c.json({ success: true });
 });
 
@@ -168,8 +274,6 @@ app.delete('/api/teams/:id', async (c) => {
     await c.env.DB.prepare('DELETE FROM teams WHERE id = ?').bind(id).run();
     return c.json({ success: true });
 });
-
-// --- USERS ---
 
 app.post('/api/users', async (c) => {
     const data = await c.req.json() as any;
@@ -181,29 +285,10 @@ app.post('/api/users', async (c) => {
 app.patch('/api/users/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
-    
-    // Mapear campos camelCase do front para snake_case do DB
-    const fieldMapping: Record<string, string> = {
-        role: 'role',
-        teamId: 'team_id',
-        status: 'status',
-        name: 'name',
-        avatar: 'avatar'
-    };
-
-    const updates = Object.entries(data)
-        .filter(([key]) => fieldMapping[key])
-        .map(([key]) => `${fieldMapping[key]} = ?`)
-        .join(', ');
-    
-    const values = Object.entries(data)
-        .filter(([key]) => fieldMapping[key])
-        .map(([, val]) => val);
-
-    if (updates) {
-        await c.env.DB.prepare(`UPDATE users SET ${updates} WHERE id = ?`).bind(...values, id).run();
-    }
-    
+    const fieldMapping: Record<string, string> = { role: 'role', teamId: 'team_id', status: 'status', name: 'name', avatar: 'avatar' };
+    const updates = Object.entries(data).filter(([key]) => fieldMapping[key]).map(([key]) => `${fieldMapping[key]} = ?`).join(', ');
+    const values = Object.entries(data).filter(([key]) => fieldMapping[key]).map(([, val]) => val);
+    if (updates) await c.env.DB.prepare(`UPDATE users SET ${updates} WHERE id = ?`).bind(...values, id).run();
     return c.json({ success: true });
 });
 
@@ -213,16 +298,14 @@ app.delete('/api/users/:id', async (c) => {
     return c.json({ success: true });
 });
 
-// --- LEADS ---
-
 app.post('/api/leads', async (c) => {
     const l = await c.req.json() as any;
     await c.env.DB.prepare(
-        'INSERT INTO leads (id, account_id, title, company, value, contact_name, contact_email, contact_phone, funnel_id, stage_id, assigned_user_id, created_at, probability, notes, tasks, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO leads (id, account_id, title, company, value, contact_name, contact_email, contact_phone, funnel_id, stage_id, assigned_user_id, created_at, probability, notes, tags, custom_values) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
         l.id, l.accountId, l.title, l.company, l.value, l.contactName, l.contactEmail, l.contactPhone, 
         l.funnelId, l.stageId, l.assignedUserId, l.createdAt, l.probability, 
-        JSON.stringify(l.notes || []), JSON.stringify(l.tasks || []), JSON.stringify(l.tags || [])
+        JSON.stringify(l.notes || []), JSON.stringify(l.tags || []), JSON.stringify(l.customValues || {})
     ).run();
     return c.json({ success: true });
 });
@@ -230,31 +313,16 @@ app.post('/api/leads', async (c) => {
 app.patch('/api/leads/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
-    
-    const fieldMapping: Record<string, string> = {
-        stageId: 'stage_id',
-        funnelId: 'funnel_id',
-        probability: 'probability',
-        notes: 'notes',
-        tasks: 'tasks',
-        title: 'title',
-        company: 'company',
-        value: 'value'
-    };
+    const fieldMapping: Record<string, string> = { stageId: 'stage_id', funnelId: 'funnel_id', probability: 'probability', notes: 'notes', title: 'title', company: 'company', value: 'value', customValues: 'custom_values' };
+    const updates = Object.entries(data).filter(([key]) => fieldMapping[key]).map(([key]) => `${fieldMapping[key]} = ?`).join(', ');
+    const values = Object.entries(data).filter(([key]) => fieldMapping[key]).map(([, val]) => typeof val === 'object' ? JSON.stringify(val) : val);
+    if (updates) await c.env.DB.prepare(`UPDATE leads SET ${updates} WHERE id = ?`).bind(...values, id).run();
+    return c.json({ success: true });
+});
 
-    const updates = Object.entries(data)
-        .filter(([key]) => fieldMapping[key])
-        .map(([key]) => `${fieldMapping[key]} = ?`)
-        .join(', ');
-    
-    const values = Object.entries(data)
-        .filter(([key]) => fieldMapping[key])
-        .map(([, val]) => typeof val === 'object' ? JSON.stringify(val) : val);
-
-    if (updates) {
-        await c.env.DB.prepare(`UPDATE leads SET ${updates} WHERE id = ?`).bind(...values, id).run();
-    }
-    
+app.delete('/api/leads/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(id).run();
     return c.json({ success: true });
 });
 
