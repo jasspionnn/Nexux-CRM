@@ -8,8 +8,18 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+// --- HEALTH CHECK ---
+app.get('/health', async (c) => {
+    try {
+        await c.env.DB.prepare('SELECT 1').first();
+        return c.json({ status: 'ok', database: 'connected' });
+    } catch (e: any) {
+        return c.json({ status: 'error', message: e.message }, 500);
+    }
+});
+
 // --- PUBLIC CONFIG ---
-app.get('/api/public/settings', async (c) => {
+app.get('/public/settings', async (c) => {
     const settings = await c.env.DB.prepare('SELECT * FROM system_settings').all();
     const config = settings.results.reduce((acc: any, curr: any) => {
         acc[curr.key] = curr.value;
@@ -18,8 +28,8 @@ app.get('/api/public/settings', async (c) => {
     return c.json(config);
 });
 
-// --- ADMIN SETTINGS ---
-app.patch('/api/admin/settings', async (c) => {
+// --- ADMIN SETTINGS (GLOBAL) ---
+app.patch('/admin/settings', async (c) => {
     const body = await c.req.json() as any;
     for (const [key, value] of Object.entries(body)) {
         await c.env.DB.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)')
@@ -28,8 +38,64 @@ app.patch('/api/admin/settings', async (c) => {
     return c.json({ success: true });
 });
 
-// --- AUTH & ACCOUNTS ---
-app.post('/api/auth/register', async (c) => {
+// --- NEXUS ADMIN: ACCOUNTS MANAGEMENT ---
+app.get('/admin/accounts', async (c) => {
+    try {
+        const accounts = await c.env.DB.prepare('SELECT * FROM accounts ORDER BY created_at DESC').all();
+        const formatted = accounts.results.map((a: any) => ({
+            id: a.id,
+            companyName: a.company_name,
+            ownerName: a.owner_name,
+            email: a.email,
+            status: a.status,
+            plan: a.plan,
+            expiresAt: a.expires_at,
+            createdAt: a.created_at,
+            visibilityConfig: JSON.parse(a.visibility_config || '{"level":"public","allowUserExport":false,"showTeamGoals":true}')
+        }));
+        return c.json({ accounts: formatted });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+app.post('/admin/accounts', async (c) => {
+    const { companyName, ownerName, email, password, plan } = await c.req.json() as any;
+    const accountId = `acc_${Date.now()}`;
+    const userId = `u_${Date.now()}`;
+
+    await c.env.DB.prepare(
+        'INSERT INTO accounts (id, company_name, owner_name, email, status, plan, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+        accountId, companyName, ownerName, email, 'active', plan || 'pro', 
+        new Date().toISOString(), new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+    ).run();
+
+    await c.env.DB.prepare(
+        'INSERT INTO users (id, account_id, name, email, password, role, avatar, status, joined_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+        userId, accountId, ownerName, email, password || '123', 'ACCOUNT_ADMIN',
+        `https://ui-avatars.com/api/?name=${encodeURIComponent(ownerName)}&background=random`,
+        'active', new Date().toISOString()
+    ).run();
+
+    return c.json({ success: true });
+});
+
+app.patch('/admin/accounts/:id', async (c) => {
+    const id = c.req.param('id');
+    const data = await c.req.json() as any;
+    const fields = []; const values = [];
+    if (data.status) { fields.push('status = ?'); values.push(data.status); }
+    if (data.plan) { fields.push('plan = ?'); values.push(data.plan); }
+    if (data.visibilityConfig) { fields.push('visibility_config = ?'); values.push(JSON.stringify(data.visibilityConfig)); }
+    if (data.expiresAt) { fields.push('expires_at = ?'); values.push(data.expiresAt); }
+    if (fields.length > 0) await c.env.DB.prepare(`UPDATE accounts SET ${fields.join(', ')} WHERE id = ?`).bind(...values, id).run();
+    return c.json({ success: true });
+});
+
+// --- AUTH ---
+app.post('/auth/register', async (c) => {
     const { userName, email, password, companyName } = await c.req.json() as any;
     const accountId = `acc_${Date.now()}`;
     const userId = `u_${Date.now()}`;
@@ -68,7 +134,7 @@ app.post('/api/auth/register', async (c) => {
     return c.json({ success: true });
 });
 
-app.post('/api/auth/login', async (c) => {
+app.post('/auth/login', async (c) => {
     const { email, password } = await c.req.json() as any;
     const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ? AND password = ?')
         .bind(email, password).first() as any;
@@ -91,9 +157,8 @@ app.post('/api/auth/login', async (c) => {
 });
 
 // --- SYNC DATA ---
-app.get('/api/sync/:accountId', async (c) => {
+app.get('/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
-    
     const funnels = await c.env.DB.prepare('SELECT * FROM funnels WHERE account_id = ?').bind(accountId).all();
     const funnelIds = funnels.results.map((f: any) => f.id);
     
@@ -179,42 +244,22 @@ app.get('/api/sync/:accountId', async (c) => {
 });
 
 // --- USERS ---
-app.post('/api/users', async (c) => {
+app.post('/users', async (c) => {
     try {
         const data = await c.req.json() as any;
-        
-        // Verificação de e-mail existente
         const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(data.email).first();
-        if (existing) {
-            return c.json({ error: 'Este e-mail já está sendo utilizado.' }, 400);
-        }
+        if (existing) return c.json({ error: 'Este e-mail já está sendo utilizado.' }, 400);
 
-        const res = await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, team_id, avatar, status, joined_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-            .bind(
-                data.id, 
-                data.accountId, 
-                data.name, 
-                data.email, 
-                data.password || 'nexus123',
-                data.role, 
-                data.teamId || null, 
-                data.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=random`, 
-                data.status || 'active', 
-                data.joinedAt || new Date().toISOString()
-            ).run();
+        await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, team_id, avatar, status, joined_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(data.id, data.accountId, data.name, data.email, data.password || 'nexus123', data.role, data.teamId || null, data.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=random`, data.status || 'active', data.joinedAt || new Date().toISOString()).run();
         
-        if (!res.success) {
-            throw new Error('Falha na inserção do banco de dados');
-        }
-
         return c.json({ success: true });
     } catch (error: any) {
-        console.error('Create user error:', error);
-        return c.json({ error: 'Erro ao cadastrar usuário: ' + error.message }, 500);
+        return c.json({ error: error.message }, 500);
     }
 });
 
-app.patch('/api/users/:id', async (c) => {
+app.patch('/users/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
     const fieldMapping: Record<string, string> = { role: 'role', teamId: 'team_id', status: 'status', name: 'name', avatar: 'avatar' };
@@ -224,14 +269,14 @@ app.patch('/api/users/:id', async (c) => {
     return c.json({ success: true });
 });
 
-app.delete('/api/users/:id', async (c) => {
+app.delete('/users/:id', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
     return c.json({ success: true });
 });
 
 // --- FUNNELS ---
-app.post('/api/funnels', async (c) => {
+app.post('/funnels', async (c) => {
     const f = await c.req.json() as any;
     await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)')
         .bind(f.id, f.accountId, f.name).run();
@@ -244,84 +289,69 @@ app.post('/api/funnels', async (c) => {
     return c.json({ success: true });
 });
 
-app.patch('/api/funnels/:id', async (c) => {
+app.patch('/funnels/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
-    
-    // 1. Atualizar Metadados do Funil (com proteção contra SQL vazio)
-    const fields = [];
-    const values = [];
+    const fields = []; const values = [];
     if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
     if (data.defaultWonStageId !== undefined) { fields.push('default_won_stage_id = ?'); values.push(data.defaultWonStageId); }
     if (data.defaultLostStageId !== undefined) { fields.push('default_lost_stage_id = ?'); values.push(data.defaultLostStageId); }
-    
-    if (fields.length > 0) {
-        await c.env.DB.prepare(`UPDATE funnels SET ${fields.join(', ')} WHERE id = ?`)
-            .bind(...values, id).run();
-    }
+    if (fields.length > 0) await c.env.DB.prepare(`UPDATE funnels SET ${fields.join(', ')} WHERE id = ?`).bind(...values, id).run();
 
-    // 2. Atualizar Estágios (Estratégia segura para não quebrar com Leads existentes)
     if (data.stages) {
         const batch = [];
-        
-        // Usamos INSERT OR REPLACE (via ON CONFLICT) para atualizar estágios existentes ou inserir novos
         for (const s of data.stages) {
-            batch.push(
-                c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, "order"=excluded."order"')
-                    .bind(s.id, id, s.name, s.color, s.order)
-            );
+            batch.push(c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, "order"=excluded."order"').bind(s.id, id, s.name, s.color, s.order));
         }
-        
-        // Remove estágios que foram excluídos na UI, mas com proteção contra erros de FK (se houver lead no estágio)
         const currentStageIds = data.stages.map((s: any) => s.id);
         if (currentStageIds.length > 0) {
             const placeholders = currentStageIds.map(() => '?').join(',');
-            // Tentamos deletar órfãos. Se falhar por causa de leads, o try/catch impede o crash do sistema.
-            try {
-                await c.env.DB.prepare(`DELETE FROM stages WHERE funnel_id = ? AND id NOT IN (${placeholders})`)
-                    .bind(id, ...currentStageIds).run();
-            } catch (e) {
-                console.warn("Aviso: Alguns estágios órfãos não puderam ser excluídos pois contêm leads vinculados.");
-            }
+            try { await c.env.DB.prepare(`DELETE FROM stages WHERE funnel_id = ? AND id NOT IN (${placeholders})`).bind(id, ...currentStageIds).run(); } catch (e) {}
         }
-
-        if (batch.length > 0) {
-            await c.env.DB.batch(batch);
-        }
+        if (batch.length > 0) await c.env.DB.batch(batch);
     }
-    
     return c.json({ success: true });
 });
 
-app.delete('/api/funnels/:id', async (c) => {
+app.delete('/funnels/:id', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('DELETE FROM funnels WHERE id = ?').bind(id).run();
     return c.json({ success: true });
 });
 
 // --- CUSTOM FIELDS ---
-app.post('/api/custom-fields', async (c) => {
+app.post('/custom-fields', async (c) => {
     const cf = await c.req.json() as any;
     await c.env.DB.prepare('INSERT INTO custom_fields (id, account_id, name, type, context, funnel_id, options, visible_stage_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(cf.id, cf.accountId, cf.name, cf.type, cf.context, cf.funnelId, JSON.stringify(cf.options || []), JSON.stringify(cf.visibleStageIds || [])).run();
     return c.json({ success: true });
 });
 
-app.delete('/api/custom-fields/:id', async (c) => {
+app.patch('/custom-fields/:id', async (c) => {
+    const id = c.req.param('id');
+    const data = await c.req.json() as any;
+    const fieldMapping: Record<string, string> = { name: 'name', type: 'type', context: 'context', funnelId: 'funnel_id', options: 'options', visibleStageIds: 'visible_stage_ids' };
+    const updates = Object.entries(data).filter(([key]) => fieldMapping[key]).map(([key]) => `${fieldMapping[key]} = ?`).join(', ');
+    const values = Object.entries(data).filter(([key]) => fieldMapping[key]).map(([, val]) => typeof val === 'object' ? JSON.stringify(val) : val);
+    if (updates) await c.env.DB.prepare(`UPDATE custom_fields SET ${updates} WHERE id = ?`).bind(...values, id).run();
+    return c.json({ success: true });
+});
+
+app.delete('/custom-fields/:id', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('DELETE FROM custom_fields WHERE id = ?').bind(id).run();
     return c.json({ success: true });
 });
 
 // --- LEADS ---
-app.post('/api/leads', async (c) => {
+app.post('/leads', async (c) => {
     const l = await c.req.json() as any;
     await c.env.DB.prepare('INSERT INTO leads (id, account_id, title, company, value, contact_name, contact_email, contact_phone, funnel_id, stage_id, assigned_user_id, created_at, probability, notes, tags, custom_values) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(l.id, l.accountId, l.title, l.company, l.value, l.contactName, l.contactEmail, l.contactPhone, l.funnelId, l.stageId, l.assignedUserId, l.createdAt, l.probability, JSON.stringify(l.notes || []), JSON.stringify(l.tags || []), JSON.stringify(l.customValues || {})).run();
     return c.json({ success: true });
 });
 
-app.patch('/api/leads/:id', async (c) => {
+app.patch('/leads/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
     const fieldMapping: Record<string, string> = { stageId: 'stage_id', funnelId: 'funnel_id', probability: 'probability', notes: 'notes', title: 'title', company: 'company', value: 'value', customValues: 'custom_values' };
@@ -331,21 +361,21 @@ app.patch('/api/leads/:id', async (c) => {
     return c.json({ success: true });
 });
 
-app.delete('/api/leads/:id', async (c) => {
+app.delete('/leads/:id', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(id).run();
     return c.json({ success: true });
 });
 
 // --- TEAMS ---
-app.post('/api/teams', async (c) => {
+app.post('/teams', async (c) => {
     const data = await c.req.json() as any;
     await c.env.DB.prepare('INSERT INTO teams (id, account_id, name, goal) VALUES (?, ?, ?, ?)')
         .bind(data.id, data.accountId, data.name, data.goal).run();
     return c.json({ success: true });
 });
 
-app.patch('/api/teams/:id', async (c) => {
+app.patch('/teams/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
     const fields = []; const values = [];
@@ -355,7 +385,7 @@ app.patch('/api/teams/:id', async (c) => {
     return c.json({ success: true });
 });
 
-app.delete('/api/teams/:id', async (c) => {
+app.delete('/teams/:id', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('UPDATE users SET team_id = NULL WHERE team_id = ?').bind(id).run();
     await c.env.DB.prepare('DELETE FROM teams WHERE id = ?').bind(id).run();
@@ -363,22 +393,27 @@ app.delete('/api/teams/:id', async (c) => {
 });
 
 // --- TASKS ---
-app.post('/api/tasks', async (c) => {
+app.post('/tasks', async (c) => {
     const t = await c.req.json() as any;
     await c.env.DB.prepare('INSERT INTO tasks (id, lead_id, title, due_date, completed, type) VALUES (?, ?, ?, ?, ?, ?)')
         .bind(t.id, t.leadId, t.title, t.dueDate, t.completed ? 1 : 0, t.type).run();
     return c.json({ success: true });
 });
 
-app.patch('/api/tasks/:id/toggle', async (c) => {
+app.patch('/tasks/:id/toggle', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('UPDATE tasks SET completed = 1 - completed WHERE id = ?').bind(id).run();
     return c.json({ success: true });
 });
 
-app.delete('/api/tasks/:id', async (c) => {
+app.delete('/tasks/:id', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+// --- BILLING DUMMY ---
+app.post('/billing/upgrade', async (c) => {
     return c.json({ success: true });
 });
 

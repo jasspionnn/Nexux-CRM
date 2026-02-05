@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole, VisibilityLevel } from '../types';
 import { api } from '../services/api';
@@ -40,6 +41,7 @@ interface CRMContextType {
   reorderStages: (funnelId: string, newStages: Stage[]) => Promise<void>;
   deleteStage: (funnelId: string, stageId: string) => Promise<void>;
   addCustomField: (field: CustomFieldDefinition) => Promise<void>;
+  updateCustomField: (id: string, updates: Partial<CustomFieldDefinition>) => Promise<void>;
   deleteCustomField: (id: string) => Promise<void>;
   getFunnelStats: (funnelId: string) => { totalValue: number; leadCount: number };
   
@@ -199,7 +201,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const duplicateLead = async (originalLeadId: string, targetFunnelId: string, targetStageId: string) => {
     const original = leads.find(l => l.id === originalLeadId);
     if (!original) return;
-    
     const copy: Lead = {
       ...original,
       id: `l-${Date.now()}`,
@@ -213,7 +214,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         authorName: 'Sistema'
       }]
     };
-    
     setLeads(prev => [...prev, copy]);
     await api.post('/leads', copy);
   };
@@ -267,12 +267,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const addStage = async (funnelId: string, name: string) => {
     const funnel = funnels.find(f => f.id === funnelId);
     if (!funnel) return;
-    const newStage: Stage = {
-        id: `s-${Date.now()}`,
-        name,
-        color: 'bg-gray-500',
-        order: funnel.stages.length
-    };
+    const newStage: Stage = { id: `s-${Date.now()}`, name, color: 'bg-gray-500', order: funnel.stages.length };
     const updatedStages = [...funnel.stages, newStage];
     updateFunnel(funnelId, { stages: updatedStages });
   };
@@ -291,13 +286,16 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     updateFunnel(funnelId, { stages: updatedStages });
   };
 
-  const reorderStages = async (funnelId: string, newStages: Stage[]) => {
-    updateFunnel(funnelId, { stages: newStages });
-  };
+  const reorderStages = async (funnelId: string, newStages: Stage[]) => { updateFunnel(funnelId, { stages: newStages }); };
 
   const addCustomField = async (f: CustomFieldDefinition) => { 
     setCustomFields(prev => [...prev, f]); 
     await api.post('/custom-fields', f); 
+  };
+
+  const updateCustomField = async (id: string, updates: Partial<CustomFieldDefinition>) => {
+    setCustomFields(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+    await api.patch(`/custom-fields/${id}`, updates);
   };
 
   const deleteCustomField = async (id: string) => { 
@@ -311,7 +309,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const userData = { ...u, accountId: u.accountId || currentUser?.accountId };
     try {
       await api.post('/users', userData);
-      // Só atualizamos o estado local após o sucesso na API
       setUsers(prev => [...prev, userData]);
     } catch (e: any) {
       console.error("Add user failed:", e.message);
@@ -333,7 +330,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const deleteTeam = async (id: string) => { setTeams(prev => prev.filter(t => t.id !== id)); await api.delete(`/teams/${id}`); };
 
   const createAccount = async (a: Account, u: User) => { setAccounts(prev => [a, ...prev]); await api.post('/admin/accounts', { companyName: a.companyName, ownerName: u.name, email: u.email, password: u.password, plan: a.plan }); };
-  const updateAccountStatus = async (id: string, s: any) => { setAccounts(prev => prev.map(a => a.id === id ? { ...a, status: s } : a)); await api.patch(`/admin/accounts/${id}`, { status: s }); };
+  const updateAccountStatus = async (id: string, s: any) => { setAccounts(prev => prev.map(a => a.id === id ? { ...a, status: s } : a)); await api.patch('/admin/accounts/${id}', { status: s }); };
   const extendAccountSubscription = async (id: string, m: number) => { /* logic */ };
   const upgradePlan = async (p: any) => { await api.post('/billing/upgrade', { accountId: currentUser?.accountId, plan: p }); refreshData(); };
   const registerAccount = async (u: string, e: string, p: string, c: string) => { await api.post('/auth/register', { userName: u, email: e, password: p, companyName: c }); return login(e, p); };
@@ -345,7 +342,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setActiveFunnelId, login, registerAccount, logout, refreshData,
       addLead, updateLead, moveLead, duplicateLead, deleteLead, addTask, toggleTask, deleteTask,
       addFunnel, updateFunnel, deleteFunnel, addStage, updateStage, reorderStages, deleteStage,
-      addCustomField, deleteCustomField, getFunnelStats, addUser, updateUser, deleteUser,
+      addCustomField, updateCustomField, deleteCustomField, getFunnelStats, addUser, updateUser, deleteUser,
       addTeam, updateTeam, deleteTeam, createAccount, updateAccountStatus, extendAccountSubscription, upgradePlan,
       updateVisibilitySettings
     }}>

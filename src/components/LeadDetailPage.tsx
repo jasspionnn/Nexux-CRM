@@ -6,7 +6,7 @@ import {
   Calendar, Clock, ChevronRight, ChevronDown, ChevronUp,
   Plus, MoreHorizontal, FileText, CheckCircle, XCircle,
   Copy, Save, AlertCircle, ThumbsUp, Send, Paperclip, Edit2, Sparkles, Settings, Trash2, PhoneCall, Layers,
-  Briefcase, DollarSign
+  Briefcase, DollarSign, SlidersHorizontal
 } from 'lucide-react';
 import { CustomFieldDefinition, Lead, Task } from '../types';
 
@@ -42,13 +42,8 @@ const EditableField: React.FC<EditableFieldProps> = ({ label, value, type = 'tex
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleBlur();
-    }
-    if (e.key === 'Escape') {
-      setTempValue(value);
-      setIsEditing(false);
-    }
+    if (e.key === 'Enter') handleBlur();
+    if (e.key === 'Escape') { setTempValue(value); setIsEditing(false); }
   };
 
   return (
@@ -94,11 +89,8 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   const { leads, funnels, updateLead, duplicateLead, customFields, addTask, toggleTask, deleteTask } = useCRM();
   const lead = leads.find(l => l.id === leadId);
   
-  // States
   const [activeTab, setActiveTab] = useState<'notes' | 'tasks'>('notes');
   const [noteText, setNoteText] = useState('');
-  
-  // Tasks Form State
   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
   const [newTaskData, setNewTaskData] = useState<{title: string, date: string, type: 'call' | 'email' | 'meeting' | 'todo'}>({
       title: '',
@@ -113,12 +105,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
 
   const handleSaveNote = () => {
     if (!noteText.trim()) return;
-    const newNote = {
-      id: `note-${Date.now()}`,
-      content: noteText,
-      createdAt: new Date().toISOString(),
-      authorName: 'Eu' 
-    };
+    const newNote = { id: `note-${Date.now()}`, content: noteText, createdAt: new Date().toISOString(), authorName: 'Eu' };
     updateLead(lead.id, { notes: [newNote, ...lead.notes] });
     setNoteText('');
   };
@@ -126,15 +113,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   const handleCreateTask = (e: React.FormEvent) => {
       e.preventDefault();
       if(!newTaskData.title) return;
-
-      addTask(lead.id, {
-          id: `t-${Date.now()}`,
-          title: newTaskData.title,
-          dueDate: newTaskData.date || new Date().toISOString(),
-          type: newTaskData.type,
-          completed: false
-      });
-      
+      addTask(lead.id, { id: `t-${Date.now()}`, title: newTaskData.title, dueDate: newTaskData.date || new Date().toISOString(), type: newTaskData.type, completed: false });
       setNewTaskData({ title: '', date: new Date().toISOString().slice(0, 16), type: 'todo' });
       setIsTaskFormOpen(false);
   };
@@ -142,31 +121,33 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   const handleMarkAsWon = () => {
     if (!currentFunnel) return;
     const targetStageId = currentFunnel.defaultWonStageId || currentFunnel.stages[currentFunnel.stages.length - 1].id;
-    updateLead(lead.id, { 
-        probability: 100,
-        stageId: targetStageId
-    });
-    const newNote = {
-        id: `sys-${Date.now()}`,
-        content: "🎉 Negócio marcado como GANHO!",
-        createdAt: new Date().toISOString(),
-        authorName: 'Sistema'
-    };
-    updateLead(lead.id, { notes: [newNote, ...lead.notes] });
+    updateLead(lead.id, { probability: 100, stageId: targetStageId });
+    updateLead(lead.id, { notes: [{ id: `sys-${Date.now()}`, content: "🎉 Negócio marcado como GANHO!", createdAt: new Date().toISOString(), authorName: 'Sistema' }, ...lead.notes] });
   };
 
   const handleTransferFunnel = (targetFunnelId: string) => {
       const targetFunnel = funnels.find(f => f.id === targetFunnelId);
       if (!targetFunnel) return;
       const targetStageId = targetFunnel.stages[0]?.id || '';
-      const newNote = {
-          id: `sys-mov-${Date.now()}`,
-          content: `🔄 Lead encaminhado do funil "${currentFunnel?.name}" para o funil "${targetFunnel.name}".`,
-          createdAt: new Date().toISOString(),
-          authorName: 'Sistema'
-      };
-      updateLead(lead.id, { funnelId: targetFunnelId, stageId: targetStageId, notes: [newNote, ...lead.notes] });
+      updateLead(lead.id, { funnelId: targetFunnelId, stageId: targetStageId, notes: [{ id: `sys-mov-${Date.now()}`, content: `🔄 Lead encaminhado do funil "${currentFunnel?.name}" para o funil "${targetFunnel.name}".`, createdAt: new Date().toISOString(), authorName: 'Sistema' }, ...lead.notes] });
   };
+
+  const handleCustomFieldChange = (field: CustomFieldDefinition, value: any) => {
+    const currentValues = lead.customValues || {};
+    let newValue = value;
+    if (field.type === 'multiselect') {
+        const currentArray = (currentValues[field.id] as string[]) || [];
+        newValue = currentArray.includes(value) ? currentArray.filter(v => v !== value) : [...currentArray, value];
+    }
+    updateLead(lead.id, { customValues: { ...currentValues, [field.id]: newValue } });
+  };
+
+  const visibleStandardFields = customFields.filter(field => {
+    if (field.context === 'lost_reason') return false; 
+    if (field.funnelId !== lead.funnelId) return false;
+    if (field.visibleStageIds.length > 0 && !field.visibleStageIds.includes(lead.stageId)) return false;
+    return true;
+  });
 
   const isWon = lead.probability === 100;
   const isLost = lead.probability === 0;
@@ -260,6 +241,64 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                         <EditableField label="Valor Esperado" value={lead.value} type="number" onChange={(v) => updateLead(lead.id, { value: Number(v) })} icon={DollarSign} />
                     </div>
                 </div>
+
+                {visibleStandardFields.length > 0 && (
+                    <div className="space-y-6">
+                        <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest flex items-center gap-2 border-b border-gray-50 pb-2">
+                            <SlidersHorizontal size={16} className="text-blue-500" /> Campos Personalizados
+                        </h3>
+                        <div className="space-y-4">
+                            {visibleStandardFields.map(field => (
+                                <div key={field.id} className="flex flex-col group">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase mb-1">{field.name}</label>
+                                    
+                                    {field.type === 'text' && (
+                                        <input 
+                                            type="text"
+                                            value={lead.customValues?.[field.id] || ''}
+                                            onChange={(e) => handleCustomFieldChange(field, e.target.value)}
+                                            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                                            placeholder="..."
+                                        />
+                                    )}
+
+                                    {field.type === 'select' && (
+                                        <select
+                                            value={lead.customValues?.[field.id] || ''}
+                                            onChange={(e) => handleCustomFieldChange(field, e.target.value)}
+                                            className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="">Selecione...</option>
+                                            {field.options?.map(opt => (
+                                                <option key={opt.id} value={opt.label}>{opt.label}</option>
+                                            ))}
+                                        </select>
+                                    )}
+
+                                    {field.type === 'multiselect' && (
+                                        <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 space-y-2 max-h-32 overflow-y-auto shadow-inner">
+                                            {field.options?.map(opt => {
+                                                const isSelected = (lead.customValues?.[field.id] as string[] || []).includes(opt.label);
+                                                return (
+                                                    <label key={opt.id} className="flex items-center gap-2 cursor-pointer hover:bg-white p-1 rounded transition-colors">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={() => handleCustomFieldChange(field, opt.label)}
+                                                            className="rounded text-blue-600 focus:ring-blue-500"
+                                                        />
+                                                        <span className="text-xs font-bold text-gray-700">{opt.label}</span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 <div className="space-y-6">
                     <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest flex items-center gap-2 border-b border-gray-50 pb-2">
                         <User size={16} className="text-blue-500" /> Contato Direto
@@ -344,7 +383,6 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                                    <Plus size={20} /> Adicionar Nova Atividade
                                </button>
                            )}
-                            
                             <div className="space-y-3">
                                 {lead.tasks.map(task => (
                                     <div key={task.id} className={`p-4 bg-white border rounded-2xl flex items-center gap-4 transition-all ${task.completed ? 'opacity-50 border-gray-100' : 'border-gray-200 shadow-sm hover:border-blue-200'}`}>
