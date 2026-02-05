@@ -69,9 +69,18 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]); 
 
-  const [activeFunnelId, setActiveFunnelId] = useState<string>('');
+  const [activeFunnelId, setActiveFunnelId] = useState<string>(() => {
+    return localStorage.getItem('nexus_active_funnel') || '';
+  });
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Efeito para persistir o funil ativo
+  useEffect(() => {
+    if (activeFunnelId) {
+      localStorage.setItem('nexus_active_funnel', activeFunnelId);
+    }
+  }, [activeFunnelId]);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('nexus_user_session');
@@ -100,6 +109,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                setTeams(data.teams || []);
                setCustomFields(data.customFields || []);
 
+               // Se o funil ativo não existir mais ou for vazio, seleciona o primeiro
                if (fetchedFunnels.length > 0) {
                    const exists = fetchedFunnels.some((f: any) => f.id === activeFunnelId);
                    if (!activeFunnelId || !exists) {
@@ -168,6 +178,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setFunnels([]);
       setAccounts([]);
       localStorage.removeItem('nexus_user_session');
+      localStorage.removeItem('nexus_active_funnel');
       setActiveFunnelId('');
   };
 
@@ -239,9 +250,10 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const addFunnel = async (name: string) => { 
+    if (!currentUser?.accountId) return;
     const nf: Funnel = { 
       id: `f${Date.now()}`, 
-      accountId: currentUser?.accountId!, 
+      accountId: currentUser.accountId, 
       name, 
       stages: [
         { id: `s1-${Date.now()}`, name: 'Lead', color: 'bg-blue-500', order: 0 },
@@ -260,7 +272,10 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const deleteFunnel = async (id: string) => {
     setFunnels(prev => prev.filter(f => f.id !== id));
-    if (activeFunnelId === id) setActiveFunnelId('');
+    if (activeFunnelId === id) {
+      const remaining = funnels.filter(f => f.id !== id);
+      setActiveFunnelId(remaining.length > 0 ? remaining[0].id : '');
+    }
     await api.delete(`/funnels/${id}`);
   };
 
@@ -329,11 +344,26 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
   const deleteTeam = async (id: string) => { setTeams(prev => prev.filter(t => t.id !== id)); await api.delete(`/teams/${id}`); };
 
-  const createAccount = async (a: Account, u: User) => { setAccounts(prev => [a, ...prev]); await api.post('/admin/accounts', { companyName: a.companyName, ownerName: u.name, email: u.email, password: u.password, plan: a.plan }); };
-  const updateAccountStatus = async (id: string, s: any) => { setAccounts(prev => prev.map(a => a.id === id ? { ...a, status: s } : a)); await api.patch('/admin/accounts/${id}', { status: s }); };
-  const extendAccountSubscription = async (id: string, m: number) => { /* logic */ };
-  const upgradePlan = async (p: any) => { await api.post('/billing/upgrade', { accountId: currentUser?.accountId, plan: p }); refreshData(); };
-  const registerAccount = async (u: string, e: string, p: string, c: string) => { await api.post('/auth/register', { userName: u, email: e, password: p, companyName: c }); return login(e, p); };
+  const createAccount = async (a: Account, u: User) => { 
+    setAccounts(prev => [a, ...prev]); 
+    await api.post('/admin/accounts', { companyName: a.companyName, ownerName: u.name, email: u.email, password: u.password, plan: a.plan }); 
+  };
+  const updateAccountStatus = async (id: string, s: any) => { 
+    setAccounts(prev => prev.map(a => a.id === id ? { ...a, status: s } : a)); 
+    await api.patch(`/admin/accounts/${id}`, { status: s }); 
+  };
+  const extendAccountSubscription = async (id: string, m: number) => { 
+    // Logic can be added here for extending dates via API
+    console.log(`Extending subscription for ${id} by ${m} months`);
+  };
+  const upgradePlan = async (p: any) => { 
+    await api.post('/billing/upgrade', { accountId: currentUser?.accountId, plan: p }); 
+    refreshData(); 
+  };
+  const registerAccount = async (u: string, e: string, p: string, c: string) => { 
+    await api.post('/auth/register', { userName: u, email: e, password: p, companyName: c }); 
+    return login(e, p); 
+  };
 
   return (
     <CRMContext.Provider value={{
