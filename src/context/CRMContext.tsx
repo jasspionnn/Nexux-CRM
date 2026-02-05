@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole, VisibilityLevel } from '../types';
 import { api } from '../services/api';
@@ -308,7 +307,18 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const getFunnelStats = (fid: string) => ({ totalValue: visibleLeads.filter(l => l.funnelId === fid).reduce((a, b) => a + b.value, 0), leadCount: visibleLeads.filter(l => l.funnelId === fid).length });
   
-  const addUser = async (u: User) => { setUsers(prev => [...prev, u]); await api.post('/users', u); };
+  const addUser = async (u: User) => { 
+    const userData = { ...u, accountId: u.accountId || currentUser?.accountId };
+    try {
+      await api.post('/users', userData);
+      // Só atualizamos o estado local após o sucesso na API
+      setUsers(prev => [...prev, userData]);
+    } catch (e: any) {
+      console.error("Add user failed:", e.message);
+      throw e;
+    }
+  };
+
   const updateUser = async (id: string, updates: Partial<User>) => { 
     setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u));
     await api.patch(`/users/${id}`, updates);

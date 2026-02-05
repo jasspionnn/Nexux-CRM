@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { Hexagon, ArrowRight, Lock, Mail, AlertCircle, User, UserPlus, CheckCircle, Building } from 'lucide-react';
+import { api } from '../services/api';
 
 export const LoginPage = () => {
   const { login, registerAccount } = useCRM();
@@ -17,6 +18,16 @@ export const LoginPage = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [bgImage, setBgImage] = useState('https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=2000');
+
+  useEffect(() => {
+    // Busca configuração pública (como a imagem de fundo)
+    api.get<any>('/public/settings').then(settings => {
+        if (settings.login_background) {
+            setBgImage(settings.login_background);
+        }
+    }).catch(console.error);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +50,6 @@ export const LoginPage = () => {
                  setSuccess('Conta criada! Entrando...');
             }
         } else {
-            // Login Logic
             const result = await login(email, password);
             if (result !== true) {
                 setError(typeof result === 'string' ? result : 'Erro ao fazer login. Verifique suas credenciais.');
@@ -60,148 +70,155 @@ export const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen bg-white flex overflow-hidden">
       
-      {/* Background decoration */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0">
-          <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-blue-600/10 blur-[100px]"></div>
-          <div className="absolute top-[40%] -right-[10%] w-[40%] h-[40%] rounded-full bg-purple-600/10 blur-[100px]"></div>
+      {/* LADO ESQUERDO: IMAGEM DE FUNDO (60%) */}
+      <div className="hidden lg:block lg:w-[60%] relative overflow-hidden bg-slate-900">
+          <div 
+            className="absolute inset-0 bg-cover bg-center transition-all duration-1000 transform hover:scale-105"
+            style={{ backgroundImage: `url(${bgImage})` }}
+          />
+          {/* Overlay gradiente para melhorar contraste e estética */}
+          <div className="absolute inset-0 bg-gradient-to-tr from-slate-900/80 via-slate-900/20 to-transparent" />
+          
+          {/* Conteúdo flutuante sobre a imagem */}
+          <div className="absolute bottom-12 left-12 max-w-lg text-white">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/20">
+                    <Hexagon className="text-blue-400 w-8 h-8 fill-current" />
+                </div>
+                <span className="text-2xl font-black tracking-tighter">NEXUS CRM</span>
+              </div>
+              <h2 className="text-4xl font-bold mb-4 leading-tight">O futuro da sua gestão comercial começa aqui.</h2>
+              <p className="text-slate-300 font-medium">Pipeline inteligente, automação de vendas e visão estratégica para escalar seu negócio.</p>
+          </div>
       </div>
 
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden z-10 animate-fade-in">
-        <div className="p-8 pb-6">
-            <div className="flex justify-center mb-6">
-                <div className="bg-blue-50 p-4 rounded-full">
-                    <Hexagon className="text-blue-600 w-10 h-10 fill-current" />
+      {/* LADO DIREITO: FORMULÁRIO (40%) */}
+      <div className="w-full lg:w-[40%] flex items-center justify-center p-8 sm:p-12 md:p-16 lg:p-20 bg-white animate-fade-in relative">
+        <div className="w-full max-w-sm space-y-8">
+            <div className="text-left">
+                <div className="lg:hidden flex justify-start mb-6">
+                    <div className="bg-blue-50 p-3 rounded-2xl">
+                        <Hexagon className="text-blue-600 w-8 h-8 fill-current" />
+                    </div>
                 </div>
+                <h1 className="text-3xl font-black text-gray-900 tracking-tight">
+                    {isRegistering ? 'Crie sua conta' : 'Acesse o sistema'}
+                </h1>
+                <p className="text-gray-500 font-medium mt-2">
+                    {isRegistering ? 'Cadastre sua empresa e comece em segundos.' : 'Bem-vindo de volta! Digite seus dados.'}
+                </p>
             </div>
-            
-            <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">
-                {isRegistering ? 'Criar Nova Conta' : 'Acesse sua Conta'}
-            </h1>
-            <p className="text-center text-gray-500 text-sm mb-6">
-                {isRegistering ? 'Cadastre sua empresa e comece agora.' : 'Gestão de pipeline e vendas.'}
-            </p>
 
             {error && (
-                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-center gap-2 mb-6 animate-scale-in">
-                    <AlertCircle size={16} className="shrink-0" />
+                <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-bold flex items-center gap-3 border border-red-100 animate-scale-in">
+                    <AlertCircle size={20} className="shrink-0" />
                     {error}
                 </div>
             )}
 
             {success && (
-                <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm flex items-center gap-2 mb-6 animate-scale-in">
-                    <CheckCircle size={16} />
+                <div className="bg-green-50 text-green-600 p-4 rounded-xl text-sm font-bold flex items-center gap-3 border border-green-100 animate-scale-in">
+                    <CheckCircle size={20} />
                     {success}
                 </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Name Field - Only for Register */}
+            <form onSubmit={handleSubmit} className="space-y-5">
                 {isRegistering && (
-                    <div className="animate-fade-in space-y-4">
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Nome Completo</label>
-                            <div className="relative">
-                                <User className="absolute left-3 top-3 text-gray-400" size={18} />
+                    <div className="animate-fade-in space-y-5">
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">Nome Completo</label>
+                            <div className="relative group">
+                                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" size={20} />
                                 <input 
                                     type="text"
                                     required={isRegistering}
                                     value={name}
                                     onChange={e => setName(e.target.value)}
-                                    placeholder="Seu Nome"
-                                    className="w-full border border-gray-300 rounded-xl py-2.5 pl-10 pr-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all text-gray-800 font-medium"
+                                    placeholder="Como devemos te chamar?"
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 pl-12 pr-4 outline-none focus:bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all text-gray-800 font-bold placeholder:font-normal placeholder:text-gray-400"
                                 />
                             </div>
                         </div>
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Nome da Empresa</label>
-                            <div className="relative">
-                                <Building className="absolute left-3 top-3 text-gray-400" size={18} />
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">Nome da Empresa</label>
+                            <div className="relative group">
+                                <Building className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" size={20} />
                                 <input 
                                     type="text"
                                     required={isRegistering}
                                     value={companyName}
                                     onChange={e => setCompanyName(e.target.value)}
-                                    placeholder="Sua Empresa"
-                                    className="w-full border border-gray-300 rounded-xl py-2.5 pl-10 pr-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all text-gray-800 font-medium"
+                                    placeholder="Nome da sua organização"
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 pl-12 pr-4 outline-none focus:bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all text-gray-800 font-bold placeholder:font-normal placeholder:text-gray-400"
                                 />
                             </div>
                         </div>
                     </div>
                 )}
 
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Email</label>
-                    <div className="relative">
-                        <Mail className="absolute left-3 top-3 text-gray-400" size={18} />
+                <div className="space-y-1.5">
+                    <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">E-mail</label>
+                    <div className="relative group">
+                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" size={20} />
                         <input 
                             type="email"
                             required
                             value={email}
                             onChange={e => setEmail(e.target.value)}
                             placeholder="seu@email.com"
-                            className="w-full border border-gray-300 rounded-xl py-2.5 pl-10 pr-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all text-gray-800 font-medium"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 pl-12 pr-4 outline-none focus:bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all text-gray-800 font-bold placeholder:font-normal placeholder:text-gray-400"
                         />
                     </div>
                 </div>
                 
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Senha</label>
-                    <div className="relative">
-                        <Lock className="absolute left-3 top-3 text-gray-400" size={18} />
+                <div className="space-y-1.5">
+                    <div className="flex justify-between items-center">
+                        <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1">Senha</label>
+                        {!isRegistering && <button type="button" className="text-xs font-bold text-blue-600 hover:text-blue-800">Esqueceu a senha?</button>}
+                    </div>
+                    <div className="relative group">
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" size={20} />
                         <input 
                             type="password"
                             required
                             value={password}
                             onChange={e => setPassword(e.target.value)}
                             placeholder="••••••••"
-                            className="w-full border border-gray-300 rounded-xl py-2.5 pl-10 pr-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50 transition-all text-gray-800 font-medium"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 pl-12 pr-4 outline-none focus:bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all text-gray-800 font-bold placeholder:font-normal placeholder:text-gray-400"
                         />
                     </div>
                 </div>
 
-                {!isRegistering && (
-                    <div className="flex items-center justify-between text-xs mt-2">
-                        <label className="flex items-center gap-2 cursor-pointer text-gray-500 hover:text-gray-700">
-                            <input type="checkbox" className="rounded text-blue-600 focus:ring-blue-500" />
-                            Lembrar de mim
-                        </label>
-                        <a href="#" className="text-blue-600 hover:text-blue-800 font-medium">Esqueceu a senha?</a>
-                    </div>
-                )}
-
                 <button 
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-[0.98] flex justify-center items-center gap-2 mt-4 disabled:opacity-70 disabled:cursor-not-allowed"
+                    className="w-full bg-blue-600 text-white font-black text-sm uppercase tracking-widest py-4 rounded-2xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 active:scale-[0.98] flex justify-center items-center gap-3 mt-4 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                     {loading ? (
                         <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
                     ) : (
                         <>
-                            {isRegistering ? (
-                                <>Criar Conta Grátis <UserPlus size={18} /></>
-                            ) : (
-                                <>Entrar na Conta <ArrowRight size={18} /></>
-                            )}
+                            {isRegistering ? 'Criar minha conta' : 'Entrar no sistema'}
+                            <ArrowRight size={20} />
                         </>
                     )}
                 </button>
             </form>
-        </div>
-        
-        <div className="bg-gray-50 p-5 text-center border-t border-gray-100">
-            <p className="text-sm text-gray-600">
-                {isRegistering ? 'Já tem uma conta?' : 'Não tem uma conta?'}
-                <button 
-                    onClick={toggleMode} 
-                    className="ml-2 text-blue-600 font-bold hover:underline focus:outline-none transition-colors"
-                >
-                    {isRegistering ? 'Fazer Login' : 'Cadastre-se'}
-                </button>
-            </p>
+
+            <div className="pt-8 text-center border-t border-gray-100">
+                <p className="text-sm font-medium text-gray-600">
+                    {isRegistering ? 'Já possui conta?' : 'Ainda não tem conta?'}
+                    <button 
+                        onClick={toggleMode} 
+                        className="ml-2 text-blue-600 font-black hover:text-blue-800 transition-colors uppercase tracking-tight"
+                    >
+                        {isRegistering ? 'Fazer Login' : 'Cadastre-se grátis'}
+                    </button>
+                </p>
+            </div>
         </div>
       </div>
     </div>

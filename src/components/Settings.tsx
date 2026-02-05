@@ -410,19 +410,30 @@ export const Settings = () => {
                     <h3 className="font-bold text-gray-800">Convidar Usuário</h3>
                     <button onClick={() => setIsUserModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
                 </div>
-                <form onSubmit={(e) => {
+                <form onSubmit={async (e) => {
                     e.preventDefault();
-                    addUser({
-                        id: `u-${Date.now()}`,
-                        accountId: currentUser?.accountId,
-                        name: (e.target as any).name.value,
-                        email: (e.target as any).email.value,
-                        role: UserRole.USER,
-                        avatar: '',
-                        status: 'active',
-                        joinedAt: new Date().toISOString()
-                    });
-                    setIsUserModalOpen(false);
+                    const form = e.target as any;
+                    const name = form.name.value;
+                    const email = form.email.value;
+                    const initialPassword = 'nexus' + Math.floor(Math.random() * 9000 + 1000);
+
+                    try {
+                        await addUser({
+                            id: `u-${Date.now()}`,
+                            accountId: currentUser?.accountId,
+                            name: name,
+                            email: email,
+                            password: initialPassword,
+                            role: UserRole.USER,
+                            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
+                            status: 'active',
+                            joinedAt: new Date().toISOString()
+                        });
+                        alert(`Usuário criado com sucesso!\nSenha inicial: ${initialPassword}`);
+                        setIsUserModalOpen(false);
+                    } catch (err) {
+                        alert('Erro ao criar usuário. Tente novamente.');
+                    }
                 }} className="p-8 space-y-5">
                     <div>
                         <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Nome Completo</label>

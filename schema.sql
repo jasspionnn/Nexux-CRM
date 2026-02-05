@@ -1,3 +1,4 @@
+
 -- 1. Accounts (Tenants)
 CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
@@ -9,7 +10,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     created_at TEXT DEFAULT (datetime('now')),
     expires_at TEXT,
     stripe_customer_id TEXT,
-    subscription_status TEXT
+    subscription_status TEXT,
+    visibility_config TEXT DEFAULT '{"level":"public","allowUserExport":false,"showTeamGoals":true}'
 );
 
 -- 2. Teams
@@ -114,3 +116,12 @@ CREATE TABLE IF NOT EXISTS custom_fields (
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
     FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE
 );
+
+-- 10. System Settings (Global)
+CREATE TABLE IF NOT EXISTS system_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+
+-- Default Settings
+INSERT OR IGNORE INTO system_settings (key, value) VALUES ('login_background', 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=2000');
