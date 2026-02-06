@@ -4,7 +4,7 @@ import { useCRM } from '../context/CRMContext.tsx';
 import { 
   ArrowLeft, Check, X, User, Phone, Mail, Building, 
   Calendar, Clock, ChevronRight, ChevronDown, ChevronUp,
-  Plus, MoreHorizontal, FileText, CheckCircle, XCircle,
+  Plus, FileText, CheckCircle, XCircle,
   Copy, Save, AlertCircle, ThumbsUp, Send, Edit2, Sparkles, PhoneCall, Layers,
   Briefcase, DollarSign, SlidersHorizontal, Trash2
 } from 'lucide-react';

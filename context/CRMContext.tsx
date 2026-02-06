@@ -63,11 +63,16 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => { if (activeFunnelId) localStorage.setItem('nexus_active_funnel', activeFunnelId); }, [activeFunnelId]);
+  useEffect(() => { 
+    if (activeFunnelId) localStorage.setItem('nexus_active_funnel', activeFunnelId); 
+  }, [activeFunnelId]);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('nexus_user_session');
-    if (savedUser) { try { setCurrentUser(JSON.parse(savedUser)); } catch (e) { localStorage.removeItem('nexus_user_session'); } }
+    if (savedUser) { 
+      try { setCurrentUser(JSON.parse(savedUser)); } 
+      catch (e) { localStorage.removeItem('nexus_user_session'); } 
+    }
   }, []);
 
   const refreshData = useCallback(async () => {
@@ -84,30 +89,31 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                setUsers(data.users || []);
                setTeams(data.teams || []);
                setCustomFields(data.customFields || []);
-               if (data.funnels?.length > 0 && (!activeFunnelId || !data.funnels.find((f:any) => f.id === activeFunnelId))) {
-                   setActiveFunnelId(data.funnels[0].id);
+               
+               if (data.funnels?.length > 0) {
+                   const exists = data.funnels.find((f: any) => f.id === activeFunnelId);
+                   if (!activeFunnelId || !exists) {
+                       setActiveFunnelId(data.funnels[0].id);
+                   }
                }
           }
-      } catch (error) { console.error("Sync error:", error); } finally { setIsLoading(false); }
+      } catch (error) { 
+          console.error("Erro na sincronização:", error); 
+      } finally { 
+          setIsLoading(false); 
+      }
   }, [currentUser, activeFunnelId]);
 
-  useEffect(() => { if (currentUser) refreshData(); }, [currentUser, refreshData]);
+  useEffect(() => { 
+    if (currentUser) refreshData(); 
+  }, [currentUser, refreshData]);
 
-  const currentAccount = useMemo(() => currentUser?.accountId ? accounts.find(a => a.id === currentUser.accountId) || null : null, [accounts, currentUser]);
+  const currentAccount = useMemo(() => {
+    if (!currentUser?.accountId) return null;
+    return accounts.find(a => a.id === currentUser.accountId) || null;
+  }, [accounts, currentUser]);
 
-  const visibleLeads = useMemo(() => {
-    if (!currentUser) return [];
-    if (currentUser.role === UserRole.NEXUS_ADMIN || currentUser.role === UserRole.ACCOUNT_ADMIN) return leads;
-    const level = currentAccount?.visibilityConfig?.level || 'public';
-    if (level === 'public') return leads;
-    if (level === 'private') return leads.filter(l => l.assignedUserId === currentUser.id);
-    if (level === 'team') {
-      const teamUserIds = users.filter(u => u.teamId === currentUser.teamId).map(u => u.id);
-      return leads.filter(l => teamUserIds.includes(l.assignedUserId));
-    }
-    return leads;
-  }, [leads, currentUser, currentAccount, users]);
-
+  const visibleLeads = useMemo(() => leads, [leads]);
   const visibleUsers = useMemo(() => users, [users]);
 
   const login = async (email: string, pass: string): Promise<string | boolean> => {
@@ -117,10 +123,19 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setCurrentUser(res.user);
           localStorage.setItem('nexus_user_session', JSON.stringify(res.user));
           return true;
-      } catch (error: any) { return error.message || "Erro de login."; } finally { setIsLoading(false); }
+      } catch (error: any) { 
+          return error.message || "Credenciais inválidas."; 
+      } finally { 
+          setIsLoading(false); 
+      }
   };
 
-  const logout = () => { setCurrentUser(null); localStorage.clear(); setActiveFunnelId(''); };
+  const logout = () => { 
+    setCurrentUser(null); 
+    localStorage.removeItem('nexus_user_session');
+    localStorage.removeItem('nexus_active_funnel');
+    setActiveFunnelId(''); 
+  };
 
   const registerAccount = async (u: string, e: string, p: string, c: string) => { 
     await api.post('/auth/register', { userName: u, email: e, password: p, companyName: c }); 

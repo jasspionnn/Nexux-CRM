@@ -1,8 +1,9 @@
+
 import React, { useState } from 'react';
-import { useCRM } from '../context/CRMContext';
-import { LeadCard } from './LeadCard';
+import { useCRM } from '../context/CRMContext.tsx';
+import { LeadCard } from './LeadCard.tsx';
 import { Plus, Layout, User, Layers, Loader2 } from 'lucide-react';
-import { NewLeadModal } from './NewLeadModal';
+import { NewLeadModal } from './NewLeadModal.tsx';
 
 interface Props {
   onNavigate: (view: string, data?: any) => void;
