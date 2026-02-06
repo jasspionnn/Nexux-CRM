@@ -1,4 +1,13 @@
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
 
-// This file is deprecated. Please use src/index.tsx.
-// Redirecting to src/index.tsx just in case build tools pick this up.
-import './src/index';
+const rootElement = document.getElementById('root');
+if (!rootElement) throw new Error('Failed to find the root element');
+
+const root = ReactDOM.createRoot(rootElement);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
