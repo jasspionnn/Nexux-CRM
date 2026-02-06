@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { useCRM } from '../context/CRMContext';
+import { useCRM } from '../context/CRMContext.tsx';
 import { 
   ArrowLeft, Check, X, User, Phone, Mail, Building, 
   Calendar, Clock, ChevronRight, ChevronDown, ChevronUp,
@@ -7,7 +8,7 @@ import {
   Copy, Save, AlertCircle, ThumbsUp, Send, Edit2, Sparkles, PhoneCall, Layers,
   Briefcase, DollarSign, SlidersHorizontal, Trash2
 } from 'lucide-react';
-import { CustomFieldDefinition, Lead, Task } from '../types';
+import { CustomFieldDefinition, Lead, Task } from '../types.ts';
 
 interface EditableFieldProps {
   label: string;
@@ -80,12 +81,6 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   
   const [activeTab, setActiveTab] = useState<'notes' | 'tasks'>('notes');
   const [noteText, setNoteText] = useState('');
-  const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
-  const [newTaskData, setNewTaskData] = useState<{title: string, date: string, type: 'call' | 'email' | 'meeting' | 'todo'}>({
-      title: '',
-      date: new Date().toISOString().slice(0, 16),
-      type: 'todo'
-  });
   
   if (!lead) return <div className="p-8 text-center"><p className="text-gray-500">Lead não encontrado.</p> <button onClick={onBack} className="text-blue-500 underline mt-2">Voltar</button></div>;
 
@@ -97,14 +92,6 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
     const newNote = { id: `note-${Date.now()}`, content: noteText, createdAt: new Date().toISOString(), authorName: 'Eu' };
     updateLead(lead.id, { notes: [newNote, ...lead.notes] });
     setNoteText('');
-  };
-
-  const handleCreateTask = (e: React.FormEvent) => {
-      e.preventDefault();
-      if(!newTaskData.title) return;
-      addTask(lead.id, { id: `t-${Date.now()}`, title: newTaskData.title, dueDate: newTaskData.date || new Date().toISOString(), type: newTaskData.type, completed: false });
-      setNewTaskData({ title: '', date: new Date().toISOString().slice(0, 16), type: 'todo' });
-      setIsTaskFormOpen(false);
   };
 
   const handleMarkAsWon = () => {
@@ -154,7 +141,13 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
             </div>
             <div className="flex items-center gap-3">
                  {isWon ? (
-                     <div className="flex items-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-xl font-black text-sm border border-green-200">GANHO</div>
+                     <div className="flex items-center gap-2 px-6 py-3 bg-green-50 text-green-700 rounded-xl font-black text-sm border border-green-200 shadow-sm animate-scale-in">
+                         <CheckCircle size={20} /> GANHO
+                     </div>
+                 ) : isLost ? (
+                     <div className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-700 rounded-xl font-black text-sm border border-red-200 shadow-sm animate-scale-in">
+                         <XCircle size={20} /> PERDIDO
+                     </div>
                  ) : (
                     <>
                         <button onClick={() => updateLead(lead.id, { probability: 0 })} className="px-5 py-3 border border-red-100 text-red-600 hover:bg-red-50 rounded-xl font-bold text-sm">Perda</button>
@@ -194,7 +187,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                         <User size={16} className="text-blue-500" /> Contato Direto
                     </h3>
                     <div className="space-y-4">
-                        <EditableField label="Nome do Contato" value={lead.contactName} onChange={(v) => updateLead(lead.id, { contactName: v })} icon={User} />
+                        <EditableField label="Nome" value={lead.contactName} onChange={(v) => updateLead(lead.id, { contactName: v })} icon={User} />
                         <EditableField label="E-mail" value={lead.contactEmail} onChange={(v) => updateLead(lead.id, { contactEmail: v })} icon={Mail} />
                         <EditableField label="Telefone" value={lead.contactPhone} onChange={(v) => updateLead(lead.id, { contactPhone: v })} icon={Phone} />
                     </div>
@@ -206,7 +199,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                     <div className="flex gap-8">
                         {['notes', 'tasks'].map((tab) => (
                             <button key={tab} onClick={() => setActiveTab(tab as any)} className={`pb-4 text-xs font-black uppercase tracking-widest border-b-2 transition-all ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>
-                                {tab === 'notes' ? 'Histórico de Notas' : 'Tarefas e Lembretes'}
+                                {tab === 'notes' ? 'Histórico' : 'Tarefas'}
                             </button>
                         ))}
                     </div>
@@ -216,7 +209,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                     {activeTab === 'notes' && (
                         <div className="space-y-6 max-w-3xl mx-auto">
                             <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                                <textarea value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Adicione um detalhe importante..." className="w-full text-sm font-medium outline-none resize-none min-h-[100px] placeholder-gray-300" />
+                                <textarea value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Adicione uma nota..." className="w-full text-sm font-medium outline-none resize-none min-h-[100px] placeholder-gray-300" />
                                 <div className="flex justify-end mt-4 pt-4 border-t border-gray-50">
                                     <button onClick={handleSaveNote} disabled={!noteText.trim()} className="bg-gray-900 text-white px-6 py-2 rounded-xl text-sm font-bold hover:bg-black transition-all shadow-lg">Salvar Nota</button>
                                 </div>
@@ -224,7 +217,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                             <div className="space-y-4 pb-10">
                                 {lead.notes.map(note => (
                                     <div key={note.id} className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm flex gap-4 animate-fade-in hover:border-blue-100 transition-colors">
-                                        <div className={`p-3 rounded-full h-fit ${note.authorName === 'Sistema' ? 'bg-gray-100 text-gray-400' : 'bg-blue-50 text-blue-600'}`}><User size={18} /></div>
+                                        <div className="p-3 rounded-full h-fit bg-blue-50 text-blue-600"><User size={18} /></div>
                                         <div className="flex-1">
                                             <div className="flex justify-between items-center mb-1">
                                                 <span className="text-xs font-black text-gray-800 uppercase tracking-tight">{note.authorName}</span>

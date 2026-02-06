@@ -1,15 +1,16 @@
+
 import React, { useState, useEffect } from 'react';
-import { CRMProvider, useCRM } from './context/CRMContext';
-import { Sidebar } from './components/Sidebar';
-import { Dashboard } from './components/Dashboard';
-import { KanbanBoard } from './components/KanbanBoard';
-import { Settings } from './components/Settings';
-import { LeadsDatabase } from './components/LeadsDatabase';
-import { LeadDetailPage } from './components/LeadDetailPage';
-import { TasksView } from './components/TasksView';
-import { LoginPage } from './components/LoginPage';
-import { NexusAdminDashboard } from './components/NexusAdminDashboard';
-import { UserRole } from './types';
+import { CRMProvider, useCRM } from './context/CRMContext.tsx';
+import { Sidebar } from './components/Sidebar.tsx';
+import { Dashboard } from './components/Dashboard.tsx';
+import { KanbanBoard } from './components/KanbanBoard.tsx';
+import { Settings } from './components/Settings.tsx';
+import { LeadsDatabase } from './components/LeadsDatabase.tsx';
+import { LeadDetailPage } from './components/LeadDetailPage.tsx';
+import { TasksView } from './components/TasksView.tsx';
+import { LoginPage } from './components/LoginPage.tsx';
+import { NexusAdminDashboard } from './components/NexusAdminDashboard.tsx';
+import { UserRole } from './types.ts';
 
 const AppContent = () => {
   const { currentUser } = useCRM();
@@ -19,7 +20,7 @@ const AppContent = () => {
   useEffect(() => {
     if (currentUser?.role === UserRole.NEXUS_ADMIN) {
         setCurrentView('admin-accounts');
-    } else if (currentView === 'admin-accounts') {
+    } else if (currentView === 'admin-accounts' && currentUser) {
         setCurrentView('kanban');
     }
   }, [currentUser]);

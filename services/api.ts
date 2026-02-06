@@ -1,3 +1,4 @@
+
 export const api = {
     get: async <T>(endpoint: string): Promise<T> => {
         const res = await fetch(`/api${endpoint}`);
