@@ -1,5 +1,6 @@
+
 import { GoogleGenAI } from "@google/genai";
-import { Lead } from "../types";
+import { Lead } from "../types.ts";
 
 export const generateLeadStrategy = async (lead: Lead, funnelName: string, stageName: string): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
