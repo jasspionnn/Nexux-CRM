@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useCRM } from '../context/CRMContext.tsx';
 import { LeadCard } from './LeadCard.tsx';
@@ -44,22 +43,27 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
            <Layers className="mx-auto text-gray-200 mb-6" size={80} />
            <h3 className="text-xl font-bold text-gray-800 mb-2">Nenhum funil ativo encontrado</h3>
            <p className="text-gray-500 mb-8 text-sm leading-relaxed">
-             Parece que você ainda não tem um funil de vendas configurado.
+             Parece que você ainda não tem um funil de vendas configurado ou ele não foi selecionado.
            </p>
            {funnels.length > 0 ? (
              <div className="space-y-3">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Selecione um existente:</p>
                 {funnels.map(f => (
                   <button 
                     key={f.id}
                     onClick={() => setActiveFunnelId(f.id)}
-                    className="w-full p-4 bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded-xl font-bold text-gray-700 transition-all text-sm flex justify-between items-center"
+                    className="w-full p-4 bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded-xl font-bold text-gray-700 transition-all text-sm flex justify-between items-center"
                   >
-                    {f.name} <Plus size={16} className="text-blue-500" />
+                    {f.name}
+                    <Plus size={16} className="text-blue-500" />
                   </button>
                 ))}
              </div>
            ) : (
-             <button onClick={() => addFunnel('Vendas Geral')} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg flex items-center gap-2 mx-auto">
+             <button 
+              onClick={() => addFunnel('Vendas Geral')}
+              className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg flex items-center gap-2 mx-auto"
+             >
                <Plus size={20} /> Criar Meu Primeiro Funil
              </button>
            )}
@@ -90,7 +94,9 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
               ))}
             </select>
           </div>
+
           <div className="h-6 w-px bg-gray-200"></div>
+
           <div className="flex items-center gap-2">
             <User size={14} className="text-gray-400" />
             <select 
@@ -105,12 +111,17 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
             </select>
           </div>
         </div>
+        
         <div className="flex items-center gap-4">
            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest hidden lg:block">
               {leadsToDisplay.length} oportunidades
            </div>
-           <button onClick={() => setIsNewLeadModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-md">
-             <Plus size={18} /> Novo Lead
+           <button 
+             onClick={() => setIsNewLeadModalOpen(true)}
+             className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-md active:transform active:scale-95"
+           >
+             <Plus size={18} />
+             Novo Lead
            </button>
         </div>
       </div>
@@ -122,7 +133,12 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
             const totalValue = stageLeads.reduce((acc, curr) => acc + curr.value, 0);
 
             return (
-              <div key={stage.id} className="w-80 flex flex-col h-full max-h-full rounded-2xl bg-gray-100/40 border border-gray-200/60" onDrop={(e) => handleDrop(e, stage.id)} onDragOver={handleDragOver}>
+              <div 
+                key={stage.id}
+                className="w-80 flex flex-col h-full max-h-full rounded-2xl bg-gray-100/40 border border-gray-200/60"
+                onDrop={(e) => handleDrop(e, stage.id)}
+                onDragOver={handleDragOver}
+              >
                 <div className={`p-4 border-b border-gray-200/50 rounded-t-2xl bg-white sticky top-0 z-10 border-t-4 ${stage.color.replace('bg-', 'border-t-').split(' ')[0]}`}>
                   <div className="flex justify-between items-center mb-1">
                     <h3 className="font-bold text-gray-700 truncate text-sm">{stage.name}</h3>
@@ -133,23 +149,35 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
                     <span className="text-gray-600">R$ {totalValue.toLocaleString()}</span>
                   </div>
                 </div>
+
                 <div className="flex-1 overflow-y-auto p-3 space-y-3 kanban-scroll">
                   {stageLeads.map(lead => (
                     <LeadCard 
-                      key={lead.id} lead={lead} 
+                      key={lead.id} 
+                      lead={lead} 
                       user={visibleUsers.find(u => u.id === lead.assignedUserId)}
                       onClick={() => onNavigate('lead-detail', lead.id)}
                       funnelName={activeFunnel.name}
                       stageName={stage.name}
                     />
                   ))}
+                  {stageLeads.length === 0 && (
+                    <div className="h-24 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-[10px] font-bold text-gray-300 uppercase">
+                       Sem leads aqui
+                    </div>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
       </div>
-      <NewLeadModal isOpen={isNewLeadModalOpen} onClose={() => setIsNewLeadModalOpen(false)} defaultFunnelId={activeFunnelId} />
+      
+      <NewLeadModal 
+        isOpen={isNewLeadModalOpen}
+        onClose={() => setIsNewLeadModalOpen(false)}
+        defaultFunnelId={activeFunnelId}
+      />
     </div>
   );
 };

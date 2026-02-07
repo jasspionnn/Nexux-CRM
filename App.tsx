@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { CRMProvider, useCRM } from './context/CRMContext.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
@@ -20,8 +19,8 @@ const AppContent = () => {
   useEffect(() => {
     if (currentUser?.role === UserRole.NEXUS_ADMIN) {
         setCurrentView('admin-accounts');
-    } else if (currentView === 'admin-accounts' && currentUser) {
-        setCurrentView('kanban');
+    } else {
+        if (currentView === 'admin-accounts') setCurrentView('kanban');
     }
   }, [currentUser]);
 
@@ -30,13 +29,16 @@ const AppContent = () => {
   }
 
   const handleNavigate = (view: string, data?: any) => {
-      if (data !== undefined) setViewData(data);
+      if (data !== undefined) {
+          setViewData(data);
+      }
       setCurrentView(view);
   };
 
   const renderView = () => {
     if (currentView === 'admin-accounts') {
-        return currentUser.role === UserRole.NEXUS_ADMIN ? <NexusAdminDashboard /> : <div>Acesso Negado</div>;
+        if (currentUser.role !== UserRole.NEXUS_ADMIN) return <div>Acesso Negado</div>;
+        return <NexusAdminDashboard />;
     }
 
     switch(currentView) {

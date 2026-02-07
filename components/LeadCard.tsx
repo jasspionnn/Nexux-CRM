@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Lead, User } from '../types.ts';
 import { DollarSign, User as UserIcon, MoreHorizontal, Sparkles } from 'lucide-react';
@@ -28,12 +27,14 @@ export const LeadCard: React.FC<LeadCardProps> = ({ lead, onClick, user, funnelN
     setAiLoading(true);
     try {
       const insight = await generateLeadStrategy(lead, funnelName, stageName);
+      
       const newNote = {
         id: `ai-${Date.now()}`,
         content: `🤖 Insight IA: ${insight}`,
         createdAt: new Date().toISOString(),
         authorName: 'Nexus AI'
       };
+      
       updateLead(lead.id, { 
         notes: [newNote, ...lead.notes] 
       });
@@ -76,7 +77,7 @@ export const LeadCard: React.FC<LeadCardProps> = ({ lead, onClick, user, funnelN
         </div>
         {user && (
            <div className="flex items-center gap-1" title={`Responsável: ${user.name}`}>
-             <img src={user.avatar} className="w-5 h-5 rounded-full border" alt="avatar" />
+             <img src={user.avatar} className="w-5 h-5 rounded-full border border-gray-100" alt="avatar" />
            </div>
         )}
       </div>

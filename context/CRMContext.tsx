@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole, VisibilityLevel } from '../types.ts';
 import { api } from '../services/api.ts';
@@ -47,7 +46,6 @@ interface CRMContextType {
   deleteTeam: (id: string) => Promise<void>;
   createAccount: (account: Account, adminUser: User) => Promise<void>;
   updateAccountStatus: (accountId: string, status: 'active' | 'suspended') => Promise<void>;
-  // Fix: Added missing extendAccountSubscription to CRMContextType
   extendAccountSubscription: (accountId: string, months: number) => Promise<void>;
   updateVisibilitySettings: (level: VisibilityLevel, allowExport: boolean, showGoals: boolean) => Promise<void>;
 }
@@ -144,9 +142,21 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return login(e, p); 
   };
 
-  const addLead = async (lead: Lead) => { setLeads(prev => [...prev, lead]); await api.post('/leads', lead); };
-  const updateLead = async (id: string, updates: Partial<Lead>) => { setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l)); await api.patch(`/leads/${id}`, updates); };
-  const moveLead = async (leadId: string, targetStageId: string) => { setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stageId: targetStageId } : l)); await api.patch(`/leads/${leadId}`, { stageId: targetStageId }); };
+  const addLead = async (lead: Lead) => { 
+    setLeads(prev => [...prev, lead]); 
+    await api.post('/leads', lead); 
+  };
+  
+  const updateLead = async (id: string, updates: Partial<Lead>) => { 
+    setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l)); 
+    await api.patch(`/leads/${id}`, updates); 
+  };
+
+  const moveLead = async (leadId: string, targetStageId: string) => { 
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stageId: targetStageId } : l)); 
+    await api.patch(`/leads/${leadId}`, { stageId: targetStageId }); 
+  };
+
   const duplicateLead = async (originalLeadId: string, targetFunnelId: string, targetStageId: string) => {
     const original = leads.find(l => l.id === originalLeadId);
     if (!original) return;
@@ -154,18 +164,51 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setLeads(prev => [...prev, copy]);
     await api.post('/leads', copy);
   };
-  const deleteLead = async (id: string) => { setLeads(prev => prev.filter(l => l.id !== id)); await api.delete(`/leads/${id}`); };
-  const addTask = async (leadId: string, task: Task) => { setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: [...(l.tasks || []), task] } : l)); await api.post('/tasks', { ...task, leadId }); };
-  const toggleTask = async (leadId: string, taskId: string) => { await api.patch(`/tasks/${taskId}/toggle`, {}); refreshData(); };
-  const deleteTask = async (leadId: string, taskId: string) => { await api.delete(`/tasks/${taskId}`); refreshData(); };
+
+  const deleteLead = async (id: string) => { 
+    setLeads(prev => prev.filter(l => l.id !== id)); 
+    await api.delete(`/leads/${id}`); 
+  };
+
+  const addTask = async (leadId: string, task: Task) => { 
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: [...(l.tasks || []), task] } : l)); 
+    await api.post('/tasks', { ...task, leadId }); 
+  };
+
+  const toggleTask = async (leadId: string, taskId: string) => { 
+    await api.patch(`/tasks/${taskId}/toggle`, {}); 
+    refreshData(); 
+  };
+
+  const deleteTask = async (leadId: string, taskId: string) => { 
+    await api.delete(`/tasks/${taskId}`); 
+    refreshData(); 
+  };
 
   const addFunnel = async (name: string) => { 
     if (!currentUser?.accountId) return;
-    const nf: Funnel = { id: `f${Date.now()}`, accountId: currentUser.accountId, name, stages: [{ id: `s1-${Date.now()}`, name: 'Lead', color: 'bg-blue-500', order: 0 }, { id: `s2-${Date.now()}`, name: 'Venda', color: 'bg-green-500', order: 1 }] };
-    setFunnels(prev => [...prev, nf]); await api.post('/funnels', nf); 
+    const nf: Funnel = { 
+      id: `f${Date.now()}`, 
+      accountId: currentUser.accountId, 
+      name, 
+      stages: [
+        { id: `s1-${Date.now()}`, name: 'Lead', color: 'bg-blue-500', order: 0 }, 
+        { id: `s2-${Date.now()}`, name: 'Venda', color: 'bg-green-500', order: 1 }
+      ] 
+    };
+    setFunnels(prev => [...prev, nf]); 
+    await api.post('/funnels', nf); 
   };
-  const updateFunnel = async (id: string, updates: Partial<Funnel>) => { setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); await api.patch(`/funnels/${id}`, updates); };
-  const deleteFunnel = async (id: string) => { setFunnels(prev => prev.filter(f => f.id !== id)); await api.delete(`/funnels/${id}`); };
+
+  const updateFunnel = async (id: string, updates: Partial<Funnel>) => { 
+    setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); 
+    await api.patch(`/funnels/${id}`, updates); 
+  };
+
+  const deleteFunnel = async (id: string) => { 
+    setFunnels(prev => prev.filter(f => f.id !== id)); 
+    await api.delete(`/funnels/${id}`); 
+  };
 
   const addStage = async (funnelId: string, name: string) => {
     const funnel = funnels.find(f => f.id === funnelId);
@@ -173,46 +216,94 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const newStage: Stage = { id: `s-${Date.now()}`, name, color: 'bg-gray-500', order: funnel.stages.length };
     updateFunnel(funnelId, { stages: [...funnel.stages, newStage] });
   };
+
   const updateStage = async (funnelId: string, stageId: string, updates: Partial<Stage>) => {
     const funnel = funnels.find(f => f.id === funnelId);
     if (!funnel) return;
     updateFunnel(funnelId, { stages: funnel.stages.map(s => s.id === stageId ? { ...s, ...updates } : s) });
   };
+
   const deleteStage = async (funnelId: string, stageId: string) => {
     const funnel = funnels.find(f => f.id === funnelId);
     if (!funnel) return;
     updateFunnel(funnelId, { stages: funnel.stages.filter(s => s.id !== stageId) });
   };
-  const reorderStages = async (funnelId: string, newStages: Stage[]) => { updateFunnel(funnelId, { stages: newStages }); };
 
-  const addCustomField = async (f: CustomFieldDefinition) => { setCustomFields(prev => [...prev, f]); await api.post('/custom-fields', f); };
-  const updateCustomField = async (id: string, updates: Partial<CustomFieldDefinition>) => { setCustomFields(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); await api.patch(`/custom-fields/${id}`, updates); };
-  const deleteCustomField = async (id: string) => { setCustomFields(prev => prev.filter(f => f.id !== id)); await api.delete(`/custom-fields/${id}`); };
+  const reorderStages = async (funnelId: string, newStages: Stage[]) => { 
+    updateFunnel(funnelId, { stages: newStages }); 
+  };
 
-  const addUser = async (u: User) => { await api.post('/users', u); refreshData(); };
-  const updateUser = async (id: string, updates: Partial<User>) => { await api.patch(`/users/${id}`, updates); refreshData(); };
-  const deleteUser = async (id: string) => { await api.delete(`/users/${id}`); refreshData(); };
+  const addCustomField = async (f: CustomFieldDefinition) => { 
+    setCustomFields(prev => [...prev, f]); 
+    await api.post('/custom-fields', f); 
+  };
 
-  const addTeam = async (t: Team) => { await api.post('/teams', t); refreshData(); };
-  const updateTeam = async (id: string, updates: Partial<Team>) => { await api.patch(`/teams/${id}`, updates); refreshData(); };
-  const deleteTeam = async (id: string) => { await api.delete(`/teams/${id}`); refreshData(); };
+  const updateCustomField = async (id: string, updates: Partial<CustomFieldDefinition>) => { 
+    setCustomFields(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); 
+    await api.patch(`/custom-fields/${id}`, updates); 
+  };
 
-  const createAccount = async (a: Account, u: User) => { await api.post('/admin/accounts', { companyName: a.companyName, ownerName: u.name, email: u.email, password: u.password, plan: a.plan }); refreshData(); };
-  const updateAccountStatus = async (id: string, s: any) => { await api.patch(`/admin/accounts/${id}`, { status: s }); refreshData(); };
-  
-  // Fix: Implemented missing extendAccountSubscription in CRMProvider
+  const deleteCustomField = async (id: string) => { 
+    setCustomFields(prev => prev.filter(f => f.id !== id)); 
+    await api.delete(`/custom-fields/${id}`); 
+  };
+
+  const addUser = async (u: User) => { 
+    await api.post('/users', u); 
+    refreshData(); 
+  };
+
+  const updateUser = async (id: string, updates: Partial<User>) => { 
+    await api.patch(`/users/${id}`, updates); 
+    refreshData(); 
+  };
+
+  const deleteUser = async (id: string) => { 
+    await api.delete(`/users/${id}`); 
+    refreshData(); 
+  };
+
+  const addTeam = async (team: Team) => { 
+    await api.post('/teams', team); 
+    refreshData(); 
+  };
+
+  const updateTeam = async (id: string, updates: Partial<Team>) => { 
+    await api.patch(`/teams/${id}`, updates); 
+    refreshData(); 
+  };
+
+  const deleteTeam = async (id: string) => { 
+    await api.delete(`/teams/${id}`); 
+    refreshData(); 
+  };
+
+  const createAccount = async (a: Account, u: User) => { 
+    await api.post('/admin/accounts', { 
+      companyName: a.companyName, 
+      ownerName: u.name, 
+      email: u.email, 
+      password: u.password, 
+      plan: a.plan 
+    }); 
+    refreshData(); 
+  };
+
+  const updateAccountStatus = async (id: string, s: any) => { 
+    await api.patch(`/admin/accounts/${id}`, { status: s }); 
+    refreshData(); 
+  };
+
   const extendAccountSubscription = async (id: string, m: number) => { 
-    // This functionality usually requires a backend endpoint to increment the expiration date.
-    // For now, we perform a placeholder log and trigger a data refresh to reflect any server-side changes.
     console.log(`Extending subscription for ${id} by ${m} months`);
-    // Placeholder for actual API implementation:
-    // await api.post(`/admin/accounts/${id}/extend`, { months: m });
     refreshData();
   };
 
   const updateVisibilitySettings = async (level: VisibilityLevel, allowExport: boolean, showGoals: boolean) => {
     if (!currentUser?.accountId) return;
-    await api.patch(`/admin/accounts/${currentUser.accountId}`, { visibilityConfig: { level, allowUserExport: allowExport, showTeamGoals: showGoals } });
+    await api.patch(`/admin/accounts/${currentUser.accountId}`, { 
+      visibilityConfig: { level, allowUserExport: allowExport, showTeamGoals: showGoals } 
+    });
     refreshData();
   };
 
@@ -224,9 +315,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       addLead, updateLead, moveLead, duplicateLead, deleteLead, addTask, toggleTask, deleteTask,
       addFunnel, updateFunnel, deleteFunnel, addStage, updateStage, reorderStages, deleteStage,
       addCustomField, updateCustomField, deleteCustomField, addUser, updateUser, deleteUser,
-      addTeam, updateTeam, deleteTeam, createAccount, updateAccountStatus, 
-      extendAccountSubscription, // Fix: Added extendAccountSubscription to the provider value
-      updateVisibilitySettings
+      addTeam, updateTeam, deleteTeam, createAccount, updateAccountStatus, extendAccountSubscription, updateVisibilitySettings
     }}>
       {children}
     </CRMContext.Provider>

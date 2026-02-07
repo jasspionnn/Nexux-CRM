@@ -1,8 +1,7 @@
-
 export const api = {
     get: async <T>(endpoint: string): Promise<T> => {
-        // O endpoint já deve começar com / (ex: /auth/login)
-        const res = await fetch(`/api${endpoint}`);
+        const path = endpoint.startsWith('/api') ? endpoint : `/api${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+        const res = await fetch(path);
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.error || `Erro API: ${res.status}`);
@@ -11,7 +10,8 @@ export const api = {
     },
 
     post: async <T>(endpoint: string, data: unknown): Promise<T> => {
-        const res = await fetch(`/api${endpoint}`, {
+        const path = endpoint.startsWith('/api') ? endpoint : `/api${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+        const res = await fetch(path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
@@ -24,7 +24,8 @@ export const api = {
     },
 
     patch: async <T>(endpoint: string, data: unknown): Promise<T> => {
-        const res = await fetch(`/api${endpoint}`, {
+        const path = endpoint.startsWith('/api') ? endpoint : `/api${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+        const res = await fetch(path, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
@@ -37,7 +38,8 @@ export const api = {
     },
 
     delete: async <T>(endpoint: string): Promise<T> => {
-        const res = await fetch(`/api${endpoint}`, {
+        const path = endpoint.startsWith('/api') ? endpoint : `/api${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
+        const res = await fetch(path, {
             method: 'DELETE',
         });
         if (!res.ok) {
