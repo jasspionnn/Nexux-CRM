@@ -10,12 +10,14 @@ import { TasksView } from './components/TasksView.tsx';
 import { LoginPage } from './components/LoginPage.tsx';
 import { NexusAdminDashboard } from './components/NexusAdminDashboard.tsx';
 import { UserRole } from './types.ts';
+import { Loader2 } from 'lucide-react';
 
 const AppContent = () => {
   const { currentUser, isLoading } = useCRM();
   const [currentView, setCurrentView] = useState('kanban');
   const [viewData, setViewData] = useState<any>(null);
 
+  // Define a visão inicial baseada no papel do usuário
   useEffect(() => {
     if (currentUser?.role === UserRole.NEXUS_ADMIN) {
         setCurrentView('admin-accounts');
@@ -24,14 +26,17 @@ const AppContent = () => {
     }
   }, [currentUser]);
 
+  // Se estiver carregando a sessão inicial
   if (isLoading && !currentUser) {
       return (
-          <div className="h-screen w-screen flex items-center justify-center bg-gray-50">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+          <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50">
+              <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
+              <p className="text-gray-600 font-bold">Iniciando Nexus CRM...</p>
           </div>
       );
   }
 
+  // Se não houver usuário logado
   if (!currentUser) {
       return <LoginPage />;
   }
@@ -42,19 +47,19 @@ const AppContent = () => {
   };
 
   const renderView = () => {
-    // Rota prioritária de Admin
-    if (currentUser.role === UserRole.NEXUS_ADMIN || currentView === 'admin-accounts') {
-        if (currentUser.role !== UserRole.NEXUS_ADMIN) return <div className="p-8 font-bold">Acesso Negado</div>;
+    // Caso seja Super Admin
+    if (currentUser.role === UserRole.NEXUS_ADMIN) {
         return <NexusAdminDashboard />;
     }
 
+    // Visões normais do CRM
     switch(currentView) {
       case 'dashboard': return <Dashboard />;
       case 'kanban': return <KanbanBoard onNavigate={handleNavigate} />;
       case 'leads-db': return <LeadsDatabase onNavigate={handleNavigate} />;
       case 'tasks': return <TasksView onNavigate={handleNavigate} />;
       case 'settings': 
-        return currentUser.role === UserRole.ACCOUNT_ADMIN ? <Settings /> : <div className="p-8 font-bold">Acesso restrito</div>;
+        return currentUser.role === UserRole.ACCOUNT_ADMIN ? <Settings /> : <div className="p-8 font-black">ACESSO RESTRITO</div>;
       case 'lead-detail': 
         return <LeadDetailPage 
             leadId={viewData} 

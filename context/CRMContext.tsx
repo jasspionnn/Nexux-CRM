@@ -121,8 +121,8 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return accounts.find(a => a.id === currentUser.accountId) || null;
   }, [accounts, currentUser]);
 
-  const visibleLeads = useMemo(() => leads, [leads]);
-  const visibleUsers = useMemo(() => users, [users]);
+  const visibleLeads = useMemo(() => leads || [], [leads]);
+  const visibleUsers = useMemo(() => users || [], [users]);
 
   const login = async (email: string, pass: string): Promise<string | boolean> => {
       setIsLoading(true);
@@ -149,6 +149,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setFunnels([]);
     setLeads([]);
     setAccounts([]);
+    setUsers([]);
   };
 
   const registerAccount = async (u: string, e: string, p: string, c: string) => { 

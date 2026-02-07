@@ -1,14 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCRM } from '../context/CRMContext.tsx';
-import { Account, User as UserType, UserRole } from '../types.ts';
-import { Building, Power, Clock, Plus, Search, ShieldCheck, Calendar, User, Settings, Save, CheckCircle, Upload, Trash2, AlertCircle } from 'lucide-react';
+import { UserRole } from '../types.ts';
+import { Building, Power, Search, ShieldCheck, Calendar, CheckCircle, Loader2 } from 'lucide-react';
 import { api } from '../services/api.ts';
 
 export const NexusAdminDashboard = () => {
-  const { allAccounts = [], createAccount, updateAccountStatus, extendAccountSubscription } = useCRM();
+  const { allAccounts = [], updateAccountStatus, extendAccountSubscription, isLoading, currentUser } = useCRM();
   const [activeTab, setActiveTab] = useState<'accounts' | 'settings'>('accounts');
   const [searchTerm, setSearchTerm] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showSaveToast, setShowSaveToast] = useState(false);
   const [systemSettings, setSystemSettings] = useState({ login_background: '' });
@@ -23,10 +22,27 @@ export const NexusAdminDashboard = () => {
         .catch(err => console.error("Erro ao carregar settings:", err));
   }, []);
 
-  const filteredAccounts = (allAccounts || []).filter(a => {
+  // Bloqueio de segurança se o usuário não for Nexus Admin
+  if (currentUser?.role !== UserRole.NEXUS_ADMIN) {
+      return <div className="p-8 font-black text-red-600">ACESSO NÃO AUTORIZADO</div>;
+  }
+
+  // Estado de carregamento inicial: Se estiver carregando e não houver contas
+  if (isLoading && (!allAccounts || allAccounts.length === 0)) {
+      return (
+          <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 h-full">
+              <Loader2 className="animate-spin text-blue-600 mb-4" size={40} />
+              <p className="text-gray-500 font-bold">Carregando painel administrativo...</p>
+          </div>
+      );
+  }
+
+  // Filtragem segura (previne crash se allAccounts for undefined/null)
+  const filteredAccounts = (Array.isArray(allAccounts) ? allAccounts : []).filter(a => {
+      if (!a) return false;
       const company = (a.companyName || '').toLowerCase();
       const email = (a.email || '').toLowerCase();
-      const search = searchTerm.toLowerCase();
+      const search = (searchTerm || '').toLowerCase();
       return company.includes(search) || email.includes(search);
   });
 
@@ -46,7 +62,9 @@ export const NexusAdminDashboard = () => {
 
   const getDaysRemaining = (dateStr?: string) => {
       if (!dateStr) return 0;
-      const diff = new Date(dateStr).getTime() - new Date().getTime();
+      const expDate = new Date(dateStr);
+      if (isNaN(expDate.getTime())) return 0;
+      const diff = expDate.getTime() - new Date().getTime();
       return Math.max(0, Math.ceil(diff / (1000 * 3600 * 24)));
   };
 
@@ -82,15 +100,9 @@ export const NexusAdminDashboard = () => {
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
                             placeholder="Buscar empresa..."
-                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 w-64 text-sm"
+                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 w-64 text-sm font-bold"
                         />
                     </div>
-                    <button 
-                        onClick={() => setIsModalOpen(true)}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 transition"
-                    >
-                        <Plus size={18} /> Nova Conta
-                    </button>
                 </div>
             )}
         </div>
@@ -174,9 +186,6 @@ export const NexusAdminDashboard = () => {
                             {systemSettings.login_background && (
                                 <div className="mt-4 rounded-2xl overflow-hidden border border-gray-200 h-40 bg-gray-100 relative">
                                     <img src={systemSettings.login_background} className="w-full h-full object-cover" alt="Preview" />
-                                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                                        <span className="bg-white px-3 py-1 rounded-full text-[10px] font-black uppercase">Preview do Fundo</span>
-                                    </div>
                                 </div>
                             )}
                         </div>

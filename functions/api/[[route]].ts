@@ -5,10 +5,12 @@ type Bindings = {
   DB: D1Database;
 };
 
-const app = new Hono<{ Bindings: Bindings }>();
+// Cloudflare Pages Functions in functions/api/[[route]].ts handle requests starting with /api.
+// Adding .basePath('/api') allows Hono to correctly route these requests.
+const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
 // --- HEALTH CHECK ---
-app.get('/api/health', async (c) => {
+app.get('/health', async (c) => {
     try {
         await c.env.DB.prepare('SELECT 1').first();
         return c.json({ status: 'ok', database: 'connected' });
@@ -18,7 +20,7 @@ app.get('/api/health', async (c) => {
 });
 
 // --- SETTINGS ---
-app.get('/api/public/settings', async (c) => {
+app.get('/public/settings', async (c) => {
     try {
         const settings = await c.env.DB.prepare('SELECT * FROM system_settings').all();
         const config = settings.results.reduce((acc: any, curr: any) => {
@@ -31,7 +33,7 @@ app.get('/api/public/settings', async (c) => {
     }
 });
 
-app.patch('/api/admin/settings', async (c) => {
+app.patch('/admin/settings', async (c) => {
     const body = await c.req.json() as any;
     for (const [key, value] of Object.entries(body)) {
         await c.env.DB.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)')
@@ -41,7 +43,7 @@ app.patch('/api/admin/settings', async (c) => {
 });
 
 // --- AUTH ---
-app.post('/api/auth/register', async (c) => {
+app.post('/auth/register', async (c) => {
     const { userName, email, password, companyName } = await c.req.json() as any;
     const accountId = `acc_${Date.now()}`;
     const userId = `u_${Date.now()}`;
@@ -84,7 +86,7 @@ app.post('/api/auth/register', async (c) => {
     }
 });
 
-app.post('/api/auth/login', async (c) => {
+app.post('/auth/login', async (c) => {
     const { email, password } = await c.req.json() as any;
     const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ? AND password = ?')
         .bind(email, password).first() as any;
@@ -107,7 +109,7 @@ app.post('/api/auth/login', async (c) => {
 });
 
 // --- SYNC ---
-app.get('/api/sync/:accountId', async (c) => {
+app.get('/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
     
     const [funnels, leads, users, teams, customFields] = await Promise.all([
@@ -192,7 +194,7 @@ app.get('/api/sync/:accountId', async (c) => {
 });
 
 // --- LEADS ---
-app.post('/api/leads', async (c) => {
+app.post('/leads', async (c) => {
     const l = await c.req.json() as any;
     try {
         await c.env.DB.prepare(`
@@ -212,7 +214,7 @@ app.post('/api/leads', async (c) => {
     }
 });
 
-app.patch('/api/leads/:id', async (c) => {
+app.patch('/leads/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
     const fields = [];
@@ -237,34 +239,34 @@ app.patch('/api/leads/:id', async (c) => {
     return c.json({ success: true });
 });
 
-app.delete('/api/leads/:id', async (c) => {
+app.delete('/leads/:id', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(id).run();
     return c.json({ success: true });
 });
 
 // --- TASKS ---
-app.post('/api/tasks', async (c) => {
+app.post('/tasks', async (c) => {
     const t = await c.req.json() as any;
     await c.env.DB.prepare('INSERT INTO tasks (id, lead_id, title, due_date, completed, type) VALUES (?, ?, ?, ?, ?, ?)')
         .bind(t.id, t.leadId, t.title, t.dueDate, t.completed ? 1 : 0, t.type).run();
     return c.json({ success: true });
 });
 
-app.patch('/api/tasks/:id/toggle', async (c) => {
+app.patch('/tasks/:id/toggle', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('UPDATE tasks SET completed = 1 - completed WHERE id = ?').bind(id).run();
     return c.json({ success: true });
 });
 
-app.delete('/api/tasks/:id', async (c) => {
+app.delete('/tasks/:id', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id).run();
     return c.json({ success: true });
 });
 
 // --- FUNNELS ---
-app.post('/api/funnels', async (c) => {
+app.post('/funnels', async (c) => {
     const f = await c.req.json() as any;
     await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)')
         .bind(f.id, f.accountId, f.name).run();
@@ -275,7 +277,7 @@ app.post('/api/funnels', async (c) => {
     return c.json({ success: true });
 });
 
-app.patch('/api/funnels/:id', async (c) => {
+app.patch('/funnels/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
     if (data.name) {
@@ -291,19 +293,19 @@ app.patch('/api/funnels/:id', async (c) => {
     return c.json({ success: true });
 });
 
-app.delete('/api/funnels/:id', async (c) => {
+app.delete('/funnels/:id', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('DELETE FROM funnels WHERE id = ?').bind(id).run();
     return c.json({ success: true });
 });
 
 // --- ADMIN ACCOUNTS ---
-app.get('/api/admin/accounts', async (c) => {
+app.get('/admin/accounts', async (c) => {
     const accounts = await c.env.DB.prepare('SELECT * FROM accounts ORDER BY created_at DESC').all();
     return c.json({ accounts: accounts.results });
 });
 
-app.patch('/api/admin/accounts/:id', async (c) => {
+app.patch('/admin/accounts/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
     const fields = [];
@@ -318,14 +320,14 @@ app.patch('/api/admin/accounts/:id', async (c) => {
 });
 
 // --- CUSTOM FIELDS ---
-app.post('/api/custom-fields', async (c) => {
+app.post('/custom-fields', async (c) => {
     const f = await c.req.json() as any;
     await c.env.DB.prepare('INSERT INTO custom_fields (id, account_id, name, type, context, funnel_id, options, visible_stage_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(f.id, f.accountId, f.name, f.type, f.context, f.funnelId, JSON.stringify(f.options || []), JSON.stringify(f.visibleStageIds || [])).run();
     return c.json({ success: true });
 });
 
-app.patch('/api/custom-fields/:id', async (c) => {
+app.patch('/custom-fields/:id', async (c) => {
     const id = c.req.param('id');
     const f = await c.req.json() as any;
     const fields = []; const values = [];
@@ -337,7 +339,7 @@ app.patch('/api/custom-fields/:id', async (c) => {
     return c.json({ success: true });
 });
 
-app.delete('/api/custom-fields/:id', async (c) => {
+app.delete('/custom-fields/:id', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('DELETE FROM custom_fields WHERE id = ?').bind(id).run();
     return c.json({ success: true });
