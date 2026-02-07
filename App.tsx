@@ -12,32 +12,39 @@ import { NexusAdminDashboard } from './components/NexusAdminDashboard.tsx';
 import { UserRole } from './types.ts';
 
 const AppContent = () => {
-  const { currentUser } = useCRM();
+  const { currentUser, isLoading } = useCRM();
   const [currentView, setCurrentView] = useState('kanban');
   const [viewData, setViewData] = useState<any>(null);
 
   useEffect(() => {
     if (currentUser?.role === UserRole.NEXUS_ADMIN) {
         setCurrentView('admin-accounts');
-    } else {
+    } else if (currentUser) {
         if (currentView === 'admin-accounts') setCurrentView('kanban');
     }
   }, [currentUser]);
+
+  if (isLoading && !currentUser) {
+      return (
+          <div className="h-screen w-screen flex items-center justify-center bg-gray-50">
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
+          </div>
+      );
+  }
 
   if (!currentUser) {
       return <LoginPage />;
   }
 
   const handleNavigate = (view: string, data?: any) => {
-      if (data !== undefined) {
-          setViewData(data);
-      }
+      if (data !== undefined) setViewData(data);
       setCurrentView(view);
   };
 
   const renderView = () => {
-    if (currentView === 'admin-accounts') {
-        if (currentUser.role !== UserRole.NEXUS_ADMIN) return <div>Acesso Negado</div>;
+    // Rota prioritária de Admin
+    if (currentUser.role === UserRole.NEXUS_ADMIN || currentView === 'admin-accounts') {
+        if (currentUser.role !== UserRole.NEXUS_ADMIN) return <div className="p-8 font-bold">Acesso Negado</div>;
         return <NexusAdminDashboard />;
     }
 
@@ -47,7 +54,7 @@ const AppContent = () => {
       case 'leads-db': return <LeadsDatabase onNavigate={handleNavigate} />;
       case 'tasks': return <TasksView onNavigate={handleNavigate} />;
       case 'settings': 
-        return currentUser.role === UserRole.ACCOUNT_ADMIN ? <Settings /> : <div>Acesso restrito</div>;
+        return currentUser.role === UserRole.ACCOUNT_ADMIN ? <Settings /> : <div className="p-8 font-bold">Acesso restrito</div>;
       case 'lead-detail': 
         return <LeadDetailPage 
             leadId={viewData} 

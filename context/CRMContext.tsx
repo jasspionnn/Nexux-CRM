@@ -61,7 +61,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [accounts, setAccounts] = useState<Account[]>([]); 
   const [activeFunnelId, setActiveFunnelId] = useState<string>(() => localStorage.getItem('nexus_active_funnel') || '');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => { 
     if (activeFunnelId) localStorage.setItem('nexus_active_funnel', activeFunnelId); 
@@ -70,9 +70,13 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     const savedUser = localStorage.getItem('nexus_user_session');
     if (savedUser) { 
-      try { setCurrentUser(JSON.parse(savedUser)); } 
-      catch (e) { localStorage.removeItem('nexus_user_session'); } 
+      try { 
+        setCurrentUser(JSON.parse(savedUser)); 
+      } catch (e) { 
+        localStorage.removeItem('nexus_user_session');
+      } 
     }
+    setIsLoading(false);
   }, []);
 
   const refreshData = useCallback(async () => {
@@ -81,20 +85,24 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       try {
           if (currentUser.role === UserRole.NEXUS_ADMIN) {
                const data = await api.get<{accounts: Account[]}>('/admin/accounts');
-               setAccounts(data.accounts || []);
-          } else {
+               if (data && data.accounts) {
+                 setAccounts(data.accounts);
+               }
+          } else if (currentUser.accountId) {
                const data = await api.get<any>(`/sync/${currentUser.accountId}`);
-               setFunnels(data.funnels || []);
-               setLeads(data.leads || []);
-               setUsers(data.users || []);
-               setTeams(data.teams || []);
-               setCustomFields(data.customFields || []);
-               
-               if (data.funnels?.length > 0) {
-                   const exists = data.funnels.find((f: any) => f.id === activeFunnelId);
-                   if (!activeFunnelId || !exists) {
-                       setActiveFunnelId(data.funnels[0].id);
-                   }
+               if (data) {
+                 setFunnels(data.funnels || []);
+                 setLeads(data.leads || []);
+                 setUsers(data.users || []);
+                 setTeams(data.teams || []);
+                 setCustomFields(data.customFields || []);
+                 
+                 if (data.funnels?.length > 0) {
+                     const exists = data.funnels.find((f: any) => f.id === activeFunnelId);
+                     if (!activeFunnelId || !exists) {
+                         setActiveFunnelId(data.funnels[0].id);
+                     }
+                 }
                }
           }
       } catch (error) { 
@@ -120,9 +128,12 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setIsLoading(true);
       try {
           const res = await api.post<{user: User}>('/auth/login', { email, password: pass });
-          setCurrentUser(res.user);
-          localStorage.setItem('nexus_user_session', JSON.stringify(res.user));
-          return true;
+          if (res && res.user) {
+            setCurrentUser(res.user);
+            localStorage.setItem('nexus_user_session', JSON.stringify(res.user));
+            return true;
+          }
+          return "Resposta inválida do servidor.";
       } catch (error: any) { 
           return error.message || "Credenciais inválidas."; 
       } finally { 
@@ -135,6 +146,9 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.removeItem('nexus_user_session');
     localStorage.removeItem('nexus_active_funnel');
     setActiveFunnelId(''); 
+    setFunnels([]);
+    setLeads([]);
+    setAccounts([]);
   };
 
   const registerAccount = async (u: string, e: string, p: string, c: string) => { 
