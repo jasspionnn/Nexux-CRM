@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCRM } from '../context/CRMContext.tsx';
 import { UserRole } from '../types.ts';
-import { Building, Power, Search, ShieldCheck, Calendar, CheckCircle, Loader2 } from 'lucide-react';
+import { Building, Power, Search, ShieldCheck, Calendar, CheckCircle, Loader2, Save, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
 import { api } from '../services/api.ts';
 
 export const NexusAdminDashboard = () => {
@@ -11,6 +11,7 @@ export const NexusAdminDashboard = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [showSaveToast, setShowSaveToast] = useState(false);
   const [systemSettings, setSystemSettings] = useState({ login_background: '' });
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
       api.get<any>('/public/settings')
@@ -22,12 +23,10 @@ export const NexusAdminDashboard = () => {
         .catch(err => console.error("Erro ao carregar settings:", err));
   }, []);
 
-  // Bloqueio de segurança se o usuário não for Nexus Admin
   if (currentUser?.role !== UserRole.NEXUS_ADMIN) {
       return <div className="p-8 font-black text-red-600">ACESSO NÃO AUTORIZADO</div>;
   }
 
-  // Estado de carregamento inicial: Se estiver carregando e não houver contas
   if (isLoading && (!allAccounts || allAccounts.length === 0)) {
       return (
           <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 h-full">
@@ -37,7 +36,6 @@ export const NexusAdminDashboard = () => {
       );
   }
 
-  // Filtragem segura (previne crash se allAccounts for undefined/null)
   const filteredAccounts = (Array.isArray(allAccounts) ? allAccounts : []).filter(a => {
       if (!a) return false;
       const company = (a.companyName || '').toLowerCase();
@@ -45,6 +43,24 @@ export const NexusAdminDashboard = () => {
       const search = (searchTerm || '').toLowerCase();
       return company.includes(search) || email.includes(search);
   });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      // Validação de tamanho (máximo 1MB para manter performance do D1)
+      if (file.size > 1024 * 1024) {
+          alert("A imagem é muito grande. Escolha uma imagem de até 1MB para melhor performance.");
+          return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+          const base64String = reader.result as string;
+          setSystemSettings(prev => ({ ...prev, login_background: base64String }));
+      };
+      reader.readAsDataURL(file);
+  };
 
   const saveSystemSettings = async () => {
       setIsSaving(true);
@@ -164,30 +180,65 @@ export const NexusAdminDashboard = () => {
                         <div className="flex justify-between items-center">
                             <div>
                                 <h3 className="text-xl font-black text-gray-900">Personalização Global</h3>
-                                <p className="text-sm text-gray-500">Configure a aparência padrão do ecossistema Nexus.</p>
+                                <p className="text-sm text-gray-500">Configure a aparência visual de todo o sistema.</p>
                             </div>
                             <button 
                                 onClick={saveSystemSettings}
                                 disabled={isSaving}
                                 className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 shadow-lg disabled:opacity-50 flex items-center gap-2"
                             >
+                                {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                                 {isSaving ? "Salvando..." : "Salvar Alterações"}
                             </button>
                         </div>
 
                         <div className="space-y-4">
-                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">URL da Imagem de Login (Background)</label>
-                            <input 
-                                value={systemSettings.login_background || ''} 
-                                onChange={e => setSystemSettings({ ...systemSettings, login_background: e.target.value })} 
-                                className="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 outline-none focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all font-bold text-sm" 
-                                placeholder="https://exemplo.com/imagem.jpg" 
-                            />
-                            {systemSettings.login_background && (
-                                <div className="mt-4 rounded-2xl overflow-hidden border border-gray-200 h-40 bg-gray-100 relative">
-                                    <img src={systemSettings.login_background} className="w-full h-full object-cover" alt="Preview" />
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Imagem de Fundo do Login</label>
+                            
+                            <div className="flex flex-col gap-4">
+                                <div 
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="border-2 border-dashed border-gray-200 rounded-2xl p-8 flex flex-col items-center justify-center bg-gray-50 hover:bg-blue-50 hover:border-blue-200 transition-all cursor-pointer group"
+                                >
+                                    <input 
+                                        type="file" 
+                                        ref={fileInputRef}
+                                        onChange={handleFileChange}
+                                        accept="image/*"
+                                        className="hidden" 
+                                    />
+                                    <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm text-gray-400 group-hover:text-blue-500 mb-3 transition-colors">
+                                        <Upload size={24} />
+                                    </div>
+                                    <p className="text-sm font-bold text-gray-700">Clique para subir imagem local</p>
+                                    <p className="text-xs text-gray-400 mt-1">PNG, JPG ou WEBP (Máx. 1MB)</p>
                                 </div>
-                            )}
+
+                                {systemSettings.login_background && (
+                                    <div className="relative rounded-2xl overflow-hidden border border-gray-200 h-52 bg-gray-100 group">
+                                        <img 
+                                            src={systemSettings.login_background} 
+                                            className="w-full h-full object-cover" 
+                                            alt="Preview" 
+                                        />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSystemSettings(prev => ({ ...prev, login_background: '' }));
+                                                }}
+                                                className="bg-red-600 text-white p-3 rounded-full hover:bg-red-700 transition-all shadow-lg"
+                                                title="Remover Imagem"
+                                            >
+                                                <Trash2 size={20} />
+                                            </button>
+                                            <div className="bg-white/20 backdrop-blur-md text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2">
+                                                <ImageIcon size={14} /> Fundo Atual
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

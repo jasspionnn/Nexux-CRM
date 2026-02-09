@@ -5,8 +5,8 @@ type Bindings = {
   DB: D1Database;
 };
 
-// Cloudflare Pages Functions in functions/api/[[route]].ts handle requests starting with /api.
-// Adding .basePath('/api') allows Hono to correctly route these requests.
+// O basePath('/api') é essencial para que o Hono ignore o prefixo "/api" presente em todas as requisições 
+// enviadas pelo frontend, permitindo que os handlers coincidam com o restante do caminho (ex: /health, /sync).
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
 // --- HEALTH CHECK ---
@@ -70,9 +70,7 @@ app.post('/auth/register', async (c) => {
 
         const stages = [
             { id: `s1_${Date.now()}`, name: 'Lead', color: 'bg-blue-500' },
-            { id: `s2_${Date.now()}`, name: 'Qualificação', color: 'bg-purple-500' },
-            { id: `s3_${Date.now()}`, name: 'Proposta', color: 'bg-orange-500' },
-            { id: `s4_${Date.now()}`, name: 'Fechamento', color: 'bg-green-500' }
+            { id: `s2_${Date.now()}`, name: 'Venda', color: 'bg-green-500' }
         ];
 
         for (let i = 0; i < stages.length; i++) {
@@ -245,6 +243,56 @@ app.delete('/leads/:id', async (c) => {
     return c.json({ success: true });
 });
 
+// --- USERS ---
+app.post('/users', async (c) => {
+    const u = await c.req.json() as any;
+    await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, avatar, team_id, status, joined_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(u.id, u.accountId, u.name, u.email, u.password || '123456', u.role, u.avatar, u.teamId, u.status || 'active', u.joinedAt || new Date().toISOString()).run();
+    return c.json({ success: true });
+});
+
+app.patch('/users/:id', async (c) => {
+    const id = c.req.param('id');
+    const data = await c.req.json() as any;
+    const fields = []; const values = [];
+    if (data.name) { fields.push('name = ?'); values.push(data.name); }
+    if (data.role) { fields.push('role = ?'); values.push(data.role); }
+    if (data.teamId !== undefined) { fields.push('team_id = ?'); values.push(data.teamId); }
+    if (data.status) { fields.push('status = ?'); values.push(data.status); }
+    if (fields.length > 0) await c.env.DB.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).bind(...values, id).run();
+    return c.json({ success: true });
+});
+
+app.delete('/users/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+// --- TEAMS ---
+app.post('/teams', async (c) => {
+    const t = await c.req.json() as any;
+    await c.env.DB.prepare('INSERT INTO teams (id, account_id, name, goal) VALUES (?, ?, ?, ?)')
+        .bind(t.id, t.accountId, t.name, t.goal).run();
+    return c.json({ success: true });
+});
+
+app.patch('/teams/:id', async (c) => {
+    const id = c.req.param('id');
+    const data = await c.req.json() as any;
+    const fields = []; const values = [];
+    if (data.name) { fields.push('name = ?'); values.push(data.name); }
+    if (data.goal !== undefined) { fields.push('goal = ?'); values.push(data.goal); }
+    if (fields.length > 0) await c.env.DB.prepare(`UPDATE teams SET ${fields.join(', ')} WHERE id = ?`).bind(...values, id).run();
+    return c.json({ success: true });
+});
+
+app.delete('/teams/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM teams WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
 // --- TASKS ---
 app.post('/tasks', async (c) => {
     const t = await c.req.json() as any;
@@ -345,6 +393,10 @@ app.delete('/custom-fields/:id', async (c) => {
     return c.json({ success: true });
 });
 
-app.all('*', (c) => c.json({ error: `Not Found: ${c.req.path}` }, 404));
+// CATCH-ALL FOR API ROUTES
+app.all('*', (c) => {
+    console.error(`Route not found: ${c.req.method} ${c.req.path}`);
+    return c.json({ error: `Not Found: ${c.req.path}` }, 404);
+});
 
 export const onRequest = handle(app);
