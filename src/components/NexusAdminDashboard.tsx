@@ -48,8 +48,10 @@ export const NexusAdminDashboard = () => {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      if (file.size > 1.5 * 1024 * 1024) {
-          alert("A imagem é muito grande. Escolha uma imagem de até 1.5MB para melhor performance.");
+      // Reduzindo o limite para 600KB para garantir que o Base64 final (que é ~33% maior) 
+      // não ultrapasse o limite de 1MB por campo do Cloudflare D1.
+      if (file.size > 600 * 1024) {
+          alert("A imagem é muito grande. Escolha uma imagem de até 600KB para garantir o salvamento no banco de dados.");
           return;
       }
 
@@ -67,9 +69,10 @@ export const NexusAdminDashboard = () => {
           await api.patch('/admin/settings', systemSettings);
           setShowSaveToast(true);
           setTimeout(() => setShowSaveToast(false), 3000);
-      } catch (e) {
+      } catch (e: any) {
           console.error(e);
-          alert('Erro ao salvar configurações globais.');
+          // Exibe a mensagem de erro específica vinda da API
+          alert(e.message || 'Erro ao salvar configurações globais. Verifique sua conexão ou tamanho da imagem.');
       } finally {
           setIsSaving(false);
       }
@@ -210,7 +213,7 @@ export const NexusAdminDashboard = () => {
                                         <Upload size={24} />
                                     </div>
                                     <p className="text-sm font-bold text-gray-700">Clique para subir imagem local</p>
-                                    <p className="text-xs text-gray-400 mt-1">PNG, JPG ou WEBP (Máx. 1.5MB)</p>
+                                    <p className="text-xs text-gray-400 mt-1">PNG, JPG ou WEBP (Máx. 600KB)</p>
                                 </div>
 
                                 {systemSettings.login_background && (

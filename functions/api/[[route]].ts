@@ -5,9 +5,18 @@ type Bindings = {
   DB: D1Database;
 };
 
-// O basePath('/api') é essencial para que o Hono ignore o prefixo "/api" presente em todas as requisições 
-// enviadas pelo frontend, permitindo que os handlers coincidam com o restante do caminho (ex: /health, /sync).
+// Ao usar .basePath('/api'), o Hono automaticamente ignora o prefixo "/api" nas requisições 
+// recebidas do Cloudflare, permitindo definir as rotas de forma limpa e evitando erros 404.
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
+
+// Manipulador de erro global para capturar falhas de banco de dados ou lógica
+app.onError((err, c) => {
+  console.error(`Backend Error: ${err.message}`);
+  return c.json({ 
+    error: err.message || 'Erro interno no servidor',
+    details: err.stack
+  }, 500);
+});
 
 // --- HEALTH CHECK ---
 app.get('/health', async (c) => {
@@ -29,17 +38,26 @@ app.get('/public/settings', async (c) => {
         }, {});
         return c.json(config);
     } catch (e) {
+        // Fallback para não quebrar a tela de login se o banco estiver vazio
         return c.json({ login_background: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=2000' });
     }
 });
 
 app.patch('/admin/settings', async (c) => {
     const body = await c.req.json() as any;
-    for (const [key, value] of Object.entries(body)) {
-        await c.env.DB.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)')
-            .bind(key, value).run();
+    try {
+        for (const [key, value] of Object.entries(body)) {
+            // Verifica se o valor não é nulo/undefined antes de salvar
+            const safeValue = value === null || value === undefined ? '' : String(value);
+            
+            await c.env.DB.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)')
+                .bind(key, safeValue).run();
+        }
+        return c.json({ success: true });
+    } catch (e: any) {
+        console.error("Erro ao salvar configurações:", e.message);
+        return c.json({ error: `Falha no Banco: ${e.message}. Verifique o tamanho dos dados (limite 1MB).` }, 500);
     }
-    return c.json({ success: true });
 });
 
 // --- AUTH ---
@@ -393,10 +411,9 @@ app.delete('/custom-fields/:id', async (c) => {
     return c.json({ success: true });
 });
 
-// CATCH-ALL FOR API ROUTES
+// CATCH-ALL PARA ROTAS NÃO ENCONTRADAS DENTRO DE /API
 app.all('*', (c) => {
-    console.error(`Route not found: ${c.req.method} ${c.req.path}`);
-    return c.json({ error: `Not Found: ${c.req.path}` }, 404);
+    return c.json({ error: `Rota não encontrada: ${c.req.path}` }, 404);
 });
 
 export const onRequest = handle(app);
