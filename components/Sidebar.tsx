@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { useCRM } from '../context/CRMContext';
-import { LayoutDashboard, Kanban, Users, Settings, LogOut, Hexagon, Database, CheckSquare, Shield, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Kanban, Users, Settings, LogOut, Hexagon, Database, CheckSquare, Shield, ShieldCheck, Wifi, WifiOff } from 'lucide-react';
 import { UserRole } from '../types';
 
 interface SidebarProps {
@@ -9,7 +10,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
-  const { currentUser, logout } = useCRM();
+  const { currentUser, logout, isOnline } = useCRM();
 
   const isNexusAdmin = currentUser?.role === UserRole.NEXUS_ADMIN;
   const isAccountAdmin = currentUser?.role === UserRole.ACCOUNT_ADMIN;
@@ -29,11 +30,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) =
 
   return (
     <div className="w-64 bg-slate-900 h-screen flex flex-col text-white">
-      <div className="h-16 flex items-center px-6 border-b border-slate-800">
-        <Hexagon className="text-blue-500 w-8 h-8 mr-3 fill-current" />
-        <span className="font-bold text-xl tracking-tight">
-            {isNexusAdmin ? 'Nexus Admin' : 'Nexus CRM'}
-        </span>
+      <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800">
+        <div className="flex items-center">
+            <Hexagon className="text-blue-500 w-8 h-8 mr-3 fill-current" />
+            <span className="font-bold text-xl tracking-tight">
+                {isNexusAdmin ? 'Nexus Admin' : 'Nexus CRM'}
+            </span>
+        </div>
+        
+        {/* Connection Indicator */}
+        <div title={isOnline ? 'Banco de dados conectado' : 'Erro de conexão com o banco'}>
+            {isOnline ? (
+                <Wifi size={14} className="text-green-500 animate-pulse" />
+            ) : (
+                <WifiOff size={14} className="text-red-500" />
+            )}
+        </div>
       </div>
 
       <nav className="flex-1 py-6 px-3 space-y-1">

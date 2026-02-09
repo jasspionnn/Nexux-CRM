@@ -5,35 +5,49 @@ type Bindings = {
   DB: D1Database;
 };
 
-// Inicializa o Hono. 
-// Nota: Não usamos .basePath('/api') porque a pasta /functions/api já define essa rota.
-const app = new Hono<{ Bindings: Bindings }>();
+/**
+ * World-Class Infrastructure Note:
+ * No Cloudflare Pages, o roteamento é baseado no sistema de arquivos.
+ * Ficheiros em functions/api/ recebem o path completo da requisição.
+ * O .basePath('/api') garante que app.get('/health') responda a /api/health.
+ */
+const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
-// --- MIDDLEWARE & ERROR HANDLING ---
-
-// Global Error Handler
+// Handler de Erro Global (Infrastructure Level)
 app.onError((err, c) => {
-  console.error(`API Error [${c.req.method}] ${c.req.path}:`, err);
+  console.error(`[NEXUS API ERROR] ${c.req.method} ${c.req.path}:`, err);
   return c.json({ 
     error: err.message || 'Internal Server Error',
     path: c.req.path 
   }, 500);
 });
 
-// Diagnostic 404 Handler
+// Handler 404 customizado para depuração de rotas
 app.notFound((c) => {
-  console.warn(`Nexus API 404: [${c.req.method}] ${c.req.path}`);
+  console.warn(`[NEXUS API 404] ${c.req.method} ${c.req.path}`);
   return c.json({ 
-    error: 'Rota não encontrada no Nexus CRM', 
+    error: 'Rota não encontrada no backend Hono', 
     requestedPath: c.req.path,
     method: c.req.method
   }, 404);
 });
 
-// --- SYSTEM & AUTH ---
+// --- SYSTEM & HEALTH ---
 
 app.get('/health', async (c) => {
-    return c.json({ status: 'ok', database: 'connected', timestamp: new Date().toISOString() });
+    try {
+        if (!c.env.DB) {
+            return c.json({ status: 'error', message: 'Binding DB não encontrada.' }, 500);
+        }
+        await c.env.DB.prepare('SELECT 1').first();
+        return c.json({ 
+            status: 'ok', 
+            database: 'connected',
+            timestamp: new Date().toISOString() 
+        });
+    } catch (e: any) {
+        return c.json({ status: 'error', database: 'disconnected', error: e.message }, 500);
+    }
 });
 
 app.get('/public/settings', async (c) => {
@@ -45,9 +59,13 @@ app.get('/public/settings', async (c) => {
         }, {});
         return c.json(config);
     } catch (e) {
-        return c.json({});
+        return c.json({ 
+            login_background: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=2000' 
+        });
     }
 });
+
+// --- AUTH ---
 
 app.post('/auth/login', async (c) => {
     const { email, password } = await c.req.json() as any;
@@ -82,11 +100,10 @@ app.post('/auth/register', async (c) => {
     return c.json({ success: true });
 });
 
-// --- SYNC DATA (O CORAÇÃO DO CRM) ---
+// --- SYNC & DATA ---
 
 app.get('/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
-    
     const [funnels, leads, users, teams, customFields] = await Promise.all([
         c.env.DB.prepare('SELECT * FROM funnels WHERE account_id = ?').bind(accountId).all(),
         c.env.DB.prepare('SELECT * FROM leads WHERE account_id = ?').bind(accountId).all(),
@@ -112,15 +129,11 @@ app.get('/sync/:accountId', async (c) => {
             }))
         })),
         leads: leads.results.map((l: any) => ({
-            id: l.id, accountId: l.account_id, title: l.title, company: l.company, value: l.value,
+            id: l.id, account_id: l.account_id, title: l.title, company: l.company, value: l.value,
             contactName: l.contact_name, contactEmail: l.contact_email, contactPhone: l.contact_phone,
             funnelId: l.funnel_id, stageId: l.stage_id, assignedUserId: l.assigned_user_id,
-            probability: l.probability, 
-            notes: JSON.parse(l.notes || '[]'), 
-            tasks: JSON.parse(l.tasks || '[]'),
-            tags: JSON.parse(l.tags || '[]'), 
-            customValues: JSON.parse(l.custom_values || '{}'), 
-            createdAt: l.created_at
+            probability: l.probability, notes: JSON.parse(l.notes || '[]'), tasks: JSON.parse(l.tasks || '[]'),
+            tags: JSON.parse(l.tags || '[]'), customValues: JSON.parse(l.custom_values || '{}'), createdAt: l.created_at
         })),
         users: users.results,
         teams: teams.results,
@@ -151,10 +164,8 @@ app.patch('/leads/:id', async (c) => {
     if (data.title !== undefined) { fields.push('title = ?'); values.push(data.title); }
     if (data.stageId !== undefined) { fields.push('stage_id = ?'); values.push(data.stageId); }
     if (data.funnelId !== undefined) { fields.push('funnel_id = ?'); values.push(data.funnelId); }
-    if (data.probability !== undefined) { fields.push('probability = ?'); values.push(data.probability); }
     if (data.customValues !== undefined) { fields.push('custom_values = ?'); values.push(JSON.stringify(data.customValues)); }
     if (data.notes !== undefined) { fields.push('notes = ?'); values.push(JSON.stringify(data.notes)); }
-    if (data.tasks !== undefined) { fields.push('tasks = ?'); values.push(JSON.stringify(data.tasks)); }
     
     if (fields.length > 0) {
         await c.env.DB.prepare(`UPDATE leads SET ${fields.join(', ')} WHERE id = ?`).bind(...values, id).run();
@@ -167,22 +178,16 @@ app.delete('/leads/:id', async (c) => {
     return c.json({ success: true });
 });
 
-// --- FUNNELS ---
+// --- ADMIN ---
 
-app.post('/funnels', async (c) => {
-    const f = await c.req.json() as any;
-    await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)').bind(f.id, f.accountId, f.name).run();
-    
-    if (f.stages && Array.isArray(f.stages)) {
-        for (const s of f.stages) {
-            await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)')
-                .bind(s.id, f.id, s.name, s.color, s.order).run();
-        }
+app.get('/admin/accounts', async (c) => {
+    try {
+        const result = await c.env.DB.prepare('SELECT * FROM accounts').all();
+        return c.json({ accounts: result.results });
+    } catch (e) {
+        return c.json({ accounts: [] });
     }
-    return c.json({ success: true });
 });
-
-// --- ADMIN & CONFIG ---
 
 app.patch('/admin/settings', async (c) => {
     const body = await c.req.json() as any;
@@ -192,5 +197,4 @@ app.patch('/admin/settings', async (c) => {
     return c.json({ success: true });
 });
 
-// Exporta o handler para o Cloudflare Pages
 export const onRequest = handle(app);

@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole, VisibilityLevel } from '../types.ts';
 import { api } from '../services/api.ts';
@@ -12,6 +13,7 @@ interface CRMContextType {
   activeFunnelId: string;
   currentUser: User | null;
   isLoading: boolean;
+  isOnline: boolean;
   visibleLeads: Lead[];
   visibleUsers: User[];
   currentAccount: Account | null;
@@ -62,6 +64,17 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [activeFunnelId, setActiveFunnelId] = useState<string>(() => localStorage.getItem('nexus_active_funnel') || '');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(true);
+
+  // Health check on boot
+  useEffect(() => {
+    api.get('/health')
+      .then(() => setIsOnline(true))
+      .catch((err) => {
+          console.error("CRM Health Check Failed:", err);
+          setIsOnline(false);
+      });
+  }, []);
 
   useEffect(() => { 
     if (activeFunnelId) localStorage.setItem('nexus_active_funnel', activeFunnelId); 
@@ -105,8 +118,10 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                  }
                }
           }
+          setIsOnline(true);
       } catch (error) { 
           console.error("Erro na sincronização:", error); 
+          setIsOnline(false);
       } finally { 
           setIsLoading(false); 
       }
@@ -325,7 +340,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   return (
     <CRMContext.Provider value={{
       funnels, leads, users, teams, customFields, allAccounts: accounts,
-      activeFunnelId, currentUser, isLoading, visibleLeads, visibleUsers, currentAccount,
+      activeFunnelId, currentUser, isLoading, isOnline, visibleLeads, visibleUsers, currentAccount,
       setActiveFunnelId, login, registerAccount, logout, refreshData,
       addLead, updateLead, moveLead, duplicateLead, deleteLead, addTask, toggleTask, deleteTask,
       addFunnel, updateFunnel, deleteFunnel, addStage, updateStage, reorderStages, deleteStage,
