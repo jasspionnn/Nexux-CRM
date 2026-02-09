@@ -1,5 +1,7 @@
+
 export const api = {
     get: async <T>(endpoint: string): Promise<T> => {
+        // Ensure endpoint starts with / and doesn't have duplicate /api
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
         const res = await fetch(`/api${cleanEndpoint}`);
         if (!res.ok) {
