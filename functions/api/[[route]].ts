@@ -6,27 +6,28 @@ type Bindings = {
 };
 
 /**
- * World-Class Infrastructure Note:
- * No Cloudflare Pages, o roteamento é baseado no sistema de arquivos.
- * Ficheiros em functions/api/ recebem o path completo da requisição.
- * O .basePath('/api') garante que app.get('/health') responda a /api/health.
+ * World-Class CRM Backend (Nexus API)
+ * Routing Strategy: Pages Functions under /functions/api/[[route]].ts 
+ * treat all paths as root-relative. We define routes starting with /api
+ * to match the frontend requests exactly.
  */
-const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
+const app = new Hono<{ Bindings: Bindings }>();
 
-// Handler de Erro Global (Infrastructure Level)
+// Global Error Handler for infrastructure-level issues
 app.onError((err, c) => {
-  console.error(`[NEXUS API ERROR] ${c.req.method} ${c.req.path}:`, err);
+  console.error(`[API ERROR] ${c.req.method} ${c.req.path}:`, err);
   return c.json({ 
     error: err.message || 'Internal Server Error',
-    path: c.req.path 
+    path: c.req.path,
+    status: 500
   }, 500);
 });
 
-// Handler 404 customizado para depuração de rotas
+// Explicit 404 Handler for Hono-level non-matches
 app.notFound((c) => {
-  console.warn(`[NEXUS API 404] ${c.req.method} ${c.req.path}`);
+  console.warn(`[API 404] No Hono route for: ${c.req.method} ${c.req.path}`);
   return c.json({ 
-    error: 'Rota não encontrada no backend Hono', 
+    error: 'Endpoint not found in Hono Router', 
     requestedPath: c.req.path,
     method: c.req.method
   }, 404);
@@ -34,10 +35,10 @@ app.notFound((c) => {
 
 // --- SYSTEM & HEALTH ---
 
-app.get('/health', async (c) => {
+app.get('/api/health', async (c) => {
     try {
         if (!c.env.DB) {
-            return c.json({ status: 'error', message: 'Binding DB não encontrada.' }, 500);
+            return c.json({ status: 'error', message: 'D1 Database binding (DB) missing in environment.' }, 500);
         }
         await c.env.DB.prepare('SELECT 1').first();
         return c.json({ 
@@ -50,7 +51,7 @@ app.get('/health', async (c) => {
     }
 });
 
-app.get('/public/settings', async (c) => {
+app.get('/api/public/settings', async (c) => {
     try {
         const settings = await c.env.DB.prepare('SELECT * FROM system_settings').all();
         const config = settings.results.reduce((acc: any, curr: any) => {
@@ -67,7 +68,7 @@ app.get('/public/settings', async (c) => {
 
 // --- AUTH ---
 
-app.post('/auth/login', async (c) => {
+app.post('/api/auth/login', async (c) => {
     const { email, password } = await c.req.json() as any;
     const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ? AND password = ?')
         .bind(email, password).first() as any;
@@ -86,7 +87,7 @@ app.post('/auth/login', async (c) => {
     });
 });
 
-app.post('/auth/register', async (c) => {
+app.post('/api/auth/register', async (c) => {
     const { userName, email, password, companyName } = await c.req.json() as any;
     const accountId = `acc_${Date.now()}`;
     const userId = `u_${Date.now()}`;
@@ -102,7 +103,7 @@ app.post('/auth/register', async (c) => {
 
 // --- SYNC & DATA ---
 
-app.get('/sync/:accountId', async (c) => {
+app.get('/api/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
     const [funnels, leads, users, teams, customFields] = await Promise.all([
         c.env.DB.prepare('SELECT * FROM funnels WHERE account_id = ?').bind(accountId).all(),
@@ -146,7 +147,7 @@ app.get('/sync/:accountId', async (c) => {
 
 // --- LEADS ---
 
-app.post('/leads', async (c) => {
+app.post('/api/leads', async (c) => {
     const l = await c.req.json() as any;
     await c.env.DB.prepare(`
         INSERT INTO leads (id, account_id, title, company, value, contact_name, contact_email, contact_phone, funnel_id, stage_id, assigned_user_id, probability, created_at)
@@ -155,7 +156,7 @@ app.post('/leads', async (c) => {
     return c.json({ success: true });
 });
 
-app.patch('/leads/:id', async (c) => {
+app.patch('/api/leads/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
     const fields: string[] = [];
@@ -173,14 +174,14 @@ app.patch('/leads/:id', async (c) => {
     return c.json({ success: true });
 });
 
-app.delete('/leads/:id', async (c) => {
+app.delete('/api/leads/:id', async (c) => {
     await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(c.req.param('id')).run();
     return c.json({ success: true });
 });
 
 // --- ADMIN ---
 
-app.get('/admin/accounts', async (c) => {
+app.get('/api/admin/accounts', async (c) => {
     try {
         const result = await c.env.DB.prepare('SELECT * FROM accounts').all();
         return c.json({ accounts: result.results });
@@ -189,7 +190,7 @@ app.get('/admin/accounts', async (c) => {
     }
 });
 
-app.patch('/admin/settings', async (c) => {
+app.patch('/api/admin/settings', async (c) => {
     const body = await c.req.json() as any;
     for (const [key, value] of Object.entries(body)) {
         await c.env.DB.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').bind(key, String(value)).run();
