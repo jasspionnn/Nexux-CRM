@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCRM } from '../context/CRMContext.tsx';
 import { 
   ArrowLeft, Check, X, User, Phone, Mail, Building, 
@@ -7,9 +7,9 @@ import {
   Plus, MoreVertical, CheckCircle, XCircle,
   Edit2, PhoneCall, Layers, Trash2,
   Briefcase, DollarSign, SlidersHorizontal, 
-  Tag as TagIcon, Hash, Target, ThumbsUp as LucideThumbsUp, ThumbsDown as LucideThumbsDown,
-  // Added missing icons
-  Send, MessageSquare
+  Tag as TagIcon, Target, Send, MessageSquare,
+  FileText, ShoppingBag, ScrollText, PenTool,
+  AlertCircle, ThumbsUp as LucideThumbsUp, ThumbsDown as LucideThumbsDown
 } from 'lucide-react';
 import { CustomFieldDefinition, Lead, Task, User as UserType } from '../types.ts';
 
@@ -20,13 +20,15 @@ interface Props {
 }
 
 export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) => {
-  const { leads, funnels, updateLead, customFields, users, currentUser } = useCRM();
+  const { leads, funnels, updateLead, customFields, users, addTask, toggleTask, deleteTask } = useCRM();
   const lead = leads.find(l => l.id === leadId);
   
-  const [activeTab, setActiveTab] = useState<'history' | 'email' | 'tasks' | 'products' | 'files'>('history');
+  const [activeTab, setActiveTab] = useState('history');
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [isChangingFunnel, setIsChangingFunnel] = useState(false);
-  const [newTag, setNewTag] = useState('');
+  const [noteText, setNoteText] = useState('');
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [newTask, setNewTask] = useState({ title: '', date: '', type: 'call' as Task['type'] });
 
   if (!lead) return <div className="p-8 text-center text-gray-500 font-bold">Oportunidade não encontrada.</div>;
 
@@ -35,50 +37,41 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   const currentStageIndex = currentFunnel?.stages.findIndex(s => s.id === lead.stageId) ?? -1;
   const assignedUser = users.find(u => u.id === lead.assignedUserId);
 
-  const handleStageChange = (stageId: string) => {
-      updateLead(lead.id, { stageId });
+  // Handlers
+  const handleSaveNote = () => {
+      if (!noteText.trim()) return;
+      const newNote = {
+          id: `n-${Date.now()}`,
+          content: noteText,
+          createdAt: new Date().toISOString(),
+          authorName: assignedUser?.name || 'Vendedor'
+      };
+      updateLead(lead.id, { notes: [newNote, ...lead.notes] });
+      setNoteText('');
   };
 
-  const handleFunnelChange = (newFunnelId: string) => {
-      const targetFunnel = funnels.find(f => f.id === newFunnelId);
-      if (!targetFunnel) return;
+  const handleCreateTask = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newTask.title) return;
+      const task: Task = {
+          id: `t-${Date.now()}`,
+          title: newTask.title,
+          dueDate: newTask.date || new Date().toISOString(),
+          type: newTask.type,
+          completed: false
+      };
+      addTask(lead.id, task);
+      setIsTaskModalOpen(false);
+      setNewTask({ title: '', date: '', type: 'call' });
+  };
+
+  const handleMarkWon = () => {
+      const wonStage = currentFunnel?.stages[currentFunnel.stages.length - 1];
       updateLead(lead.id, { 
-          funnelId: newFunnelId, 
-          stageId: targetFunnel.stages[0].id 
+          probability: 100, 
+          stageId: wonStage?.id || lead.stageId 
       });
-      setIsChangingFunnel(false);
   };
-
-  const handleAddTag = (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && newTag.trim()) {
-          const tags = [...(lead.tags || [])];
-          if (!tags.includes(newTag.trim())) {
-              updateLead(lead.id, { tags: [...tags, newTag.trim()] });
-          }
-          setNewTag('');
-      }
-  };
-
-  const handleRemoveTag = (tagToRemove: string) => {
-      updateLead(lead.id, { tags: lead.tags.filter(t => t !== tagToRemove) });
-  };
-
-  const handleCustomFieldChange = (field: CustomFieldDefinition, value: any) => {
-    const currentValues = lead.customValues || {};
-    let newValue = value;
-    if (field.type === 'multiselect') {
-        const currentArray = (currentValues[field.id] as string[]) || [];
-        newValue = currentArray.includes(value) ? currentArray.filter(v => v !== value) : [...currentArray, value];
-    }
-    updateLead(lead.id, { customValues: { ...currentValues, [field.id]: newValue } });
-  };
-
-  // Filtragem de campos personalizados para o contexto atual
-  const visibleCustomFields = customFields.filter(f => {
-      if (f.funnelId !== lead.funnelId) return false;
-      if (f.context === 'lost_reason' && lead.probability !== 0) return false;
-      return true;
-  });
 
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden animate-fade-in pt-16">
@@ -90,346 +83,269 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                   <button onClick={onBack} className="text-gray-400 hover:text-gray-600 transition-all p-1 hover:bg-gray-100 rounded">
                       <ArrowLeft size={20} />
                   </button>
-                  <div>
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-2xl font-black text-gray-900 tracking-tight">{lead.title}</h1>
-                        <Edit2 size={14} className="text-gray-300 cursor-pointer hover:text-blue-500" />
-                    </div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">ID: {lead.id}</p>
-                  </div>
+                  <h1 className="text-2xl font-black text-gray-900 tracking-tight">{lead.title}</h1>
               </div>
-              <div className="flex items-center gap-2">
-                  <button onClick={() => updateLead(lead.id, { probability: 0 })} className="px-5 py-2.5 bg-[#A5EDFF] hover:bg-[#80E6FF] text-[#00455B] font-black rounded-xl text-xs uppercase tracking-widest flex items-center gap-2 transition-all shadow-sm">
+              <div className="flex items-center gap-3">
+                  <button onClick={() => updateLead(lead.id, { probability: 0 })} className="px-5 py-2.5 bg-[#A5EDFF] hover:bg-[#80E6FF] text-[#00455B] font-black rounded-xl text-xs uppercase tracking-widest flex items-center gap-2 shadow-sm transition-all">
                       <LucideThumbsDown size={16} strokeWidth={3} /> Perda
                   </button>
-                  <button onClick={() => updateLead(lead.id, { probability: 100 })} className="px-5 py-2.5 bg-[#00455B] hover:bg-[#003646] text-white font-black rounded-xl text-xs uppercase tracking-widest flex items-center gap-2 transition-all shadow-lg">
+                  <button onClick={handleMarkWon} className="px-5 py-2.5 bg-[#00455B] hover:bg-[#003646] text-white font-black rounded-xl text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all">
                       <LucideThumbsUp size={16} strokeWidth={3} /> Venda
                   </button>
               </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-               <div className="flex items-center gap-2 px-3 py-1 bg-gray-100 text-gray-500 text-[10px] font-black uppercase rounded-lg border border-gray-200">
-                   <Target size={12} />
+          <div className="flex items-center gap-3">
+               <div className="px-3 py-1 bg-gray-100 text-gray-500 text-[10px] font-black uppercase rounded-lg border border-gray-200">
                    STATUS: {lead.probability === 100 ? 'GANHO' : lead.probability === 0 ? 'PERDIDO' : 'EM ABERTO'}
                </div>
-               
-               <div className="relative group">
-                    <button 
-                        onClick={() => setIsChangingFunnel(!isChangingFunnel)}
-                        className={`px-3 py-1 bg-[#00D2FF] text-[#00455B] text-[10px] font-black uppercase rounded-lg flex items-center gap-1.5 hover:brightness-95 transition-all shadow-sm ${isChangingFunnel ? 'ring-2 ring-[#00455B]/20' : ''}`}
-                    >
-                        <Layers size={12} />
-                        {currentFunnel?.name || 'Selecionar Funil'}
-                        <ChevronDown size={10} strokeWidth={3} />
-                    </button>
-
-                    {isChangingFunnel && (
-                        <>
-                            <div className="fixed inset-0 z-40" onClick={() => setIsChangingFunnel(false)} />
-                            <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-2 animate-scale-in">
-                                <p className="px-3 py-2 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50">Trocar Funil</p>
-                                {funnels.map(f => (
-                                    <button 
-                                        key={f.id}
-                                        onClick={() => handleFunnelChange(f.id)}
-                                        className={`w-full text-left px-3 py-2.5 text-xs font-bold rounded-lg transition-colors ${f.id === lead.funnelId ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}
-                                    >
-                                        {f.name}
-                                    </button>
-                                ))}
-                            </div>
-                        </>
-                    )}
+               <div className="px-3 py-1 bg-[#00D2FF] text-[#00455B] text-[10px] font-black uppercase rounded-lg">
+                   {currentFunnel?.name}
                </div>
-
                <div className="px-3 py-1 bg-gray-50 text-gray-400 text-[10px] font-black uppercase rounded-lg border border-gray-100 italic">
-                   ETAPA: {currentStage?.name}
-               </div>
-
-               {/* Tags no Header */}
-               <div className="flex items-center gap-2 border-l border-gray-200 pl-3 ml-2">
-                    {lead.tags.map(tag => (
-                        <span key={tag} className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 text-blue-600 text-[9px] font-black uppercase rounded-md border border-blue-100">
-                            <TagIcon size={10} />
-                            {tag}
-                            <button onClick={() => handleRemoveTag(tag)} className="hover:text-red-500"><X size={10} strokeWidth={4} /></button>
-                        </span>
-                    ))}
-                    <div className="relative">
-                        <TagIcon className="absolute left-2 top-1.5 text-gray-300" size={10} />
-                        <input 
-                            value={newTag}
-                            onChange={e => setNewTag(e.target.value)}
-                            // Fixed: pointed to correctly defined handleAddTag
-                            onKeyDown={handleAddTag}
-                            placeholder="Nova tag..."
-                            className="pl-6 pr-2 py-1 bg-gray-50 border border-transparent focus:border-blue-200 rounded-md text-[10px] font-bold outline-none w-24"
-                        />
-                    </div>
+                   {currentStage?.name}
                </div>
           </div>
       </div>
 
-      {/* Barra de Progresso Interativa */}
+      {/* Progress Bar (Chevrons) */}
       <div className="px-8 py-4 flex items-center shrink-0 bg-white shadow-sm z-10">
-          {currentFunnel?.stages.map((stage, idx) => {
-              const isActive = stage.id === lead.stageId;
-              const isCompleted = idx < currentStageIndex;
-              return (
-                  <div 
-                    key={stage.id} 
-                    onClick={() => handleStageChange(stage.id)}
-                    className={`chevron-step ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}
-                  >
-                      {stage.name}
-                      {isActive && <span className="ml-2 opacity-60 text-[8px]">(Etapa Atual)</span>}
-                  </div>
-              );
-          })}
+          {currentFunnel?.stages.map((stage, idx) => (
+              <div 
+                key={stage.id} 
+                onClick={() => updateLead(lead.id, { stageId: stage.id })}
+                className={`chevron-step ${stage.id === lead.stageId ? 'active' : idx < currentStageIndex ? 'completed' : ''}`}
+              >
+                  {stage.name}
+              </div>
+          ))}
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-          {/* Sidebar Detalhada com Todos os Campos do Schema */}
-          <div className="w-[340px] bg-gray-50 border-r border-gray-100 overflow-y-auto shrink-0 p-6 flex flex-col gap-8">
-              
-              {/* Seção Responsável */}
-              <div className="space-y-4">
-                  <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                      <User size={14} /> Responsável
+          {/* Sidebar Negociação */}
+          <div className="w-[320px] bg-gray-50 border-r border-gray-100 overflow-y-auto shrink-0 p-6 flex flex-col gap-8">
+              <div className="flex items-center justify-between cursor-pointer" onClick={() => setSidebarExpanded(!sidebarExpanded)}>
+                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                    <Briefcase size={14} /> Negociação
                   </h3>
-                  <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
-                      <img src={assignedUser?.avatar} className="w-8 h-8 rounded-full border border-gray-100" />
-                      <select 
-                        value={lead.assignedUserId}
-                        onChange={(e) => updateLead(lead.id, { assignedUserId: e.target.value })}
-                        className="flex-1 bg-transparent text-sm font-bold text-gray-800 outline-none cursor-pointer"
-                      >
-                          {users.map(u => (
-                              <option key={u.id} value={u.id}>{u.name}</option>
-                          ))}
-                      </select>
-                  </div>
+                  {sidebarExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </div>
 
-              {/* Seção Negociação Principal */}
-              <div className="space-y-4">
-                  <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                      <DollarSign size={14} /> Negociação
-                  </h3>
-                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-4">
-                      <Field 
-                        label="Empresa" 
-                        value={lead.company} 
-                        editable 
-                        onChange={(v) => updateLead(lead.id, { company: v })} 
-                      />
-                      <Field 
-                        label="Valor (R$)" 
-                        value={lead.value ? lead.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'Não informado'} 
-                        editable 
-                        onChange={(v) => updateLead(lead.id, { value: parseFloat(v.replace(/[^0-9,]/g, '').replace(',', '.')) || 0 })} 
-                      />
-                      <div className="space-y-1">
-                          <p className="text-[10px] font-bold text-gray-400 uppercase">Probabilidade: {lead.probability}%</p>
-                          <input 
-                            type="range" 
-                            min="0" max="100" 
-                            value={lead.probability} 
-                            onChange={(e) => updateLead(lead.id, { probability: parseInt(e.target.value) })}
-                            className="w-full h-1.5 bg-gray-100 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                          />
-                      </div>
-                      <Field label="Criada em" value={new Date(lead.createdAt).toLocaleString()} />
+              {sidebarExpanded && (
+                  <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-4 shadow-sm animate-fade-in">
+                      <SidebarField label="Nome" value={lead.title} />
+                      <SidebarField label="Responsável" value={assignedUser?.name || '---'} />
+                      <SidebarField label="Valor" value={`R$ ${lead.value.toLocaleString()}`} />
+                      <SidebarField label="Criação" value={new Date(lead.createdAt).toLocaleDateString()} />
+                      <SidebarField label="Empresa" value={lead.company} />
+                      <SidebarField label="E-mail" value={lead.contactEmail} />
                   </div>
-              </div>
-
-              {/* Seção Contato */}
-              <div className="space-y-4">
-                  <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                      <Phone size={14} /> Contato
-                  </h3>
-                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-4">
-                      <Field label="Nome" value={lead.contactName} editable onChange={(v) => updateLead(lead.id, { contactName: v })} />
-                      <Field label="E-mail" value={lead.contactEmail} editable onChange={(v) => updateLead(lead.id, { contactEmail: v })} />
-                      <Field label="Telefone" value={lead.contactPhone} editable onChange={(v) => updateLead(lead.id, { contactPhone: v })} />
-                  </div>
-              </div>
-
-              {/* Seção Campos Personalizados (Dinâmicos) */}
-              {visibleCustomFields.length > 0 && (
-                <div className="space-y-4">
-                    <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                        <SlidersHorizontal size={14} /> Personalizados
-                    </h3>
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-4">
-                        {visibleCustomFields.map(field => (
-                            <div key={field.id} className="space-y-1">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase">{field.name}</label>
-                                {field.type === 'text' && (
-                                    <input 
-                                        value={lead.customValues?.[field.id] || ''}
-                                        onChange={(e) => handleCustomFieldChange(field, e.target.value)}
-                                        className="w-full text-sm font-bold text-gray-800 bg-gray-50 px-2 py-1 rounded outline-none border border-transparent focus:border-blue-200"
-                                    />
-                                )}
-                                {field.type === 'select' && (
-                                    <select 
-                                        value={lead.customValues?.[field.id] || ''}
-                                        onChange={(e) => handleCustomFieldChange(field, e.target.value)}
-                                        className="w-full text-sm font-bold text-gray-800 bg-gray-50 px-2 py-1 rounded outline-none"
-                                    >
-                                        <option value="">Selecione...</option>
-                                        {field.options?.map(opt => <option key={opt.id} value={opt.label}>{opt.label}</option>)}
-                                    </select>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                </div>
               )}
           </div>
 
-          {/* Área Principal: Atividades e Histórico */}
+          {/* Área Principal Direita */}
           <div className="flex-1 flex flex-col bg-white overflow-hidden">
               <div className="p-8 flex flex-col gap-8 flex-1 overflow-y-auto">
-                  {/* Próximas Atividades */}
+                  
+                  {/* Bloco de Tarefas Pendentes */}
                   <section>
                       <div className="flex items-center justify-between mb-4">
                           <h3 className="text-lg font-black text-gray-900 tracking-tight">Atividades Pendentes</h3>
-                          <button className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 font-bold rounded-xl text-xs uppercase tracking-widest hover:bg-blue-100 transition-all">
+                          <button 
+                            onClick={() => setIsTaskModalOpen(true)}
+                            className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-100 transition-all flex items-center gap-2"
+                          >
                               <Plus size={16} /> Nova Tarefa
                           </button>
                       </div>
                       
                       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-                         {lead.tasks.filter(t => !t.completed).map(task => (
-                             <TaskItem key={task.id} label={task.title} date={task.dueDate} status="ABERTA" />
-                         ))}
-                         {lead.tasks.filter(t => !t.completed).length === 0 && (
-                             <div className="p-10 text-center text-gray-400 font-medium italic text-sm">Nenhuma tarefa pendente.</div>
-                         )}
+                          {lead.tasks.filter(t => !t.completed).length > 0 ? (
+                              lead.tasks.filter(t => !t.completed).map(task => (
+                                  <TaskRow key={task.id} task={task} onToggle={() => toggleTask(lead.id, task.id)} onDelete={() => deleteTask(lead.id, task.id)} />
+                              ))
+                          ) : (
+                              <div className="p-10 text-center text-gray-400 italic text-sm">Nenhuma tarefa pendente.</div>
+                          )}
                       </div>
                   </section>
 
-                  {/* Feed de Atividades / Histórico */}
+                  {/* Tabs de Conteúdo */}
                   <section className="flex-1 flex flex-col">
-                      <div className="flex gap-8 border-b border-gray-100 mb-6">
-                          {tabs.map(tab => (
+                      <div className="flex gap-6 border-b border-gray-100 mb-6 overflow-x-auto">
+                          {tabItems.map(tab => (
                               <button 
                                 key={tab.id}
-                                onClick={() => setActiveTab(tab.id as any)}
-                                className={`pb-4 text-xs font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === tab.id ? 'border-brand-navy text-gray-900' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`pb-4 text-xs font-black uppercase tracking-widest transition-all border-b-2 whitespace-nowrap ${activeTab === tab.id ? 'border-[#00455B] text-[#00455B]' : 'border-transparent text-gray-400 hover:text-gray-600'}`}
                               >
                                   {tab.label}
                               </button>
                           ))}
                       </div>
 
+                      {/* Conteúdo da Aba */}
                       <div className="space-y-6">
-                         <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
-                             <textarea 
-                                placeholder="Escreva uma anotação sobre este lead..." 
-                                className="w-full bg-transparent text-sm font-medium outline-none resize-none h-24 placeholder:text-gray-400"
-                             />
-                             <div className="flex justify-end pt-2">
-                                <button className="bg-blue-600 text-white px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg hover:bg-blue-700 transition-all flex items-center gap-2">
-                                    <Send size={14} /> Salvar Anotação
-                                </button>
-                             </div>
-                         </div>
-
-                         {/* Histórico Real */}
-                         <div className="space-y-4 pb-12">
-                             {lead.notes.map(note => (
-                                 <div key={note.id} className="flex gap-4 p-4 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-blue-100 transition-colors">
-                                     <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
-                                         <MessageSquare size={18} />
-                                     </div>
-                                     <div className="flex-1">
-                                         <div className="flex justify-between items-center mb-1">
-                                             <span className="text-[11px] font-black text-gray-900 uppercase">{note.authorName}</span>
-                                             <span className="text-[10px] text-gray-400 font-bold">{new Date(note.createdAt).toLocaleString()}</span>
-                                         </div>
-                                         <p className="text-sm text-gray-600 leading-relaxed font-medium">{note.content}</p>
+                         {activeTab === 'history' && (
+                             <div className="space-y-6">
+                                 {/* Box de Anotação */}
+                                 <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
+                                     <textarea 
+                                        value={noteText}
+                                        onChange={e => setNoteText(e.target.value)}
+                                        placeholder="Escreva uma nova anotação..."
+                                        className="w-full bg-transparent text-sm font-medium outline-none resize-none h-24 placeholder:text-gray-400"
+                                     />
+                                     <div className="flex justify-end pt-2">
+                                        <button onClick={handleSaveNote} className="bg-blue-600 text-white px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg hover:bg-blue-700 flex items-center gap-2 transition-all">
+                                            <Send size={14} /> Salvar Anotação
+                                        </button>
                                      </div>
                                  </div>
-                             ))}
-                         </div>
+                                 
+                                 {/* Feed Consolidado */}
+                                 <div className="space-y-4 pb-10">
+                                     {lead.notes.map(note => (
+                                         <HistoryItem key={note.id} icon={<MessageSquare size={18} />} title={note.authorName} date={note.createdAt} content={note.content} />
+                                     ))}
+                                     {lead.tasks.filter(t => t.completed).map(task => (
+                                         <HistoryItem key={task.id} icon={<CheckCircle size={18} className="text-green-500" />} title="Tarefa Concluída" date={new Date().toISOString()} content={task.title} />
+                                     ))}
+                                 </div>
+                             </div>
+                         )}
+
+                         {activeTab === 'tasks' && (
+                             <div className="space-y-4">
+                                 <h4 className="text-xs font-black text-gray-400 uppercase">Todas as atividades desta oportunidade</h4>
+                                 {lead.tasks.map(task => (
+                                     <TaskRow key={task.id} task={task} onToggle={() => toggleTask(lead.id, task.id)} onDelete={() => deleteTask(lead.id, task.id)} />
+                                 ))}
+                             </div>
+                         )}
+
+                         {/* Placeholders Estilizados para as outras abas */}
+                         {['email', 'products', 'files', 'proposals', 'signature'].includes(activeTab) && (
+                             <div className="p-20 text-center flex flex-col items-center gap-4 text-gray-300">
+                                 <div className="p-6 bg-gray-50 rounded-full border-2 border-dashed border-gray-200">
+                                     <AlertCircle size={40} />
+                                 </div>
+                                 <p className="font-bold uppercase text-xs tracking-widest">Nenhum registro de {tabItems.find(t => t.id === activeTab)?.label.toLowerCase()} encontrado.</p>
+                             </div>
+                         )}
                       </div>
                   </section>
               </div>
           </div>
       </div>
+
+      {/* Modal de Nova Tarefa */}
+      {isTaskModalOpen && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+              <form onSubmit={handleCreateTask} className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                  <div className="p-6 border-b bg-gray-50 flex justify-between items-center">
+                      <h3 className="font-black text-gray-800 uppercase text-sm tracking-widest">Nova Atividade</h3>
+                      <button type="button" onClick={() => setIsTaskModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
+                  </div>
+                  <div className="p-8 space-y-5">
+                      <div>
+                          <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">O que precisa ser feito?</label>
+                          <input 
+                            required 
+                            autoFocus
+                            placeholder="Ex: Retornar ligação da proposta" 
+                            className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-100 font-bold"
+                            value={newTask.title}
+                            onChange={e => setNewTask({...newTask, title: e.target.value})}
+                          />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Data Prazo</label>
+                            <input 
+                                type="datetime-local" 
+                                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none"
+                                value={newTask.date}
+                                onChange={e => setNewTask({...newTask, date: e.target.value})}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Tipo</label>
+                            <select 
+                                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none bg-white font-bold"
+                                value={newTask.type}
+                                onChange={e => setNewTask({...newTask, type: e.target.value as any})}
+                            >
+                                <option value="call">Ligação</option>
+                                <option value="email">E-mail</option>
+                                <option value="meeting">Reunião</option>
+                                <option value="todo">Geral</option>
+                            </select>
+                          </div>
+                      </div>
+                      <button type="submit" className="w-full bg-[#00455B] text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-black transition-all">Criar Tarefa</button>
+                  </div>
+              </form>
+          </div>
+      )}
     </div>
   );
 };
 
-// Componente de Campo de Visualização/Edição
-const Field = ({ label, value, editable, onChange }: { label: string, value: string, editable?: boolean, onChange?: (v: string) => void }) => {
-    const [isEditing, setIsEditing] = useState(false);
-    const [tempValue, setTempValue] = useState(value);
+// Componentes Auxiliares
+const SidebarField = ({ label, value }: { label: string, value: string }) => (
+    <div className="flex flex-col gap-0.5">
+        <p className="text-[10px] font-bold text-gray-400 uppercase">{label}</p>
+        <p className="text-sm font-bold text-gray-800 truncate">{value || '---'}</p>
+    </div>
+);
 
-    const handleBlur = () => {
-        setIsEditing(false);
-        if (onChange) onChange(tempValue);
-    };
-
+const TaskRow = ({ task, onToggle, onDelete }: { task: Task, onToggle: () => void, onDelete: () => void }) => {
+    const isOverdue = new Date(task.dueDate) < new Date() && !task.completed;
     return (
-        <div className="flex flex-col gap-0.5 group">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">{label}</p>
-            {editable ? (
-                isEditing ? (
-                    <input 
-                        autoFocus
-                        value={tempValue}
-                        onChange={e => setTempValue(e.target.value)}
-                        onBlur={handleBlur}
-                        className="text-sm font-bold text-gray-800 bg-blue-50 border-b border-blue-500 outline-none w-full"
-                    />
-                ) : (
-                    <div 
-                        onClick={() => setIsEditing(true)}
-                        className="text-sm font-bold text-gray-800 flex items-center justify-between cursor-pointer hover:text-blue-600"
-                    >
-                        <span className="truncate">{value || '---'}</span>
-                        <Edit2 size={10} className="opacity-0 group-hover:opacity-100" />
-                    </div>
-                )
-            ) : (
-                <p className="text-sm font-bold text-gray-800 truncate">{value || '---'}</p>
-            )}
+        <div className={`p-4 flex items-center gap-4 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors group ${task.completed ? 'opacity-50' : ''}`}>
+            <button onClick={onToggle} className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center transition-all ${task.completed ? 'bg-green-500 border-green-500 text-white' : 'border-gray-200 text-transparent hover:border-blue-400'}`}>
+                <Check size={16} strokeWidth={4} />
+            </button>
+            <div className="flex-1">
+                <div className="flex items-center gap-2">
+                    {task.type === 'call' && <PhoneCall size={12} className="text-blue-500" />}
+                    {task.type === 'email' && <Mail size={12} className="text-yellow-500" />}
+                    <span className={`text-sm font-bold ${task.completed ? 'line-through text-gray-400' : 'text-gray-800'}`}>{task.title}</span>
+                </div>
+                <div className="flex items-center gap-3 mt-0.5">
+                    <span className={`text-[10px] font-black uppercase ${isOverdue ? 'text-red-500' : 'text-gray-400'}`}>
+                        {new Date(task.dueDate).toLocaleString()}
+                    </span>
+                    {isOverdue && <span className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded">ATRASADA</span>}
+                </div>
+            </div>
+            <button onClick={onDelete} className="p-2 text-gray-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16} /></button>
         </div>
     );
 };
 
-const TaskItem = ({ label, date, status, last }: { label: string, date: string, status: string, last?: boolean }) => (
-    <div className={`p-4 flex items-center gap-4 ${last ? '' : 'border-b border-gray-50'}`}>
-        <div className="bg-gray-900 text-white p-2 rounded-lg"><CheckCircle size={14} /></div>
-        <div className="flex-1">
-            <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black uppercase text-blue-600">Tarefa</span>
-                <span className="text-sm font-bold text-gray-800">{label}</span>
-            </div>
-            <p className="text-[10px] text-gray-400 font-bold flex items-center gap-1 mt-0.5">
-                <Clock size={10} /> Prazo: {new Date(date).toLocaleString()}
-            </p>
+const HistoryItem = ({ icon, title, date, content }: { icon: React.ReactNode, title: string, date: string, content: string }) => (
+    <div className="flex gap-4 p-5 bg-white border border-gray-100 rounded-2xl shadow-sm hover:border-blue-100 transition-colors animate-fade-in">
+        <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
+            {icon}
         </div>
-        <div className="flex items-center gap-2">
-            <button className="p-2 text-gray-300 hover:text-blue-600"><Edit2 size={16} /></button>
-            <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 cursor-pointer hover:bg-blue-600 hover:text-white transition-all">
-                <Check size={16} strokeWidth={4} />
+        <div className="flex-1">
+            <div className="flex justify-between items-center mb-1">
+                <span className="text-[11px] font-black text-gray-900 uppercase tracking-tight">{title}</span>
+                <span className="text-[10px] text-gray-400 font-bold">{new Date(date).toLocaleString()}</span>
             </div>
+            <p className="text-sm text-gray-600 leading-relaxed font-medium whitespace-pre-wrap">{content}</p>
         </div>
     </div>
 );
 
-const tabs = [
+const tabItems = [
     { id: 'history', label: 'Histórico' },
     { id: 'email', label: 'E-mail' },
     { id: 'tasks', label: 'Tarefas' },
+    { id: 'products', label: 'Produtos e Serviços' },
     { id: 'files', label: 'Arquivos' },
+    { id: 'proposals', label: 'Propostas' },
     { id: 'signature', label: 'Assinatura Eletrônica' },
 ];
-
-const handleAddAddTag = (e: any) => {}; // Placeholder para evitar erro de referência circular se copiado parcialmente
