@@ -1,4 +1,3 @@
-
 -- 1. Accounts (Tenants)
 CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
@@ -123,5 +122,6 @@ CREATE TABLE IF NOT EXISTS system_settings (
     value TEXT
 );
 
--- Default Settings
+-- Initial Data
 INSERT OR IGNORE INTO system_settings (key, value) VALUES ('login_background', 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=2000');
+INSERT OR IGNORE INTO users (id, name, email, password, role, avatar, status) VALUES ('u_nexus_admin', 'Admin Nexus', 'admin@nexus.com', 'admin123', 'NEXUS_ADMIN', 'https://ui-avatars.com/api/?name=Admin', 'active');

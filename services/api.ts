@@ -1,23 +1,20 @@
-
 export const api = {
     get: async <T>(endpoint: string): Promise<T> => {
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
         const url = `/api${cleanEndpoint}`;
         try {
-            console.debug(`[API GET] Requesting: ${url}`);
             const res = await fetch(url);
             if (!res.ok) {
                 let errorMsg = `Erro API: ${res.status} ${res.statusText}`;
                 try {
                     const errBody = await res.json();
-                    errorMsg = errBody.error || errorMsg;
+                    if (errBody && errBody.error) errorMsg = errBody.error;
                 } catch (e) {}
-                console.error(`[API GET ERROR] ${url}:`, errorMsg);
                 throw new Error(errorMsg);
             }
             return res.json();
         } catch (error: any) {
-            console.error(`[NETWORK ERROR] GET ${url}:`, error.message);
+            console.error(`[API GET ERROR] ${url}:`, error.message);
             throw error;
         }
     },
@@ -26,7 +23,6 @@ export const api = {
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
         const url = `/api${cleanEndpoint}`;
         try {
-            console.debug(`[API POST] Requesting: ${url}`);
             const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -36,14 +32,13 @@ export const api = {
                 let errorMsg = `Erro API: ${res.status} ${res.statusText}`;
                 try {
                     const errBody = await res.json();
-                    errorMsg = errBody.error || errorMsg;
+                    if (errBody && errBody.error) errorMsg = errBody.error;
                 } catch (e) {}
-                console.error(`[API POST ERROR] ${url}:`, errorMsg);
                 throw new Error(errorMsg);
             }
             return res.json();
         } catch (error: any) {
-            console.error(`[NETWORK ERROR] POST ${url}:`, error.message);
+            console.error(`[API POST ERROR] ${url}:`, error.message);
             throw error;
         }
     },
@@ -52,7 +47,6 @@ export const api = {
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
         const url = `/api${cleanEndpoint}`;
         try {
-            console.debug(`[API PATCH] Requesting: ${url}`);
             const res = await fetch(url, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -62,14 +56,13 @@ export const api = {
                 let errorMsg = `Erro API: ${res.status} ${res.statusText}`;
                 try {
                     const errBody = await res.json();
-                    errorMsg = errBody.error || errorMsg;
+                    if (errBody && errBody.error) errorMsg = errBody.error;
                 } catch (e) {}
-                console.error(`[API PATCH ERROR] ${url}:`, errorMsg);
                 throw new Error(errorMsg);
             }
             return res.json();
         } catch (error: any) {
-            console.error(`[NETWORK ERROR] PATCH ${url}:`, error.message);
+            console.error(`[API PATCH ERROR] ${url}:`, error.message);
             throw error;
         }
     },
@@ -78,7 +71,6 @@ export const api = {
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
         const url = `/api${cleanEndpoint}`;
         try {
-            console.debug(`[API DELETE] Requesting: ${url}`);
             const res = await fetch(url, {
                 method: 'DELETE',
             });
@@ -86,14 +78,13 @@ export const api = {
                 let errorMsg = `Erro API: ${res.status} ${res.statusText}`;
                 try {
                     const errBody = await res.json();
-                    errorMsg = errBody.error || errorMsg;
+                    if (errBody && errBody.error) errorMsg = errBody.error;
                 } catch (e) {}
-                console.error(`[API DELETE ERROR] ${url}:`, errorMsg);
                 throw new Error(errorMsg);
             }
             return res.json();
         } catch (error: any) {
-            console.error(`[NETWORK ERROR] DELETE ${url}:`, error.message);
+            console.error(`[API DELETE ERROR] ${url}:`, error.message);
             throw error;
         }
     }

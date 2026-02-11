@@ -1,53 +1,91 @@
-
 export const api = {
     get: async <T>(endpoint: string): Promise<T> => {
-        // Ensure endpoint starts with / and doesn't have duplicate /api
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-        const res = await fetch(`/api${cleanEndpoint}`);
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || `Erro API: ${res.status}`);
+        const url = `/api${cleanEndpoint}`;
+        try {
+            const res = await fetch(url);
+            if (!res.ok) {
+                let errorMsg = `Erro API: ${res.status} ${res.statusText}`;
+                try {
+                    const errBody = await res.json();
+                    if (errBody && errBody.error) errorMsg = errBody.error;
+                } catch (e) {}
+                throw new Error(errorMsg);
+            }
+            return res.json();
+        } catch (error: any) {
+            console.error(`[API GET ERROR] ${url}:`, error.message);
+            throw error;
         }
-        return res.json();
     },
 
     post: async <T>(endpoint: string, data: unknown): Promise<T> => {
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-        const res = await fetch(`/api${cleanEndpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || `Erro API: ${res.status}`);
+        const url = `/api${cleanEndpoint}`;
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (!res.ok) {
+                let errorMsg = `Erro API: ${res.status} ${res.statusText}`;
+                try {
+                    const errBody = await res.json();
+                    if (errBody && errBody.error) errorMsg = errBody.error;
+                } catch (e) {}
+                throw new Error(errorMsg);
+            }
+            return res.json();
+        } catch (error: any) {
+            console.error(`[API POST ERROR] ${url}:`, error.message);
+            throw error;
         }
-        return res.json();
     },
 
     patch: async <T>(endpoint: string, data: unknown): Promise<T> => {
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-        const res = await fetch(`/api${cleanEndpoint}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || `Erro API: ${res.status}`);
+        const url = `/api${cleanEndpoint}`;
+        try {
+            const res = await fetch(url, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (!res.ok) {
+                let errorMsg = `Erro API: ${res.status} ${res.statusText}`;
+                try {
+                    const errBody = await res.json();
+                    if (errBody && errBody.error) errorMsg = errBody.error;
+                } catch (e) {}
+                throw new Error(errorMsg);
+            }
+            return res.json();
+        } catch (error: any) {
+            console.error(`[API PATCH ERROR] ${url}:`, error.message);
+            throw error;
         }
-        return res.json();
     },
 
     delete: async <T>(endpoint: string): Promise<T> => {
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-        const res = await fetch(`/api${cleanEndpoint}`, {
-            method: 'DELETE',
-        });
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || `Erro API: ${res.status}`);
+        const url = `/api${cleanEndpoint}`;
+        try {
+            const res = await fetch(url, {
+                method: 'DELETE',
+            });
+            if (!res.ok) {
+                let errorMsg = `Erro API: ${res.status} ${res.statusText}`;
+                try {
+                    const errBody = await res.json();
+                    if (errBody && errBody.error) errorMsg = errBody.error;
+                } catch (e) {}
+                throw new Error(errorMsg);
+            }
+            return res.json();
+        } catch (error: any) {
+            console.error(`[API DELETE ERROR] ${url}:`, error.message);
+            throw error;
         }
-        return res.json();
     }
 };
