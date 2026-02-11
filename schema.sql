@@ -1,3 +1,5 @@
+-- Nexus CRM - Database Schema
+
 -- 1. Accounts (Tenants)
 CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
@@ -74,6 +76,8 @@ CREATE TABLE IF NOT EXISTS leads (
     probability INTEGER DEFAULT 0,
     tags TEXT DEFAULT '[]',
     custom_values TEXT DEFAULT '{}',
+    notes TEXT DEFAULT '[]',
+    tasks TEXT DEFAULT '[]',
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
     FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE,
@@ -81,28 +85,7 @@ CREATE TABLE IF NOT EXISTS leads (
     FOREIGN KEY (assigned_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- 7. Notes
-CREATE TABLE IF NOT EXISTS notes (
-    id TEXT PRIMARY KEY,
-    lead_id TEXT NOT NULL,
-    content TEXT NOT NULL,
-    author_name TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
-);
-
--- 8. Tasks
-CREATE TABLE IF NOT EXISTS tasks (
-    id TEXT PRIMARY KEY,
-    lead_id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    due_date TEXT NOT NULL,
-    completed INTEGER DEFAULT 0,
-    type TEXT DEFAULT 'todo',
-    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
-);
-
--- 9. Custom Fields
+-- 7. Custom Fields
 CREATE TABLE IF NOT EXISTS custom_fields (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
@@ -110,18 +93,18 @@ CREATE TABLE IF NOT EXISTS custom_fields (
     type TEXT NOT NULL,
     context TEXT NOT NULL,
     funnel_id TEXT NOT NULL,
-    options TEXT,
-    visible_stage_ids TEXT,
+    options TEXT DEFAULT '[]',
+    visible_stage_ids TEXT DEFAULT '[]',
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
     FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE
 );
 
--- 10. System Settings (Global)
+-- 8. System Settings (Global)
 CREATE TABLE IF NOT EXISTS system_settings (
     key TEXT PRIMARY KEY,
     value TEXT
 );
 
--- Initial Data
+-- Initial System Data
 INSERT OR IGNORE INTO system_settings (key, value) VALUES ('login_background', 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=2000');
 INSERT OR IGNORE INTO users (id, name, email, password, role, avatar, status) VALUES ('u_nexus_admin', 'Admin Nexus', 'admin@nexus.com', 'admin123', 'NEXUS_ADMIN', 'https://ui-avatars.com/api/?name=Admin', 'active');

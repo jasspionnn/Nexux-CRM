@@ -98,7 +98,8 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
     if (!currentFunnel) return;
     const targetStageId = currentFunnel.defaultWonStageId || currentFunnel.stages[currentFunnel.stages.length - 1].id;
     updateLead(lead.id, { probability: 100, stageId: targetStageId });
-    updateLead(lead.id, { notes: [{ id: `sys-${Date.now()}`, content: "🎉 Negócio marcado como GANHO!", createdAt: new Date().toISOString(), authorName: 'Sistema' }, ...lead.notes] });
+    const winNote = { id: `sys-${Date.now()}`, content: "🎉 Negócio marcado como GANHO!", createdAt: new Date().toISOString(), authorName: 'Sistema' };
+    updateLead(lead.id, { notes: [winNote, ...lead.notes] });
   };
 
   const handleTransferFunnel = (targetFunnelId: string) => {
@@ -109,7 +110,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
       
       const updateData = { 
         funnelId: targetFunnelId, 
-        stageId: targetStageId,
+        stage_id: targetStageId, // Nota: a API espera stage_id ou stageId? O Context traduz.
         notes: [{ 
           id: `sys-mov-${Date.now()}`, 
           content: `🔄 Lead encaminhado do funil "${currentFunnel?.name}" para o funil "${targetFunnel.name}".`, 
@@ -120,6 +121,30 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
       
       updateLead(lead.id, updateData);
   };
+
+  const handleCustomFieldChange = (fieldId: string, value: any, type: string) => {
+    const currentValues = lead.customValues || {};
+    let newValue = value;
+    
+    if (type === 'multiselect') {
+        const currentArray = (currentValues[fieldId] as string[]) || [];
+        newValue = currentArray.includes(value) 
+            ? currentArray.filter(v => v !== value) 
+            : [...currentArray, value];
+    }
+    
+    updateLead(lead.id, { 
+        customValues: { ...currentValues, [fieldId]: newValue } 
+    });
+  };
+
+  // Filtragem de campos personalizados visíveis para este lead nesta etapa
+  const visibleFields = customFields.filter(f => {
+      if (f.context !== 'lead_detail') return false;
+      if (f.funnelId !== lead.funnelId) return false;
+      if (f.visibleStageIds && f.visibleStageIds.length > 0 && !f.visibleStageIds.includes(lead.stageId)) return false;
+      return true;
+  });
 
   const isWon = lead.probability === 100;
   const isLost = lead.probability === 0;
@@ -159,6 +184,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
 
         <div className="flex-1 flex overflow-hidden">
             <div className="w-[360px] bg-white border-r border-gray-200 overflow-y-auto shrink-0 p-8 space-y-8">
+                {/* Seção de Encaminhamento */}
                 <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100/50">
                     <h4 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4 flex items-center gap-2">
                         <Layers size={14} /> Encaminhar para Funil
@@ -172,6 +198,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                     </select>
                 </div>
 
+                {/* Seção de Negociação */}
                 <div className="space-y-6">
                     <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest flex items-center gap-2 border-b border-gray-50 pb-2">
                         <Briefcase size={16} className="text-blue-500" /> Negociação
@@ -182,6 +209,65 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                     </div>
                 </div>
 
+                {/* Seção de Campos Personalizados */}
+                {visibleFields.length > 0 && (
+                  <div className="space-y-6">
+                      <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest flex items-center gap-2 border-b border-gray-50 pb-2">
+                          <SlidersHorizontal size={16} className="text-blue-500" /> Campos Customizados
+                      </h3>
+                      <div className="space-y-4">
+                          {visibleFields.map(field => (
+                              <div key={field.id} className="flex flex-col group">
+                                  <label className="text-[10px] font-bold text-gray-400 uppercase mb-1.5">{field.name}</label>
+                                  
+                                  {field.type === 'text' && (
+                                      <input 
+                                          type="text"
+                                          value={lead.customValues?.[field.id] || ''}
+                                          onChange={(e) => handleCustomFieldChange(field.id, e.target.value, 'text')}
+                                          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                                          placeholder="..."
+                                      />
+                                  )}
+
+                                  {field.type === 'select' && (
+                                      <select
+                                          value={lead.customValues?.[field.id] || ''}
+                                          onChange={(e) => handleCustomFieldChange(field.id, e.target.value, 'select')}
+                                          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                                      >
+                                          <option value="">Selecione...</option>
+                                          {field.options?.map(opt => (
+                                              <option key={opt.id} value={opt.label}>{opt.label}</option>
+                                          ))}
+                                      </select>
+                                  )}
+
+                                  {field.type === 'multiselect' && (
+                                      <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 space-y-2 max-h-32 overflow-y-auto">
+                                          {field.options?.map(opt => {
+                                              const isSelected = (lead.customValues?.[field.id] as string[] || []).includes(opt.label);
+                                              return (
+                                                  <label key={opt.id} className="flex items-center gap-2 cursor-pointer hover:bg-white p-1 rounded transition-colors">
+                                                      <input 
+                                                          type="checkbox"
+                                                          checked={isSelected}
+                                                          onChange={() => handleCustomFieldChange(field.id, opt.label, 'multiselect')}
+                                                          className="rounded text-blue-600 focus:ring-blue-500"
+                                                      />
+                                                      <span className="text-xs font-bold text-gray-700">{opt.label}</span>
+                                                  </label>
+                                              );
+                                          })}
+                                      </div>
+                                  )}
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+                )}
+
+                {/* Seção de Contato */}
                 <div className="space-y-6">
                     <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest flex items-center gap-2 border-b border-gray-50 pb-2">
                         <User size={16} className="text-blue-500" /> Contato Direto
@@ -194,6 +280,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                 </div>
             </div>
 
+            {/* Area Principal */}
             <div className="flex-1 bg-gray-50 flex flex-col min-w-0">
                 <div className="bg-white border-b border-gray-100 px-8 pt-4">
                     <div className="flex gap-8">
@@ -230,6 +317,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                             </div>
                         </div>
                     )}
+                    {/* Seção de Tarefas pode ser expandida aqui similarmente ao código anterior se necessário */}
                 </div>
             </div>
         </div>
