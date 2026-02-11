@@ -44,8 +44,10 @@ const AppContent = () => {
       setCurrentView(view);
   };
 
+  const isNexusAdmin = currentUser.role === UserRole.NEXUS_ADMIN;
+
   const renderView = () => {
-    if (currentUser.role === UserRole.NEXUS_ADMIN) {
+    if (isNexusAdmin) {
         return <NexusAdminDashboard />;
     }
 
@@ -67,8 +69,8 @@ const AppContent = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden pt-16">
-      <Navbar currentView={currentView} onChangeView={(view) => handleNavigate(view)} />
+    <div className={`flex flex-col h-screen bg-gray-50 overflow-hidden ${!isNexusAdmin ? 'pt-16' : ''}`}>
+      {!isNexusAdmin && <Navbar currentView={currentView} onChangeView={(view) => handleNavigate(view)} />}
       <main className="flex-1 overflow-hidden relative">
         {renderView()}
       </main>

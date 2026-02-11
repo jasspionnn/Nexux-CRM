@@ -1,11 +1,15 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useCRM } from '../context/CRMContext.tsx';
 import { UserRole } from '../types.ts';
-import { Building, Power, Search, ShieldCheck, Calendar, CheckCircle, Loader2, Save, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
+import { 
+  Building, Power, Search, ShieldCheck, Calendar, CheckCircle, 
+  Loader2, Save, Upload, Trash2, Image as ImageIcon, LogOut, User as UserIcon
+} from 'lucide-react';
 import { api } from '../services/api.ts';
 
 export const NexusAdminDashboard = () => {
-  const { allAccounts = [], updateAccountStatus, extendAccountSubscription, isLoading, currentUser } = useCRM();
+  const { allAccounts = [], updateAccountStatus, extendAccountSubscription, isLoading, currentUser, logout } = useCRM();
   const [activeTab, setActiveTab] = useState<'accounts' | 'settings'>('accounts');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -48,10 +52,8 @@ export const NexusAdminDashboard = () => {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      // Reduzindo o limite para 600KB para garantir que o Base64 final (que é maior) 
-      // não ultrapasse o limite de 1MB por campo do Cloudflare D1.
       if (file.size > 600 * 1024) {
-          alert("A imagem é muito grande. Escolha uma imagem de até 600KB para garantir o salvamento no banco de dados.");
+          alert("A imagem é muito grande. Escolha uma imagem de até 600KB.");
           return;
       }
 
@@ -87,41 +89,71 @@ export const NexusAdminDashboard = () => {
 
   return (
     <div className="flex-1 bg-gray-50 h-full overflow-hidden flex flex-col animate-fade-in relative">
+        {/* Header Exclusivo Nexus Admin */}
         <div className="h-20 bg-white border-b border-gray-200 px-8 flex items-center justify-between shadow-sm shrink-0">
-            <div className="flex items-center gap-6">
-                <h1 className="text-2xl font-black text-gray-800 flex items-center gap-2">
-                    <ShieldCheck className="text-blue-600" size={28} />
-                    Painel Nexus
-                </h1>
+            <div className="flex items-center gap-10">
+                <div className="flex items-center gap-2">
+                    <div className="bg-gray-900 p-2 rounded-lg text-white">
+                        <ShieldCheck size={24} />
+                    </div>
+                    <div>
+                        <h1 className="text-xl font-black text-gray-900 tracking-tighter">
+                            NEXUS ADMIN
+                        </h1>
+                        <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest leading-none">Super Administrador</p>
+                    </div>
+                </div>
+
                 <div className="flex bg-gray-100 p-1 rounded-xl">
                     <button 
                         onClick={() => setActiveTab('accounts')}
                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'accounts' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                     >
-                        Empresas
+                        Gestão de Contas
                     </button>
                     <button 
                         onClick={() => setActiveTab('settings')}
                         className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'settings' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                     >
-                        Sistema
+                        Configurações Globais
                     </button>
                 </div>
             </div>
             
-            {activeTab === 'accounts' && (
-                <div className="flex gap-4">
+            <div className="flex items-center gap-6">
+                {activeTab === 'accounts' && (
                     <div className="relative">
                         <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
                         <input 
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
-                            placeholder="Buscar empresa..."
+                            placeholder="Buscar empresa ou email..."
                             className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 w-64 text-sm font-bold"
                         />
                     </div>
+                )}
+
+                <div className="h-10 w-px bg-gray-200 mx-2"></div>
+
+                <div className="flex items-center gap-4">
+                    <div className="text-right">
+                        <p className="text-sm font-black text-gray-900 leading-none">{currentUser?.name}</p>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">Sessão Root</p>
+                    </div>
+                    <div className="relative group">
+                        <img 
+                            src={currentUser?.avatar} 
+                            className="w-10 h-10 rounded-full border-2 border-gray-100 shadow-sm cursor-pointer" 
+                            alt="avatar" 
+                        />
+                        <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all p-2 z-[110]">
+                            <button onClick={logout} className="w-full flex items-center gap-2 p-2.5 text-sm text-red-600 font-bold hover:bg-red-50 rounded-lg transition-colors">
+                                <LogOut size={16} /> Encerrar Painel
+                            </button>
+                        </div>
+                    </div>
                 </div>
-            )}
+            </div>
         </div>
 
         <div className="flex-1 overflow-auto p-8">
