@@ -7,7 +7,7 @@ import {
   Plus, MoreVertical, FileText, CheckCircle, XCircle,
   Edit2, Sparkles, PhoneCall, Layers, Trash2,
   Briefcase, DollarSign, SlidersHorizontal, Send, Mail as MailIcon, 
-  FileBox, BarChart2, MessageSquare
+  FileBox, BarChart2, MessageSquare, ThumbsUp as LucideThumbsUp, ThumbsDown as LucideThumbsDown
 } from 'lucide-react';
 import { CustomFieldDefinition, Lead, Task } from '../types.ts';
 
@@ -23,10 +23,12 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   
   const [activeTab, setActiveTab] = useState<'history' | 'email' | 'tasks' | 'products' | 'files'>('history');
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
+  const [isChangingFunnel, setIsChangingFunnel] = useState(false);
 
   if (!lead) return <div className="p-8 text-center text-gray-500">Lead não encontrado.</div>;
 
   const currentFunnel = funnels.find(f => f.id === lead.funnelId);
+  const currentStage = currentFunnel?.stages.find(s => s.id === lead.stageId);
   const currentStageIndex = currentFunnel?.stages.findIndex(s => s.id === lead.stageId) ?? -1;
 
   const handleMarkAsWon = () => {
@@ -37,6 +39,18 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
 
   const handleStageChange = (stageId: string) => {
       updateLead(lead.id, { stageId });
+  };
+
+  const handleFunnelChange = (newFunnelId: string) => {
+      const targetFunnel = funnels.find(f => f.id === newFunnelId);
+      if (!targetFunnel) return;
+      
+      // Ao trocar de funil, movemos para a primeira etapa do novo funil por padrão
+      updateLead(lead.id, { 
+          funnelId: newFunnelId, 
+          stageId: targetFunnel.stages[0].id 
+      });
+      setIsChangingFunnel(false);
   };
 
   return (
@@ -62,13 +76,48 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
               </div>
           </div>
 
+          {/* Área de Seleção de Funil e Etapa (Red Box do Usuário) */}
           <div className="flex items-center gap-2">
-               <span className="px-2.5 py-1 bg-gray-100 text-gray-400 text-[10px] font-black uppercase rounded">ESSENTIALS</span>
-               <span className="px-2.5 py-1 bg-[#00D2FF] text-[#00455B] text-[10px] font-black uppercase rounded">RD STATION MARKETING</span>
+               <span className="px-2.5 py-1 bg-gray-100 text-gray-500 text-[10px] font-black uppercase rounded border border-gray-200">
+                   STATUS: {lead.probability === 100 ? 'GANHO' : lead.probability === 0 ? 'PERDIDO' : 'EM ABERTO'}
+               </span>
+               
+               {/* Seletor de Funil Dinâmico */}
+               <div className="relative group">
+                    <button 
+                        onClick={() => setIsChangingFunnel(!isChangingFunnel)}
+                        className={`px-3 py-1 bg-[#00D2FF] text-[#00455B] text-[10px] font-black uppercase rounded flex items-center gap-1.5 hover:brightness-95 transition-all shadow-sm ${isChangingFunnel ? 'ring-2 ring-[#00455B]/20' : ''}`}
+                    >
+                        {currentFunnel?.name || 'Selecionar Funil'}
+                        <ChevronDown size={10} strokeWidth={3} />
+                    </button>
+
+                    {isChangingFunnel && (
+                        <>
+                            <div className="fixed inset-0 z-40" onClick={() => setIsChangingFunnel(false)} />
+                            <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-xl z-50 p-1 animate-scale-in">
+                                <p className="px-3 py-2 text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50">Trocar Funil</p>
+                                {funnels.map(f => (
+                                    <button 
+                                        key={f.id}
+                                        onClick={() => handleFunnelChange(f.id)}
+                                        className={`w-full text-left px-3 py-2 text-xs font-bold rounded-md transition-colors ${f.id === lead.funnelId ? 'bg-blue-50 text-[#00455B]' : 'text-gray-600 hover:bg-gray-50'}`}
+                                    >
+                                        {f.name}
+                                    </button>
+                                ))}
+                            </div>
+                        </>
+                    )}
+               </div>
+
+               <span className="px-2.5 py-1 bg-gray-50 text-gray-400 text-[10px] font-black uppercase rounded border border-gray-100 italic">
+                   {currentStage?.name}
+               </span>
           </div>
       </div>
 
-      {/* Chevron Progress Bar */}
+      {/* Chevron Progress Bar Interativa */}
       <div className="px-8 pb-6 flex items-center shrink-0">
           {currentFunnel?.stages.map((stage, idx) => {
               const isActive = stage.id === lead.stageId;
@@ -77,6 +126,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                   <div 
                     key={stage.id} 
                     onClick={() => handleStageChange(stage.id)}
+                    title={`Mover para: ${stage.name}`}
                     className={`chevron-step ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}
                   >
                       {stage.name}
