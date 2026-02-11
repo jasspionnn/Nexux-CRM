@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { CRMProvider, useCRM } from './context/CRMContext.tsx';
-import { Sidebar } from './components/Sidebar.tsx';
+import { Sidebar as Navbar } from './components/Sidebar.tsx';
 import { Dashboard } from './components/Dashboard.tsx';
 import { KanbanBoard } from './components/KanbanBoard.tsx';
 import { Settings } from './components/Settings.tsx';
@@ -17,7 +18,6 @@ const AppContent = () => {
   const [currentView, setCurrentView] = useState('kanban');
   const [viewData, setViewData] = useState<any>(null);
 
-  // Define a visão inicial baseada no papel do usuário
   useEffect(() => {
     if (currentUser?.role === UserRole.NEXUS_ADMIN) {
         setCurrentView('admin-accounts');
@@ -26,17 +26,15 @@ const AppContent = () => {
     }
   }, [currentUser]);
 
-  // Se estiver carregando a sessão inicial
   if (isLoading && !currentUser) {
       return (
           <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50">
               <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
-              <p className="text-gray-600 font-bold">Iniciando Nexus CRM...</p>
+              <p className="text-gray-600 font-bold text-lg">Nexus CRM carregando...</p>
           </div>
       );
   }
 
-  // Se não houver usuário logado
   if (!currentUser) {
       return <LoginPage />;
   }
@@ -47,19 +45,17 @@ const AppContent = () => {
   };
 
   const renderView = () => {
-    // Caso seja Super Admin
     if (currentUser.role === UserRole.NEXUS_ADMIN) {
         return <NexusAdminDashboard />;
     }
 
-    // Visões normais do CRM
     switch(currentView) {
       case 'dashboard': return <Dashboard />;
       case 'kanban': return <KanbanBoard onNavigate={handleNavigate} />;
       case 'leads-db': return <LeadsDatabase onNavigate={handleNavigate} />;
       case 'tasks': return <TasksView onNavigate={handleNavigate} />;
       case 'settings': 
-        return currentUser.role === UserRole.ACCOUNT_ADMIN ? <Settings /> : <div className="p-8 font-black">ACESSO RESTRITO</div>;
+        return currentUser.role === UserRole.ACCOUNT_ADMIN ? <Settings /> : <div className="p-12 font-black">ACESSO RESTRITO</div>;
       case 'lead-detail': 
         return <LeadDetailPage 
             leadId={viewData} 
@@ -71,9 +67,9 @@ const AppContent = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
-      <Sidebar currentView={currentView} onChangeView={(view) => handleNavigate(view)} />
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden pt-16">
+      <Navbar currentView={currentView} onChangeView={(view) => handleNavigate(view)} />
+      <main className="flex-1 overflow-hidden relative">
         {renderView()}
       </main>
     </div>

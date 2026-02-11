@@ -1,111 +1,80 @@
 
 import React from 'react';
-import { useCRM } from '../context/CRMContext';
-import { LayoutDashboard, Kanban, Users, Settings, LogOut, Hexagon, Database, CheckSquare, Shield, ShieldCheck, Wifi, WifiOff } from 'lucide-react';
-import { UserRole } from '../types';
+import { useCRM } from '../context/CRMContext.tsx';
+import { 
+  LayoutDashboard, Kanban, Users, Settings, LogOut, Hexagon, 
+  Database, CheckSquare, Shield, ShieldCheck, Search, Bell, Menu 
+} from 'lucide-react';
+import { UserRole } from '../types.ts';
 
-interface SidebarProps {
+interface NavbarProps {
   currentView: string;
   onChangeView: (view: string) => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
-  const { currentUser, logout, isOnline } = useCRM();
+export const Sidebar: React.FC<NavbarProps> = ({ currentView, onChangeView }) => {
+  const { currentUser, logout } = useCRM();
 
   const isNexusAdmin = currentUser?.role === UserRole.NEXUS_ADMIN;
-  const isAccountAdmin = currentUser?.role === UserRole.ACCOUNT_ADMIN;
 
-  let menuItems = [];
-
-  if (isNexusAdmin) {
-    menuItems = [{ id: 'admin-accounts', label: 'Gestão de Contas', icon: ShieldCheck }];
-  } else {
-    menuItems = [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'kanban', label: 'Pipeline', icon: Kanban },
-        { id: 'leads-db', label: 'Base de Leads', icon: Database },
-        { id: 'tasks', label: 'Tarefas', icon: CheckSquare },
-    ];
-  }
+  const menuItems = [
+    { id: 'dashboard', label: 'Início', icon: LayoutDashboard },
+    { id: 'kanban', label: 'Negociações', icon: Kanban },
+    { id: 'leads-db', label: 'Contatos', icon: Database },
+    { id: 'tasks', label: 'Tarefas', icon: CheckSquare },
+  ];
 
   return (
-    <div className="w-64 bg-slate-900 h-screen flex flex-col text-white">
-      <div className="h-16 flex items-center justify-between px-6 border-b border-slate-800">
-        <div className="flex items-center">
-            <Hexagon className="text-blue-500 w-8 h-8 mr-3 fill-current" />
-            <span className="font-bold text-xl tracking-tight">
-                {isNexusAdmin ? 'Nexus Admin' : 'Nexus CRM'}
-            </span>
-        </div>
-        
-        {/* Connection Indicator */}
-        <div title={isOnline ? 'Banco de dados conectado' : 'Erro de conexão com o banco'}>
-            {isOnline ? (
-                <Wifi size={14} className="text-green-500 animate-pulse" />
-            ) : (
-                <WifiOff size={14} className="text-red-500" />
-            )}
-        </div>
-      </div>
-
-      <nav className="flex-1 py-6 px-3 space-y-1">
-        {menuItems.map(item => (
-          <button
-            key={item.id}
-            onClick={() => onChangeView(item.id)}
-            className={`w-full flex items-center px-3 py-3 rounded-lg transition-all duration-200 ${
-              currentView === item.id 
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' 
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <item.icon className="w-5 h-5 mr-3" />
-            <span className="font-medium">{item.label}</span>
-          </button>
-        ))}
-      </nav>
-
-      <div className="p-4 border-t border-slate-800">
-        <div className="flex items-center gap-3 mb-4 px-2">
-            <img 
-                src={currentUser?.avatar} 
-                className="w-10 h-10 rounded-full border-2 border-slate-700" 
-                alt={currentUser?.name} 
-            />
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold truncate text-white">{currentUser?.name}</p>
-                <div className="flex items-center gap-1">
-                    {isNexusAdmin && <Shield size={10} className="text-yellow-400" />}
-                    {isAccountAdmin && <Shield size={10} className="text-blue-400" />}
-                    <p className="text-xs text-slate-400 truncate capitalize">
-                        {isNexusAdmin ? 'Super Admin' : isAccountAdmin ? 'Conta Mãe' : 'Vendedor'}
-                    </p>
-                </div>
-            </div>
+    <nav className="h-16 bg-white border-b border-gray-200 flex items-center px-6 justify-between fixed top-0 w-full z-[100] shadow-sm">
+      <div className="flex items-center gap-8">
+        <div className="flex items-center cursor-pointer" onClick={() => onChangeView('dashboard')}>
+          <Hexagon className="text-gray-900 w-7 h-7 mr-2 fill-current" />
+          <span className="font-bold text-lg tracking-tighter text-gray-800">CRM</span>
         </div>
 
-        {!isNexusAdmin && isAccountAdmin && (
-            <button 
-                onClick={() => onChangeView('settings')}
-                className={`flex items-center transition w-full px-3 py-2 rounded-lg mb-1 ${
-                    currentView === 'settings' 
-                    ? 'bg-slate-800 text-white' 
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                }`}
+        <div className="hidden md:flex items-center gap-1">
+          {menuItems.map(item => (
+            <button
+              key={item.id}
+              onClick={() => onChangeView(item.id)}
+              className={`px-4 py-5 text-sm font-semibold transition-all border-b-2 ${
+                currentView === item.id 
+                  ? 'border-brand-navy text-gray-900' 
+                  : 'border-transparent text-gray-500 hover:text-gray-900'
+              }`}
             >
-                <Settings className="w-5 h-5 mr-3" />
-                <span>Configurações</span>
+              {item.label}
             </button>
-        )}
-        
-        <button 
-            onClick={logout}
-            className="flex items-center text-red-400 hover:text-red-300 transition w-full px-3 py-2 hover:bg-slate-800 rounded-lg"
-        >
-            <LogOut className="w-5 h-5 mr-3" />
-            <span>Sair</span>
-        </button>
+          ))}
+          <button className="px-4 py-5 text-sm font-semibold text-gray-500 hover:text-gray-900 border-b-2 border-transparent">Análises</button>
+          <button className="px-4 py-5 text-sm font-semibold text-gray-500 hover:text-gray-900 border-b-2 border-transparent">Marketing</button>
+        </div>
       </div>
-    </div>
+
+      <div className="flex items-center gap-5">
+        <div className="hidden sm:flex items-center gap-4 text-gray-400">
+          <Search size={20} className="cursor-pointer hover:text-gray-600" />
+          <Bell size={20} className="cursor-pointer hover:text-gray-600" />
+          <Settings size={20} className="cursor-pointer hover:text-gray-600" onClick={() => onChangeView('settings')} />
+        </div>
+
+        <div className="h-8 w-px bg-gray-200 mx-2"></div>
+
+        <div className="flex items-center gap-3 group cursor-pointer relative">
+          <div className="text-right hidden lg:block">
+            <p className="text-xs font-bold text-gray-900 leading-none">{currentUser?.name}</p>
+            <p className="text-[10px] text-gray-400 mt-1 uppercase font-bold">{currentUser?.accountId ? 'Conta Padrão' : 'Nexus Admin'}</p>
+          </div>
+          <img src={currentUser?.avatar} className="w-9 h-9 rounded-full border border-gray-100 shadow-sm" alt="profile" />
+          
+          {/* Dropdown Simples */}
+          <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all p-2">
+            <button onClick={logout} className="w-full flex items-center gap-2 p-2 text-sm text-red-600 font-bold hover:bg-red-50 rounded-lg">
+              <LogOut size={16} /> Sair
+            </button>
+          </div>
+        </div>
+      </div>
+    </nav>
   );
 };
