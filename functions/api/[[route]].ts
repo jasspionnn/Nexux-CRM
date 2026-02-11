@@ -1,3 +1,4 @@
+
 import { Hono } from 'hono';
 import { handle } from 'hono/cloudflare-pages';
 
@@ -5,18 +6,11 @@ type Bindings = {
   DB: D1Database;
 };
 
-/**
- * Nexus CRM - Centralized API Router
- * We avoid .basePath('/api') here because Cloudflare Pages filesystem routing
- * already directs requests starting with /api to this file. 
- * Using absolute paths inside Hono is more reliable across different environments.
- */
 const app = new Hono<{ Bindings: Bindings }>();
 
 // Global Error Handler
 app.onError((err, c) => {
   console.error(`[API ERROR] ${c.req.method} ${c.req.path}:`, err);
-  
   if (err.message.includes('no such table')) {
     return c.json({ 
       error: "Banco de dados não inicializado. Execute o esquema SQL no seu console D1.",
@@ -24,7 +18,6 @@ app.onError((err, c) => {
       status: 500
     }, 500);
   }
-
   return c.json({ 
     error: err.message || 'Erro interno no servidor',
     status: 500
@@ -44,10 +37,7 @@ app.notFound((c) => {
 
 app.get('/api/health', async (c) => {
     try {
-        if (!c.env.DB) {
-            return c.json({ status: 'error', message: 'DB binding is missing.' }, 500);
-        }
-        // Test connectivity
+        if (!c.env.DB) return c.json({ status: 'error', message: 'DB binding is missing.' }, 500);
         await c.env.DB.prepare('SELECT 1').first();
         return c.json({ status: 'ok', database: 'connected', time: new Date().toISOString() });
     } catch (e: any) {
@@ -64,7 +54,6 @@ app.get('/api/public/settings', async (c) => {
         }, {});
         return c.json(config);
     } catch (e) {
-        // Return default settings if table doesn't exist yet
         return c.json({ 
             login_background: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=2000' 
         });
@@ -77,11 +66,7 @@ app.post('/api/auth/login', async (c) => {
     const { email, password } = await c.req.json() as any;
     const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ? AND password = ?')
         .bind(email, password).first() as any;
-    
-    if (!user) {
-        return c.json({ error: 'Credenciais inválidas' }, 401);
-    }
-    
+    if (!user) return c.json({ error: 'Credenciais inválidas' }, 401);
     return c.json({ 
         user: {
             id: user.id,
@@ -98,12 +83,10 @@ app.post('/api/auth/register', async (c) => {
     const { userName, email, password, companyName } = await c.req.json() as any;
     const accountId = `acc_${Date.now()}`;
     const userId = `u_${Date.now()}`;
-    
     await c.env.DB.batch([
         c.env.DB.prepare('INSERT INTO accounts (id, company_name, owner_name, email) VALUES (?, ?, ?, ?)').bind(accountId, companyName, userName, email),
         c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, avatar) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(userId, accountId, userName, email, password, 'ACCOUNT_ADMIN', `https://ui-avatars.com/api/?name=${userName}`)
     ]);
-    
     return c.json({ success: true });
 });
 
@@ -118,7 +101,6 @@ app.get('/api/sync/:accountId', async (c) => {
         c.env.DB.prepare('SELECT * FROM teams WHERE account_id = ?').bind(accountId).all(),
         c.env.DB.prepare('SELECT * FROM custom_fields WHERE account_id = ?').bind(accountId).all()
     ]);
-
     let stages: any[] = [];
     if (funnels.results.length > 0) {
         const ids = funnels.results.map((f: any) => f.id);
@@ -127,7 +109,6 @@ app.get('/api/sync/:accountId', async (c) => {
             .bind(...ids).all();
         stages = stagesData.results;
     }
-
     return c.json({
         funnels: funnels.results.map((f: any) => ({
             id: f.id,
@@ -206,8 +187,17 @@ app.patch('/api/leads/:id', async (c) => {
     if (data.title !== undefined) { fields.push('title = ?'); values.push(data.title); }
     if (data.stageId !== undefined) { fields.push('stage_id = ?'); values.push(data.stageId); }
     if (data.funnelId !== undefined) { fields.push('funnel_id = ?'); values.push(data.funnelId); }
+    if (data.contactName !== undefined) { fields.push('contact_name = ?'); values.push(data.contactName); }
+    if (data.contactEmail !== undefined) { fields.push('contact_email = ?'); values.push(data.contactEmail); }
+    if (data.contactPhone !== undefined) { fields.push('contact_phone = ?'); values.push(data.contactPhone); }
+    if (data.company !== undefined) { fields.push('company = ?'); values.push(data.company); }
+    if (data.value !== undefined) { fields.push('value = ?'); values.push(data.value); }
+    if (data.assignedUserId !== undefined) { fields.push('assigned_user_id = ?'); values.push(data.assignedUserId); }
+    if (data.probability !== undefined) { fields.push('probability = ?'); values.push(data.probability); }
+    if (data.tags !== undefined) { fields.push('tags = ?'); values.push(JSON.stringify(data.tags)); }
     if (data.customValues !== undefined) { fields.push('custom_values = ?'); values.push(JSON.stringify(data.customValues)); }
     if (data.notes !== undefined) { fields.push('notes = ?'); values.push(JSON.stringify(data.notes)); }
+    if (data.tasks !== undefined) { fields.push('tasks = ?'); values.push(JSON.stringify(data.tasks)); }
     
     if (fields.length > 0) {
         await c.env.DB.prepare(`UPDATE leads SET ${fields.join(', ')} WHERE id = ?`).bind(...values, id).run();

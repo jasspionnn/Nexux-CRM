@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole, VisibilityLevel } from '../types.ts';
 import { api } from '../services/api.ts';
@@ -65,7 +66,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isLoading, setIsLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(true);
 
-  // Health check on boot
   useEffect(() => {
     api.get('/health')
       .then(() => setIsOnline(true))
@@ -97,9 +97,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       try {
           if (currentUser.role === UserRole.NEXUS_ADMIN) {
                const data = await api.get<{accounts: Account[]}>('/admin/accounts');
-               if (data && data.accounts) {
-                 setAccounts(data.accounts);
-               }
+               if (data && data.accounts) setAccounts(data.accounts);
           } else if (currentUser.accountId) {
                const data = await api.get<any>(`/sync/${currentUser.accountId}`);
                if (data) {
@@ -108,12 +106,9 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                  setUsers(data.users || []);
                  setTeams(data.teams || []);
                  setCustomFields(data.customFields || []);
-                 
                  if (data.funnels?.length > 0) {
                      const exists = data.funnels.find((f: any) => f.id === activeFunnelId);
-                     if (!activeFunnelId || !exists) {
-                         setActiveFunnelId(data.funnels[0].id);
-                     }
+                     if (!activeFunnelId || !exists) setActiveFunnelId(data.funnels[0].id);
                  }
                }
           }
@@ -199,20 +194,30 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await api.delete(`/leads/${id}`); 
   };
 
+  // --- TAREFAS (PERSISTIDAS VIA PATCH DO LEAD) ---
+
   const addTask = async (leadId: string, task: Task) => { 
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: [...(l.tasks || []), task] } : l)); 
-    await api.post('/tasks', { ...task, leadId }); 
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) return;
+    const updatedTasks = [...(lead.tasks || []), task];
+    await updateLead(leadId, { tasks: updatedTasks });
   };
 
   const toggleTask = async (leadId: string, taskId: string) => { 
-    await api.patch(`/tasks/${taskId}/toggle`, {}); 
-    refreshData(); 
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) return;
+    const updatedTasks = (lead.tasks || []).map(t => t.id === taskId ? { ...t, completed: !t.completed } : t);
+    await updateLead(leadId, { tasks: updatedTasks });
   };
 
   const deleteTask = async (leadId: string, taskId: string) => { 
-    await api.delete(`/tasks/${taskId}`); 
-    refreshData(); 
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead) return;
+    const updatedTasks = (lead.tasks || []).filter(t => t.id !== taskId);
+    await updateLead(leadId, { tasks: updatedTasks });
   };
+
+  // --- CONFIGS ---
 
   const addFunnel = async (name: string) => { 
     if (!currentUser?.accountId) return;
@@ -308,13 +313,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const createAccount = async (a: Account, u: User) => { 
-    await api.post('/admin/accounts', { 
-      companyName: a.companyName, 
-      ownerName: u.name, 
-      email: u.email, 
-      password: u.password, 
-      plan: a.plan 
-    }); 
+    await api.post('/admin/accounts', { companyName: a.companyName, ownerName: u.name, email: u.email, password: u.password, plan: a.plan }); 
     refreshData(); 
   };
 
@@ -324,15 +323,12 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const extendAccountSubscription = async (id: string, m: number) => { 
-    console.log(`Extending subscription for ${id} by ${m} months`);
     refreshData();
   };
 
   const updateVisibilitySettings = async (level: VisibilityLevel, allowExport: boolean, showGoals: boolean) => {
     if (!currentUser?.accountId) return;
-    await api.patch(`/admin/accounts/${currentUser.accountId}`, { 
-      visibilityConfig: { level, allowUserExport: allowExport, showTeamGoals: showGoals } 
-    });
+    await api.patch(`/admin/accounts/${currentUser.accountId}`, { visibilityConfig: { level, allowUserExport: allowExport, showTeamGoals: showGoals } });
     refreshData();
   };
 

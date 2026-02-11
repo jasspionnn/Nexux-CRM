@@ -28,6 +28,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   const [activeTab, setActiveTab] = useState('history');
   const [noteText, setNoteText] = useState('');
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [newTask, setNewTask] = useState({ title: '', date: '', type: 'call' as Task['type'] });
   const [newTag, setNewTag] = useState('');
 
@@ -54,17 +55,39 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
       setNoteText('');
   };
 
-  const handleCreateTask = (e: React.FormEvent) => {
+  const handleTaskSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!newTask.title) return;
-      addTask(lead.id, {
-          id: `t-${Date.now()}`,
-          title: newTask.title,
-          dueDate: newTask.date || new Date().toISOString(),
-          type: newTask.type,
-          completed: false
-      });
+
+      if (editingTask) {
+          const updatedTasks = (lead.tasks || []).map(t => 
+            t.id === editingTask.id 
+                ? { ...t, title: newTask.title, dueDate: newTask.date, type: newTask.type } 
+                : t
+          );
+          await updateLead(lead.id, { tasks: updatedTasks });
+      } else {
+          await addTask(lead.id, {
+              id: `t-${Date.now()}`,
+              title: newTask.title,
+              dueDate: newTask.date || new Date().toISOString(),
+              type: newTask.type,
+              completed: false
+          });
+      }
+      
+      closeTaskModal();
+  };
+
+  const openEditTask = (task: Task) => {
+      setEditingTask(task);
+      setNewTask({ title: task.title, date: task.dueDate.slice(0, 16), type: task.type });
+      setIsTaskModalOpen(true);
+  };
+
+  const closeTaskModal = () => {
       setIsTaskModalOpen(false);
+      setEditingTask(null);
       setNewTask({ title: '', date: '', type: 'call' });
   };
 
@@ -245,7 +268,13 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
                           {lead.tasks.filter(t => !t.completed).length > 0 ? (
                               lead.tasks.filter(t => !t.completed).map(task => (
-                                  <TaskRow key={task.id} task={task} onToggle={() => toggleTask(lead.id, task.id)} onDelete={() => deleteTask(lead.id, task.id)} />
+                                  <TaskRow 
+                                    key={task.id} 
+                                    task={task} 
+                                    onToggle={() => toggleTask(lead.id, task.id)} 
+                                    onDelete={() => deleteTask(lead.id, task.id)} 
+                                    onEdit={() => openEditTask(task)}
+                                  />
                               ))
                           ) : (
                               <div className="p-10 text-center text-gray-400 italic text-sm">Nenhuma tarefa pendente.</div>
@@ -297,7 +326,13 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                          {activeTab === 'tasks' && (
                              <div className="space-y-4">
                                  {lead.tasks.map(task => (
-                                     <TaskRow key={task.id} task={task} onToggle={() => toggleTask(lead.id, task.id)} onDelete={() => deleteTask(lead.id, task.id)} />
+                                     <TaskRow 
+                                        key={task.id} 
+                                        task={task} 
+                                        onToggle={() => toggleTask(lead.id, task.id)} 
+                                        onDelete={() => deleteTask(lead.id, task.id)} 
+                                        onEdit={() => openEditTask(task)}
+                                    />
                                  ))}
                              </div>
                          )}
@@ -314,13 +349,15 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
           </div>
       </div>
 
-      {/* Modal Nova Tarefa */}
+      {/* Modal Nova Tarefa / Edição */}
       {isTaskModalOpen && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
-              <form onSubmit={handleCreateTask} className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+              <form onSubmit={handleTaskSubmit} className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
                   <div className="p-6 border-b bg-gray-50 flex justify-between items-center">
-                      <h3 className="font-black text-gray-800 uppercase text-sm tracking-widest">Nova Atividade</h3>
-                      <button type="button" onClick={() => setIsTaskModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
+                      <h3 className="font-black text-gray-800 uppercase text-sm tracking-widest">
+                        {editingTask ? 'Editar Atividade' : 'Nova Atividade'}
+                      </h3>
+                      <button type="button" onClick={closeTaskModal} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
                   </div>
                   <div className="p-8 space-y-5">
                       <input required autoFocus placeholder="O que precisa ser feito?" className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-100 font-bold" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} />
@@ -333,7 +370,9 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                                 <option value="todo">Geral</option>
                           </select>
                       </div>
-                      <button type="submit" className="w-full bg-[#00455B] text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-black transition-all">Criar Tarefa</button>
+                      <button type="submit" className="w-full bg-[#00455B] text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-black transition-all">
+                        {editingTask ? 'Salvar Alterações' : 'Criar Tarefa'}
+                      </button>
                   </div>
               </form>
           </div>
@@ -346,6 +385,8 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
 const EditableSidebarField = ({ label, value, onSave, type = 'text' }: { label: string, value: string, onSave: (v: string) => void, type?: string }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [temp, setTemp] = useState(value);
+
+    useEffect(() => { setTemp(value); }, [value]);
 
     const handleBlur = () => {
         setIsEditing(false);
@@ -376,7 +417,7 @@ const EditableSidebarField = ({ label, value, onSave, type = 'text' }: { label: 
     );
 };
 
-const TaskRow = ({ task, onToggle, onDelete }: { task: Task, onToggle: () => void, onDelete: () => void }) => {
+const TaskRow = ({ task, onToggle, onDelete, onEdit }: { task: Task, onToggle: () => void, onDelete: () => void, onEdit: () => void }) => {
     const isOverdue = new Date(task.dueDate) < new Date() && !task.completed;
     return (
         <div className={`p-4 flex items-center gap-4 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors group ${task.completed ? 'opacity-50' : ''}`}>
@@ -386,7 +427,7 @@ const TaskRow = ({ task, onToggle, onDelete }: { task: Task, onToggle: () => voi
             >
                 <Check size={16} strokeWidth={4} />
             </button>
-            <div className="flex-1">
+            <div className="flex-1 cursor-pointer" onClick={onEdit}>
                 <div className="flex items-center gap-2">
                     {task.type === 'call' && <PhoneCall size={12} className="text-blue-500" />}
                     {task.type === 'email' && <Mail size={12} className="text-yellow-500" />}
@@ -399,12 +440,15 @@ const TaskRow = ({ task, onToggle, onDelete }: { task: Task, onToggle: () => voi
                     {isOverdue && <span className="bg-red-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded">ATRASADA</span>}
                 </div>
             </div>
-            <button 
-                onClick={(e) => { e.stopPropagation(); if(confirm('Excluir tarefa?')) onDelete(); }} 
-                className="p-2 text-gray-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-            >
-                <Trash2 size={16} />
-            </button>
+            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                <button onClick={onEdit} className="p-2 text-gray-400 hover:text-blue-500"><Edit2 size={16}/></button>
+                <button 
+                    onClick={(e) => { e.stopPropagation(); if(confirm('Excluir tarefa?')) onDelete(); }} 
+                    className="p-2 text-gray-400 hover:text-red-500"
+                >
+                    <Trash2 size={16} />
+                </button>
+            </div>
         </div>
     );
 };
