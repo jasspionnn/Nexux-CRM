@@ -187,8 +187,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await api.delete(`/leads/${id}`); 
   };
 
-  // --- TAREFAS (PERSISTIDAS VIA PATCH DO LEAD) ---
-
   const addTask = async (leadId: string, task: Task) => { 
     const lead = leads.find(l => l.id === leadId);
     if (!lead) return;
@@ -209,8 +207,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updatedTasks = (lead.tasks || []).filter(t => t.id !== taskId);
     await updateLead(leadId, { tasks: updatedTasks });
   };
-
-  // --- CONFIGS ---
 
   const addFunnel = async (name: string) => { 
     if (!currentUser?.accountId) return;

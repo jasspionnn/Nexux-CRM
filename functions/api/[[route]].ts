@@ -171,10 +171,18 @@ app.patch('/api/admin/settings', async (c) => {
 
 app.post('/api/leads', async (c) => {
     const l = await c.req.json() as any;
+    const tasks = JSON.stringify(l.tasks || []);
+    const notes = JSON.stringify(l.notes || []);
+    const tags = JSON.stringify(l.tags || []);
+    const custom_values = JSON.stringify(l.customValues || {});
+    
     await c.env.DB.prepare(`
-        INSERT INTO leads (id, account_id, title, company, value, contact_name, contact_email, contact_phone, funnel_id, stage_id, assigned_user_id, probability, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(l.id, l.accountId, l.title, l.company, l.value, l.contactName, l.contactEmail, l.contactPhone, l.funnelId, l.stageId, l.assignedUserId, l.probability, l.createdAt).run();
+        INSERT INTO leads (id, account_id, title, company, value, contact_name, contact_email, contact_phone, funnel_id, stage_id, assigned_user_id, probability, tasks, notes, tags, custom_values, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+        l.id, l.accountId, l.title, l.company, l.value, l.contactName, l.contactEmail, l.contactPhone, 
+        l.funnelId, l.stageId, l.assignedUserId, l.probability, tasks, notes, tags, custom_values, l.createdAt
+    ).run();
     return c.json({ success: true });
 });
 
