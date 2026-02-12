@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCRM } from '../context/CRMContext.tsx';
 import { 
   ArrowLeft, Check, X, User, Phone, Mail, Building, 
@@ -39,7 +39,6 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   const currentStageIndex = currentFunnel?.stages.findIndex(s => s.id === lead.stageId) ?? -1;
   const assignedUser = users.find(u => u.id === lead.assignedUserId);
 
-  // Filtragem de campos personalizados para o funil atual
   const visibleCustomFields = customFields.filter(f => f.funnelId === lead.funnelId);
 
   // Handlers
@@ -75,7 +74,6 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
               completed: false
           });
       }
-      
       closeTaskModal();
   };
 
@@ -441,10 +439,10 @@ const TaskRow = ({ task, onToggle, onDelete, onEdit }: { task: Task, onToggle: (
                 </div>
             </div>
             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                <button onClick={onEdit} className="p-2 text-gray-400 hover:text-blue-500"><Edit2 size={16}/></button>
+                <button onClick={onEdit} className="p-2 text-gray-400 hover:text-blue-500 transition-colors"><Edit2 size={16}/></button>
                 <button 
                     onClick={(e) => { e.stopPropagation(); if(confirm('Excluir tarefa?')) onDelete(); }} 
-                    className="p-2 text-gray-400 hover:text-red-500"
+                    className="p-2 text-gray-400 hover:text-red-500 transition-colors"
                 >
                     <Trash2 size={16} />
                 </button>

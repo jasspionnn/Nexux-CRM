@@ -67,12 +67,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
-    api.get('/health')
-      .then(() => setIsOnline(true))
-      .catch((err) => {
-          console.error("CRM Health Check Failed:", err);
-          setIsOnline(false);
-      });
+    api.get('/health').then(() => setIsOnline(true)).catch(() => setIsOnline(false));
   }, []);
 
   useEffect(() => { 
@@ -142,9 +137,9 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             localStorage.setItem('nexus_user_session', JSON.stringify(res.user));
             return true;
           }
-          return "Resposta inválida do servidor.";
+          return "Resposta inválida.";
       } catch (error: any) { 
-          return error.message || "Credenciais inválidas."; 
+          return error.message || "Erro de login."; 
       } finally { 
           setIsLoading(false); 
       }
@@ -157,8 +152,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setActiveFunnelId(''); 
     setFunnels([]);
     setLeads([]);
-    setAccounts([]);
-    setUsers([]);
   };
 
   const registerAccount = async (u: string, e: string, p: string, c: string) => { 
@@ -282,35 +275,12 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await api.delete(`/custom-fields/${id}`); 
   };
 
-  const addUser = async (u: User) => { 
-    await api.post('/users', u); 
-    refreshData(); 
-  };
-
-  const updateUser = async (id: string, updates: Partial<User>) => { 
-    await api.patch(`/users/${id}`, updates); 
-    refreshData(); 
-  };
-
-  const deleteUser = async (id: string) => { 
-    await api.delete(`/users/${id}`); 
-    refreshData(); 
-  };
-
-  const addTeam = async (team: Team) => { 
-    await api.post('/teams', team); 
-    refreshData(); 
-  };
-
-  const updateTeam = async (id: string, updates: Partial<Team>) => { 
-    await api.patch(`/teams/${id}`, updates); 
-    refreshData(); 
-  };
-
-  const deleteTeam = async (id: string) => { 
-    await api.delete(`/teams/${id}`); 
-    refreshData(); 
-  };
+  const addUser = async (u: User) => { await api.post('/users', u); refreshData(); };
+  const updateUser = async (id: string, updates: Partial<User>) => { await api.patch(`/users/${id}`, updates); refreshData(); };
+  const deleteUser = async (id: string) => { await api.delete(`/users/${id}`); refreshData(); };
+  const addTeam = async (team: Team) => { await api.post('/teams', team); refreshData(); };
+  const updateTeam = async (id: string, updates: Partial<Team>) => { await api.patch(`/teams/${id}`, updates); refreshData(); };
+  const deleteTeam = async (id: string) => { await api.delete(`/teams/${id}`); refreshData(); };
 
   const createAccount = async (a: Account, u: User) => { 
     await api.post('/admin/accounts', { companyName: a.companyName, ownerName: u.name, email: u.email, password: u.password, plan: a.plan }); 
@@ -322,9 +292,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     refreshData(); 
   };
 
-  const extendAccountSubscription = async (id: string, m: number) => { 
-    refreshData();
-  };
+  const extendAccountSubscription = async (id: string, m: number) => { refreshData(); };
 
   const updateVisibilitySettings = async (level: VisibilityLevel, allowExport: boolean, showGoals: boolean) => {
     if (!currentUser?.accountId) return;
