@@ -6,8 +6,9 @@ type Bindings = {
   DB: D1Database;
 };
 
-// Removido .basePath('/api') pois o arquivo já está na pasta /api/
-// O Cloudflare Pages já roteia /api/* para este arquivo.
+// IMPORTANTE: Removido .basePath('/api')
+// Como este arquivo está em /functions/api/[[route]].ts, 
+// o Hono receberá o path completo (ex: /api/health).
 const app = new Hono<{ Bindings: Bindings }>();
 
 // Global Error Handler
@@ -16,7 +17,6 @@ app.onError((err, c) => {
   if (err.message.includes('no such table')) {
     return c.json({ 
       error: "Banco de dados não inicializado. Execute o esquema SQL no seu console D1.",
-      details: err.message,
       status: 500
     }, 500);
   }
@@ -26,18 +26,18 @@ app.onError((err, c) => {
   }, 500);
 });
 
-// JSON 404 Handler
+// JSON 404 Handler - Se chegar aqui, o Hono não encontrou a rota internamente
 app.notFound((c) => {
-  console.warn(`[API 404] ${c.req.method} ${c.req.path}`);
+  console.warn(`[Hono 404] ${c.req.method} ${c.req.path}`);
   return c.json({ 
-    error: 'Endpoint não encontrado no Nexus Router', 
+    error: 'Endpoint não mapeado no Nexus Router', 
     requestedPath: c.req.path 
   }, 404);
 });
 
 // --- SYSTEM & HEALTH ---
 
-app.get('/health', async (c) => {
+app.get('/api/health', async (c) => {
     try {
         if (!c.env.DB) return c.json({ status: 'error', message: 'DB binding is missing.' }, 500);
         await c.env.DB.prepare('SELECT 1').first();
@@ -47,7 +47,7 @@ app.get('/health', async (c) => {
     }
 });
 
-app.get('/public/settings', async (c) => {
+app.get('/api/public/settings', async (c) => {
     try {
         const settings = await c.env.DB.prepare('SELECT * FROM system_settings').all();
         const config = settings.results.reduce((acc: any, curr: any) => {
@@ -64,7 +64,7 @@ app.get('/public/settings', async (c) => {
 
 // --- AUTH ---
 
-app.post('/auth/login', async (c) => {
+app.post('/api/auth/login', async (c) => {
     const { email, password } = await c.req.json() as any;
     const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ? AND password = ?')
         .bind(email, password).first() as any;
@@ -81,7 +81,7 @@ app.post('/auth/login', async (c) => {
     });
 });
 
-app.post('/auth/register', async (c) => {
+app.post('/api/auth/register', async (c) => {
     const { userName, email, password, companyName } = await c.req.json() as any;
     const accountId = `acc_${Date.now()}`;
     const userId = `u_${Date.now()}`;
@@ -94,7 +94,7 @@ app.post('/auth/register', async (c) => {
 
 // --- DATA SYNC ---
 
-app.get('/sync/:accountId', async (c) => {
+app.get('/api/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
     const [funnels, leads, users, teams, customFields] = await Promise.all([
         c.env.DB.prepare('SELECT * FROM funnels WHERE account_id = ?').bind(accountId).all(),
@@ -103,6 +103,7 @@ app.get('/sync/:accountId', async (c) => {
         c.env.DB.prepare('SELECT * FROM teams WHERE account_id = ?').bind(accountId).all(),
         c.env.DB.prepare('SELECT * FROM custom_fields WHERE account_id = ?').bind(accountId).all()
     ]);
+    
     let stages: any[] = [];
     if (funnels.results.length > 0) {
         const ids = funnels.results.map((f: any) => f.id);
@@ -111,6 +112,7 @@ app.get('/sync/:accountId', async (c) => {
             .bind(...ids).all();
         stages = stagesData.results;
     }
+
     return c.json({
         funnels: funnels.results.map((f: any) => ({
             id: f.id,
@@ -156,12 +158,12 @@ app.get('/sync/:accountId', async (c) => {
 
 // --- ADMIN ---
 
-app.get('/admin/accounts', async (c) => {
+app.get('/api/admin/accounts', async (c) => {
     const result = await c.env.DB.prepare('SELECT * FROM accounts').all();
     return c.json({ accounts: result.results });
 });
 
-app.patch('/admin/settings', async (c) => {
+app.patch('/api/admin/settings', async (c) => {
     const body = await c.req.json() as any;
     for (const [key, value] of Object.entries(body)) {
         await c.env.DB.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').bind(key, String(value)).run();
@@ -171,7 +173,7 @@ app.patch('/admin/settings', async (c) => {
 
 // --- LEADS ---
 
-app.post('/leads', async (c) => {
+app.post('/api/leads', async (c) => {
     const l = await c.req.json() as any;
     const tasks = JSON.stringify(l.tasks || []);
     const notes = JSON.stringify(l.notes || []);
@@ -188,7 +190,7 @@ app.post('/leads', async (c) => {
     return c.json({ success: true });
 });
 
-app.patch('/leads/:id', async (c) => {
+app.patch('/api/leads/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
     const fields: string[] = [];
@@ -215,7 +217,7 @@ app.patch('/leads/:id', async (c) => {
     return c.json({ success: true });
 });
 
-app.delete('/leads/:id', async (c) => {
+app.delete('/api/leads/:id', async (c) => {
     await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(c.req.param('id')).run();
     return c.json({ success: true });
 });

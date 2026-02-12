@@ -1,8 +1,7 @@
 
 export const api = {
     get: async <T>(endpoint: string): Promise<T> => {
-        const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-        const url = `/api${cleanEndpoint}`;
+        const url = `/api${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
         try {
             const res = await fetch(url);
             if (!res.ok) {
@@ -21,8 +20,7 @@ export const api = {
     },
 
     post: async <T>(endpoint: string, data: unknown): Promise<T> => {
-        const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-        const url = `/api${cleanEndpoint}`;
+        const url = `/api${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
         try {
             const res = await fetch(url, {
                 method: 'POST',
@@ -44,18 +42,18 @@ export const api = {
         }
     },
 
-    patch: async <T>(endpoint: string, idOrPath: string | unknown, data?: unknown): Promise<T> => {
+    patch: async <T>(endpoint: string, idOrData: string | any, data?: any): Promise<T> => {
         let url = '';
         let payload = null;
 
-        if (typeof idOrPath === 'string' && data !== undefined) {
-             const cleanPath = idOrPath.startsWith('/') ? idOrPath : `/${idOrPath}`;
+        if (typeof idOrData === 'string' && data !== undefined) {
+             const cleanPath = idOrData.startsWith('/') ? idOrData : `/${idOrData}`;
              url = `/api${cleanPath}`;
              payload = data;
         } else {
-             const cleanPath = (endpoint.startsWith('/') ? endpoint : `/${endpoint}`);
+             const cleanPath = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
              url = `/api${cleanPath}`;
-             payload = idOrPath;
+             payload = idOrData;
         }
 
         try {
@@ -80,8 +78,7 @@ export const api = {
     },
 
     delete: async <T>(endpoint: string): Promise<T> => {
-        const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-        const url = `/api${cleanEndpoint}`;
+        const url = `/api${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
         try {
             const res = await fetch(url, {
                 method: 'DELETE',
