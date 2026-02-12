@@ -6,42 +6,24 @@ type Bindings = {
   DB: D1Database;
 };
 
-// IMPORTANTE: Removido .basePath('/api')
-// Como este arquivo está em /functions/api/[[route]].ts, 
-// o Hono receberá o path completo (ex: /api/health).
+// O Hono recebe o path completo (ex: /api/health) do Cloudflare Pages.
 const app = new Hono<{ Bindings: Bindings }>();
 
 // Global Error Handler
 app.onError((err, c) => {
   console.error(`[API ERROR] ${c.req.method} ${c.req.path}:`, err);
-  if (err.message.includes('no such table')) {
-    return c.json({ 
-      error: "Banco de dados não inicializado. Execute o esquema SQL no seu console D1.",
-      status: 500
-    }, 500);
-  }
   return c.json({ 
     error: err.message || 'Erro interno no servidor',
     status: 500
   }, 500);
 });
 
-// JSON 404 Handler - Se chegar aqui, o Hono não encontrou a rota internamente
-app.notFound((c) => {
-  console.warn(`[Hono 404] ${c.req.method} ${c.req.path}`);
-  return c.json({ 
-    error: 'Endpoint não mapeado no Nexus Router', 
-    requestedPath: c.req.path 
-  }, 404);
-});
-
 // --- SYSTEM & HEALTH ---
 
 app.get('/api/health', async (c) => {
     try {
-        if (!c.env.DB) return c.json({ status: 'error', message: 'DB binding is missing.' }, 500);
         await c.env.DB.prepare('SELECT 1').first();
-        return c.json({ status: 'ok', database: 'connected', time: new Date().toISOString() });
+        return c.json({ status: 'ok', database: 'connected' });
     } catch (e: any) {
         return c.json({ status: 'error', error: e.message }, 500);
     }
@@ -156,36 +138,21 @@ app.get('/api/sync/:accountId', async (c) => {
     });
 });
 
-// --- ADMIN ---
-
-app.get('/api/admin/accounts', async (c) => {
-    const result = await c.env.DB.prepare('SELECT * FROM accounts').all();
-    return c.json({ accounts: result.results });
-});
-
-app.patch('/api/admin/settings', async (c) => {
-    const body = await c.req.json() as any;
-    for (const [key, value] of Object.entries(body)) {
-        await c.env.DB.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').bind(key, String(value)).run();
-    }
-    return c.json({ success: true });
-});
-
 // --- LEADS ---
 
 app.post('/api/leads', async (c) => {
     const l = await c.req.json() as any;
-    const tasks = JSON.stringify(l.tasks || []);
-    const notes = JSON.stringify(l.notes || []);
-    const tags = JSON.stringify(l.tags || []);
-    const custom_values = JSON.stringify(l.customValues || {});
-    
     await c.env.DB.prepare(`
         INSERT INTO leads (id, account_id, title, company, value, contact_name, contact_email, contact_phone, funnel_id, stage_id, assigned_user_id, probability, tasks, notes, tags, custom_values, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
         l.id, l.accountId, l.title, l.company, l.value, l.contactName, l.contactEmail, l.contactPhone, 
-        l.funnelId, l.stageId, l.assignedUserId, l.probability, tasks, notes, tags, custom_values, l.createdAt
+        l.funnelId, l.stageId, l.assignedUserId, l.probability, 
+        JSON.stringify(l.tasks || []), 
+        JSON.stringify(l.notes || []), 
+        JSON.stringify(l.tags || []), 
+        JSON.stringify(l.customValues || {}), 
+        l.createdAt
     ).run();
     return c.json({ success: true });
 });
@@ -219,6 +186,16 @@ app.patch('/api/leads/:id', async (c) => {
 
 app.delete('/api/leads/:id', async (c) => {
     await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(c.req.param('id')).run();
+    return c.json({ success: true });
+});
+
+// --- SETTINGS ---
+
+app.patch('/api/admin/settings', async (c) => {
+    const body = await c.req.json() as any;
+    for (const [key, value] of Object.entries(body)) {
+        await c.env.DB.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').bind(key, String(value)).run();
+    }
     return c.json({ success: true });
 });
 
