@@ -6,6 +6,8 @@ type Bindings = {
   DB: D1Database;
 };
 
+// Removido .basePath('/api') pois o arquivo já está na pasta /api/
+// O Cloudflare Pages já roteia /api/* para este arquivo.
 const app = new Hono<{ Bindings: Bindings }>();
 
 // Global Error Handler
@@ -35,7 +37,7 @@ app.notFound((c) => {
 
 // --- SYSTEM & HEALTH ---
 
-app.get('/api/health', async (c) => {
+app.get('/health', async (c) => {
     try {
         if (!c.env.DB) return c.json({ status: 'error', message: 'DB binding is missing.' }, 500);
         await c.env.DB.prepare('SELECT 1').first();
@@ -45,7 +47,7 @@ app.get('/api/health', async (c) => {
     }
 });
 
-app.get('/api/public/settings', async (c) => {
+app.get('/public/settings', async (c) => {
     try {
         const settings = await c.env.DB.prepare('SELECT * FROM system_settings').all();
         const config = settings.results.reduce((acc: any, curr: any) => {
@@ -62,7 +64,7 @@ app.get('/api/public/settings', async (c) => {
 
 // --- AUTH ---
 
-app.post('/api/auth/login', async (c) => {
+app.post('/auth/login', async (c) => {
     const { email, password } = await c.req.json() as any;
     const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ? AND password = ?')
         .bind(email, password).first() as any;
@@ -79,7 +81,7 @@ app.post('/api/auth/login', async (c) => {
     });
 });
 
-app.post('/api/auth/register', async (c) => {
+app.post('/auth/register', async (c) => {
     const { userName, email, password, companyName } = await c.req.json() as any;
     const accountId = `acc_${Date.now()}`;
     const userId = `u_${Date.now()}`;
@@ -92,7 +94,7 @@ app.post('/api/auth/register', async (c) => {
 
 // --- DATA SYNC ---
 
-app.get('/api/sync/:accountId', async (c) => {
+app.get('/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
     const [funnels, leads, users, teams, customFields] = await Promise.all([
         c.env.DB.prepare('SELECT * FROM funnels WHERE account_id = ?').bind(accountId).all(),
@@ -154,12 +156,12 @@ app.get('/api/sync/:accountId', async (c) => {
 
 // --- ADMIN ---
 
-app.get('/api/admin/accounts', async (c) => {
+app.get('/admin/accounts', async (c) => {
     const result = await c.env.DB.prepare('SELECT * FROM accounts').all();
     return c.json({ accounts: result.results });
 });
 
-app.patch('/api/admin/settings', async (c) => {
+app.patch('/admin/settings', async (c) => {
     const body = await c.req.json() as any;
     for (const [key, value] of Object.entries(body)) {
         await c.env.DB.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)').bind(key, String(value)).run();
@@ -169,7 +171,7 @@ app.patch('/api/admin/settings', async (c) => {
 
 // --- LEADS ---
 
-app.post('/api/leads', async (c) => {
+app.post('/leads', async (c) => {
     const l = await c.req.json() as any;
     const tasks = JSON.stringify(l.tasks || []);
     const notes = JSON.stringify(l.notes || []);
@@ -186,7 +188,7 @@ app.post('/api/leads', async (c) => {
     return c.json({ success: true });
 });
 
-app.patch('/api/leads/:id', async (c) => {
+app.patch('/leads/:id', async (c) => {
     const id = c.req.param('id');
     const data = await c.req.json() as any;
     const fields: string[] = [];
@@ -213,7 +215,7 @@ app.patch('/api/leads/:id', async (c) => {
     return c.json({ success: true });
 });
 
-app.delete('/api/leads/:id', async (c) => {
+app.delete('/leads/:id', async (c) => {
     await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(c.req.param('id')).run();
     return c.json({ success: true });
 });

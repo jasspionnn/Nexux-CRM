@@ -1,3 +1,4 @@
+
 export const api = {
     get: async <T>(endpoint: string): Promise<T> => {
         const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
@@ -43,14 +44,25 @@ export const api = {
         }
     },
 
-    patch: async <T>(endpoint: string, data: unknown): Promise<T> => {
-        const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-        const url = `/api${cleanEndpoint}`;
+    patch: async <T>(endpoint: string, idOrPath: string | unknown, data?: unknown): Promise<T> => {
+        let url = '';
+        let payload = null;
+
+        if (typeof idOrPath === 'string' && data !== undefined) {
+             const cleanPath = idOrPath.startsWith('/') ? idOrPath : `/${idOrPath}`;
+             url = `/api${cleanPath}`;
+             payload = data;
+        } else {
+             const cleanPath = (endpoint.startsWith('/') ? endpoint : `/${endpoint}`);
+             url = `/api${cleanPath}`;
+             payload = idOrPath;
+        }
+
         try {
             const res = await fetch(url, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
+                body: JSON.stringify(payload)
             });
             if (!res.ok) {
                 let errorMsg = `Erro API: ${res.status} ${res.statusText}`;
