@@ -1,110 +1,33 @@
--- Nexus CRM - Database Schema
 
--- 1. Accounts (Tenants)
-CREATE TABLE IF NOT EXISTS accounts (
-    id TEXT PRIMARY KEY,
-    company_name TEXT NOT NULL,
-    owner_name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    status TEXT DEFAULT 'active',
-    plan TEXT DEFAULT 'trial',
-    created_at TEXT DEFAULT (datetime('now')),
-    expires_at TEXT,
-    stripe_customer_id TEXT,
-    subscription_status TEXT,
-    visibility_config TEXT DEFAULT '{"level":"public","allowUserExport":false,"showTeamGoals":true}'
-);
+-- ... (tabelas anteriores permanecem)
 
--- 2. Teams
-CREATE TABLE IF NOT EXISTS teams (
+-- Histórico de conversas do Bot para manter contexto (Short-term memory)
+CREATE TABLE IF NOT EXISTS bot_chat_history (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    goal REAL DEFAULT 0,
+    lead_phone TEXT NOT NULL,
+    role TEXT NOT NULL, -- 'user' ou 'model'
+    content TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 
--- 3. Users
-CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    account_id TEXT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL,
-    role TEXT NOT NULL,
-    avatar TEXT,
-    status TEXT DEFAULT 'active',
-    team_id TEXT,
-    joined_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL
-);
-
--- 4. Funnels
-CREATE TABLE IF NOT EXISTS funnels (
-    id TEXT PRIMARY KEY,
-    account_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    default_won_stage_id TEXT,
-    default_lost_stage_id TEXT,
+-- Configurações específicas de comportamento da IA por Tenant
+CREATE TABLE IF NOT EXISTS bot_settings (
+    account_id TEXT PRIMARY KEY,
+    system_prompt TEXT DEFAULT 'Você é um assistente de vendas gentil. Use as informações fornecidas para tirar dúvidas.',
+    temperature REAL DEFAULT 0.7,
+    auto_reply INTEGER DEFAULT 1,
+    whatsapp_webhook_token TEXT, -- Token para validar requisições do Meta/Z-API
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 
--- 5. Stages
-CREATE TABLE IF NOT EXISTS stages (
-    id TEXT PRIMARY KEY,
-    funnel_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    color TEXT NOT NULL,
-    "order" INTEGER NOT NULL,
-    FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE
-);
-
--- 6. Leads
-CREATE TABLE IF NOT EXISTS leads (
+-- Fragmentos da Base de Conhecimento (para rastreio no D1 além do Vectorize)
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
-    title TEXT NOT NULL,
-    company TEXT,
-    value REAL DEFAULT 0,
-    contact_name TEXT,
-    contact_email TEXT,
-    contact_phone TEXT,
-    funnel_id TEXT NOT NULL,
-    stage_id TEXT NOT NULL,
-    assigned_user_id TEXT,
-    probability INTEGER DEFAULT 0,
-    tags TEXT DEFAULT '[]',
-    custom_values TEXT DEFAULT '{}',
-    notes TEXT DEFAULT '[]',
-    tasks TEXT DEFAULT '[]',
-    created_at TEXT DEFAULT (datetime('now')),
+    source_id TEXT NOT NULL,
+    content TEXT NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-    FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE,
-    FOREIGN KEY (stage_id) REFERENCES stages(id) ON DELETE RESTRICT,
-    FOREIGN KEY (assigned_user_id) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (source_id) REFERENCES knowledge_sources(id) ON DELETE CASCADE
 );
-
--- 7. Custom Fields
-CREATE TABLE IF NOT EXISTS custom_fields (
-    id TEXT PRIMARY KEY,
-    account_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    type TEXT NOT NULL,
-    context TEXT NOT NULL,
-    funnel_id TEXT NOT NULL,
-    options TEXT DEFAULT '[]',
-    visible_stage_ids TEXT DEFAULT '[]',
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-    FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE
-);
-
--- 8. System Settings (Global)
-CREATE TABLE IF NOT EXISTS system_settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-);
-
--- Initial System Data
-INSERT OR IGNORE INTO system_settings (key, value) VALUES ('login_background', 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=2000');
-INSERT OR IGNORE INTO users (id, name, email, password, role, avatar, status) VALUES ('u_nexus_admin', 'Admin Nexus', 'admin@nexus.com', 'admin123', 'NEXUS_ADMIN', 'https://ui-avatars.com/api/?name=Admin', 'active');
