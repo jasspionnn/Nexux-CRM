@@ -1,12 +1,12 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { useCRM } from '../context/CRMContext.tsx';
+import { useCRM } from '../context/CRMContext';
 import { 
   Plus, Layers, SlidersHorizontal, Trash2, 
   ShieldCheck, CreditCard, ChevronRight, GripVertical, X, Zap, Copy, Check, ExternalLink,
   ChevronDown
 } from 'lucide-react';
-import { UserRole, CustomFieldDefinition, CustomFieldType, CustomFieldContext } from '../types.ts';
+import { UserRole, CustomFieldDefinition, CustomFieldType, CustomFieldContext } from '../types';
 
 type SettingsTab = 'pipeline' | 'fields' | 'access' | 'billing' | 'webhooks';
 

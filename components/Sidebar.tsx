@@ -1,11 +1,11 @@
 
 import React from 'react';
-import { useCRM } from '../context/CRMContext.tsx';
+import { useCRM } from '../context/CRMContext';
 import { 
   LayoutDashboard, Kanban, Users, Settings, LogOut, Hexagon, 
   Database, CheckSquare, Shield, ShieldCheck, Search, Bell, Menu 
 } from 'lucide-react';
-import { UserRole } from '../types.ts';
+import { UserRole } from '../types';
 
 interface NavbarProps {
   currentView: string;

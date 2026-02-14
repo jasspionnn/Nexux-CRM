@@ -1,12 +1,12 @@
 
 import React, { useState, useMemo } from 'react';
-import { useCRM } from '../context/CRMContext.tsx';
+import { useCRM } from '../context/CRMContext';
 import { 
     CheckCircle, Calendar, 
     PhoneCall, Mail, User, 
     Briefcase, ChevronRight, CheckSquare, Search, Plus, X, Filter, Trash2
 } from 'lucide-react';
-import { Task, Lead } from '../types.ts';
+import { Task, Lead } from '../types';
 
 interface Props {
   onNavigate: (view: string, data?: any) => void;

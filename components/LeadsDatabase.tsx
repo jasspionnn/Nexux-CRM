@@ -1,8 +1,9 @@
+
 import React, { useState, useMemo } from 'react';
-import { useCRM } from '../context/CRMContext.tsx';
+import { useCRM } from '../context/CRMContext';
 import { Search, Building, User, Layers, ChevronRight } from 'lucide-react';
-import { CustomerDetailModal } from './CustomerDetailModal.tsx';
-import { Lead } from '../types.ts';
+import { CustomerDetailModal } from './CustomerDetailModal';
+import { Lead } from '../types';
 
 interface GroupedCustomer {
     id: string;

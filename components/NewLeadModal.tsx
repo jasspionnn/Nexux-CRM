@@ -1,7 +1,8 @@
+
 import React, { useState } from 'react';
-import { useCRM } from '../context/CRMContext.tsx';
+import { useCRM } from '../context/CRMContext';
 import { X, Save, DollarSign, Building, User } from 'lucide-react';
-import { Lead } from '../types.ts';
+import { Lead } from '../types';
 
 interface Props {
   isOpen: boolean;

@@ -1,7 +1,8 @@
+
 import React from 'react';
-import { Lead, Funnel, Stage } from '../types.ts';
+import { Lead, Funnel, Stage } from '../types';
 import { X, User, Phone, Mail, Building, Briefcase, Calendar, ChevronRight } from 'lucide-react';
-import { useCRM } from '../context/CRMContext.tsx';
+import { useCRM } from '../context/CRMContext';
 
 interface CustomerDetailModalProps {
   customer: {

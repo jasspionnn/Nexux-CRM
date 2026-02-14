@@ -1,8 +1,9 @@
+
 import React, { useState } from 'react';
-import { Lead, User } from '../types.ts';
+import { Lead, User } from '../types';
 import { DollarSign, User as UserIcon, MoreHorizontal, Sparkles } from 'lucide-react';
-import { generateLeadStrategy } from '../services/geminiService.ts';
-import { useCRM } from '../context/CRMContext.tsx';
+import { generateLeadStrategy } from '../services/geminiService';
+import { useCRM } from '../context/CRMContext';
 
 interface LeadCardProps {
   lead: Lead;

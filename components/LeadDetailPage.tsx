@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useCRM } from '../context/CRMContext.tsx';
+import { useCRM } from '../context/CRMContext';
 import { 
   ArrowLeft, Check, X, User, Phone, Mail, Building, 
   Calendar, Clock, ChevronDown, ChevronUp,
@@ -10,7 +10,7 @@ import {
   Tag as TagIcon, Target, Send, MessageSquare,
   AlertCircle, ThumbsUp as LucideThumbsUp, ThumbsDown as LucideThumbsDown
 } from 'lucide-react';
-import { CustomFieldDefinition, Lead, Task, User as UserType } from '../types.ts';
+import { CustomFieldDefinition, Lead, Task, User as UserType } from '../types';
 
 interface Props {
   leadId: string;

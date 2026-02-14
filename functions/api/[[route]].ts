@@ -45,6 +45,23 @@ app.post('/webhooks', async (c) => {
     return c.json({ success: true });
 });
 
+app.patch('/webhooks/:id', async (c) => {
+    const id = c.req.param('id');
+    const data = await c.req.json() as any;
+    const fields: string[] = [];
+    const values: any[] = [];
+    
+    if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
+    if (data.funnelId !== undefined) { fields.push('funnel_id = ?'); values.push(data.funnelId); }
+    if (data.stageId !== undefined) { fields.push('stage_id = ?'); values.push(data.stageId); }
+    if (data.active !== undefined) { fields.push('active = ?'); values.push(data.active ? 1 : 0); }
+    
+    if (fields.length > 0) {
+        await c.env.DB.prepare(`UPDATE webhooks SET ${fields.join(', ')} WHERE id = ?`).bind(...values, id).run();
+    }
+    return c.json({ success: true });
+});
+
 app.delete('/webhooks/:id', async (c) => {
     await c.env.DB.prepare('DELETE FROM webhooks WHERE id = ?').bind(c.req.param('id')).run();
     return c.json({ success: true });

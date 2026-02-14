@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useCRM } from '../context/CRMContext.tsx';
-import { UserRole } from '../types.ts';
+import { useCRM } from '../context/CRMContext';
+import { UserRole } from '../types';
 import { 
   Building, Power, Search, ShieldCheck, Calendar, CheckCircle, 
   Loader2, Save, Upload, Trash2, Image as ImageIcon, LogOut, User as UserIcon
 } from 'lucide-react';
-import { api } from '../services/api.ts';
+import { api } from '../services/api';
 
 export const NexusAdminDashboard = () => {
   const { allAccounts = [], updateAccountStatus, extendAccountSubscription, isLoading, currentUser, logout } = useCRM();

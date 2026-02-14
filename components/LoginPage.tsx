@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { Hexagon, ArrowRight, Lock, Mail, AlertCircle, User, CheckCircle, Building } from 'lucide-react';
@@ -60,7 +61,7 @@ export const LoginPage = () => {
           </div>
       </div>
       <div className="w-full lg:w-[40%] flex items-center justify-center p-8 bg-white animate-fade-in relative">
-        <div className="w-full max-w-sm space-y-8">
+        <div className="w-full max-sm:w-full space-y-8 max-w-sm">
             <h1 className="text-3xl font-black text-gray-900 tracking-tight">
                 {isRegistering ? 'Crie sua conta' : 'Acesse o sistema'}
             </h1>
