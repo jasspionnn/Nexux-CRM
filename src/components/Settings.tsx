@@ -8,7 +8,8 @@ import {
   Star, UserPlus, X, Briefcase, DollarSign, ChevronRight, CreditCard, Edit3, Target, 
   MoreVertical, HelpCircle, ChevronDown, ChevronUp, GripVertical, AlertCircle
 } from 'lucide-react';
-import { VisibilityLevel, UserRole, User, Team, Funnel, Stage, CustomFieldDefinition } from '../types';
+// Added CustomFieldType and CustomFieldContext to imports to fix type mismatch during casting
+import { VisibilityLevel, UserRole, User, Team, Funnel, Stage, CustomFieldDefinition, CustomFieldType, CustomFieldContext } from '../types';
 
 type SettingsTab = 'pipeline' | 'fields' | 'access' | 'billing';
 
@@ -85,7 +86,7 @@ export const Settings = () => {
                         <td className="px-4 py-6"><div><div className="text-sm font-bold text-gray-800">{user.name}</div><div className="text-xs text-gray-400 font-medium">{user.email}</div></div></td>
                         <td className="px-4 py-6"><div className="relative inline-block w-full max-w-[180px]"><select value={user.role} disabled={user.id === currentUser?.id} onChange={(e) => updateUser(user.id, { role: e.target.value as UserRole })} className="appearance-none w-full bg-white border-b border-transparent hover:border-gray-200 text-sm font-medium text-gray-700 py-1.5 pr-8 outline-none cursor-pointer transition-all disabled:opacity-50"><option value={UserRole.USER}>Vendedor</option><option value={UserRole.ACCOUNT_ADMIN}>Administrador</option></select><ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" /></div></td>
                         <td className="px-4 py-6"><div className="flex gap-8"><div><div className="text-[10px] font-bold text-gray-900 mb-0.5">Negociações</div><div className="text-xs text-gray-400 font-medium">{getVisibilityLabel(currentAccount?.visibilityConfig?.level || 'public')}</div></div></div></td>
-                        <td className="px-4 py-6 text-xs text-gray-600 font-medium">{user.lastLogin ? <div>{new Date(user.lastLogin).toLocaleDateString()}</div> : '---'}</td>
+                        <td className="px-4 py-6 text-xs text-gray-600 font-medium">{user.lastLogin ? <div key={user.id}>{new Date(user.lastLogin).toLocaleDateString()}</div> : '---'}</td>
                         <td className="px-4 py-6"><span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-tight ${user.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{user.status === 'active' ? 'Ativo' : 'Inativo'}</span></td>
                         <td className="px-4 py-6 text-right"><button className="p-2 text-gray-300 hover:text-blue-600 transition-colors"><MoreVertical size={18} /></button></td>
                       </tr>
@@ -172,10 +173,11 @@ export const Settings = () => {
                 <form onSubmit={(e) => {
                     e.preventDefault();
                     const form = e.target as any;
+                    // Cast type and context to avoid type mismatch since they come from form input strings
                     const fieldData = {
                         name: form.fname.value,
-                        type: form.ftype.value,
-                        context: form.fcontext.value,
+                        type: form.ftype.value as CustomFieldType,
+                        context: form.fcontext.value as CustomFieldContext,
                         funnelId: form.ffunnel.value,
                         options: editingField?.options || [],
                         visibleStageIds: editingField?.visibleStageIds || []

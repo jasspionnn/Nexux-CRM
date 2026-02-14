@@ -1,40 +1,75 @@
 
-import React, { useState, useMemo } from 'react';
-import { useCRM } from '../context/CRMContext';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useCRM } from '../context/CRMContext.tsx';
 import { 
   Plus, Layers, SlidersHorizontal, Trash2, 
-  ShieldCheck, CreditCard, ChevronRight, GripVertical, X
+  ShieldCheck, CreditCard, ChevronRight, GripVertical, X, Zap, Copy, Check, ExternalLink,
+  ChevronDown
 } from 'lucide-react';
-import { UserRole, CustomFieldDefinition } from '../types';
+import { UserRole, CustomFieldDefinition, CustomFieldType, CustomFieldContext } from '../types.ts';
+
+type SettingsTab = 'pipeline' | 'fields' | 'access' | 'billing' | 'webhooks';
 
 export const Settings = () => {
   const { 
-    funnels, users, currentUser, 
-    updateUser, addFunnel, updateFunnel, deleteFunnel, addStage, updateStage, deleteStage,
-    customFields, addCustomField, updateCustomField, deleteCustomField
+    funnels, users, currentUser, currentAccount, 
+    updateUser, teams, 
+    addFunnel, updateFunnel, deleteFunnel, addStage, updateStage, deleteStage,
+    customFields, addCustomField, updateCustomField, deleteCustomField,
+    webhooks, addWebhook, deleteWebhook
   } = useCRM();
   
-  const [activeTab, setActiveTab] = useState<'pipeline' | 'fields' | 'access' | 'billing'>('access');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('access');
   const [selectedFunnelId, setSelectedFunnelId] = useState<string>(funnels[0]?.id || '');
   const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
+  const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
   const [editingField, setEditingField] = useState<CustomFieldDefinition | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const selectedFunnel = useMemo(() => funnels.find(f => f.id === selectedFunnelId), [funnels, selectedFunnelId]);
+  const selectedFunnel = useMemo(() => funnels.find(f => f.id === (selectedFunnelId || funnels[0]?.id)), [funnels, selectedFunnelId]);
   const STAGE_COLORS = ['bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-gray-500'];
 
+  const getWebhookUrl = (id: string) => `${window.location.origin}/api/webhooks/receive/${id}`;
+
+  const handleCopy = (id: string) => {
+    navigator.clipboard.writeText(getWebhookUrl(id));
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleEditField = (field: CustomFieldDefinition) => { setEditingField(field); setIsFieldModalOpen(true); };
+
+  // Form State para Webhook
+  const [webhookForm, setWebhookForm] = useState({
+      name: '',
+      funnelId: funnels[0]?.id || '',
+      stageId: funnels[0]?.stages[0]?.id || ''
+  });
+
+  useEffect(() => {
+    if (funnels.length > 0 && !webhookForm.funnelId) {
+        setWebhookForm(prev => ({ 
+            ...prev, 
+            funnelId: funnels[0].id, 
+            stageId: funnels[0].stages[0]?.id || '' 
+        }));
+    }
+  }, [funnels]);
+
   return (
-    <div className="p-8 h-full flex flex-col bg-white animate-fade-in relative overflow-hidden">
+    <div className="p-8 h-full flex flex-col bg-white animate-fade-in relative overflow-hidden pt-20">
       <div className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
         <div className="flex bg-gray-100/50 rounded-xl p-1 border border-gray-200 overflow-x-auto max-w-full">
             {[
               { id: 'access', label: 'Equipes e Acessos', icon: ShieldCheck },
               { id: 'pipeline', label: 'Funis de Vendas', icon: Layers },
               { id: 'fields', label: 'Campos', icon: SlidersHorizontal },
+              { id: 'webhooks', label: 'Webhooks', icon: Zap },
               { id: 'billing', label: 'Plano', icon: CreditCard },
             ].map(tab => (
               <button 
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as SettingsTab)}
                 className={`px-5 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 <tab.icon size={16} /> {tab.label}
@@ -137,40 +172,189 @@ export const Settings = () => {
                 </div>
             </div>
         )}
+
+        {activeTab === 'webhooks' && (
+            <div className="space-y-8 animate-fade-in">
+                <div className="flex justify-between items-center">
+                    <div>
+                        <h3 className="text-xl font-black text-gray-900">Webhooks e Automações</h3>
+                        <p className="text-sm text-gray-500">Encaminhe leads de formulários externos direto para as etapas do seu funil.</p>
+                    </div>
+                    <button onClick={() => setIsWebhookModalOpen(true)} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm">
+                        <Plus size={18} /> Novo Webhook
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                    {webhooks.length > 0 ? webhooks.map(wb => {
+                        const funnel = funnels.find(f => f.id === wb.funnelId);
+                        const stage = funnel?.stages.find(s => s.id === wb.stageId);
+                        return (
+                            <div key={wb.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-6 group hover:border-blue-200 transition-all">
+                                <div className="flex items-center gap-4 flex-1">
+                                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                                        <Zap size={24} />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-gray-900">{wb.name}</h4>
+                                        <p className="text-xs text-gray-500 font-medium flex items-center gap-2">
+                                            Destino: <span className="text-blue-600 font-bold">{funnel?.name || '---'}</span> 
+                                            <ChevronRight size={10} /> 
+                                            <span className="text-gray-700 font-bold">{stage?.name || '---'}</span>
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex-1 w-full max-w-md">
+                                    <div className="text-[10px] font-black text-gray-400 uppercase mb-1">Endpoint de Recebimento</div>
+                                    <div className="flex gap-2">
+                                        <div className="flex-1 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 text-[10px] font-mono text-gray-600 truncate">
+                                            {getWebhookUrl(wb.id)}
+                                        </div>
+                                        <button 
+                                            onClick={() => handleCopy(wb.id)}
+                                            className={`p-2 rounded-lg border transition-all ${copiedId === wb.id ? 'bg-green-50 border-green-200 text-green-600' : 'bg-white border-gray-200 text-gray-400 hover:text-blue-600'}`}
+                                        >
+                                            {copiedId === wb.id ? <Check size={16} /> : <Copy size={16} />}
+                                        </button>
+                                    </div>
+                                </div>
+                                <button onClick={() => deleteWebhook(wb.id)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                                    <Trash2 size={20} />
+                                </button>
+                            </div>
+                        );
+                    }) : (
+                        <div className="py-20 text-center border-2 border-dashed border-gray-100 rounded-3xl">
+                            <Zap size={48} className="mx-auto text-gray-200 mb-4 opacity-20" />
+                            <h4 className="text-gray-400 font-bold uppercase text-xs tracking-widest">Nenhum webhook configurado</h4>
+                        </div>
+                    )}
+                </div>
+                
+                <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100 space-y-3">
+                    <h5 className="font-bold text-blue-900 flex items-center gap-2 text-sm">
+                        <ExternalLink size={16} /> Como funciona o recebimento?
+                    </h5>
+                    <p className="text-sm text-blue-800 leading-relaxed">
+                        Envie uma requisição <b>POST</b> no formato JSON para a URL gerada. O sistema mapeia automaticamente os seguintes campos do seu payload: 
+                        <code>nome</code>, <code>email</code>, <code>telefone</code>, <code>empresa</code> e <code>valor</code> (ou seus correspondentes em inglês). 
+                        Quaisquer outros campos extras serão salvos automaticamente nas notas do lead.
+                    </p>
+                </div>
+            </div>
+        )}
       </div>
 
+      {/* MODAL: NOVO WEBHOOK */}
+      {isWebhookModalOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
+                <div className="px-8 py-6 border-b bg-gray-50 flex justify-between items-center">
+                    <h3 className="font-black text-gray-800 uppercase text-sm tracking-widest">Configurar Nova Automação</h3>
+                    <button onClick={() => setIsWebhookModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
+                </div>
+                <form onSubmit={(e) => {
+                    e.preventDefault();
+                    addWebhook(webhookForm.name, webhookForm.funnelId, webhookForm.stageId);
+                    setIsWebhookModalOpen(false);
+                    setWebhookForm({ name: '', funnelId: funnels[0]?.id || '', stageId: funnels[0]?.stages[0]?.id || '' });
+                }} className="p-8 space-y-6">
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Identificação</label>
+                        <input 
+                            placeholder="Ex: Leads Landing Page Black Friday" required 
+                            value={webhookForm.name}
+                            onChange={e => setWebhookForm({...webhookForm, name: e.target.value})}
+                            className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all text-sm font-bold" 
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Funil de Destino</label>
+                            <select 
+                                value={webhookForm.funnelId}
+                                onChange={e => {
+                                    const f = funnels.find(f => f.id === e.target.value);
+                                    setWebhookForm({...webhookForm, funnelId: e.target.value, stageId: f?.stages[0]?.id || ''});
+                                }}
+                                required className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none bg-white text-sm font-bold"
+                            >
+                                {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Etapa de Entrada</label>
+                            <select 
+                                value={webhookForm.stageId}
+                                onChange={e => setWebhookForm({...webhookForm, stageId: e.target.value})}
+                                required className="w-full border border-gray-200 rounded-xl px-4 py-3 outline-none bg-white text-sm font-bold"
+                            >
+                                {funnels.find(f => f.id === webhookForm.funnelId)?.stages.map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" className="w-full bg-[#00455B] text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-black transition-all flex items-center justify-center gap-2">
+                        <Zap size={16} /> Ativar Integração
+                    </button>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {/* MODAL: CAMPOS */}
       {isFieldModalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
                 <div className="px-8 py-6 border-b bg-gray-50 flex justify-between items-center">
-                    <h3 className="font-bold text-gray-800">Novo Campo Customizado</h3>
+                    <h3 className="font-bold text-gray-800">{editingField ? 'Editar Campo' : 'Novo Campo'}</h3>
                     <button onClick={() => setIsFieldModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
                 </div>
                 <form onSubmit={(e) => {
                     e.preventDefault();
                     const form = e.target as any;
-                    addCustomField({ 
-                        id: `cf-${Date.now()}`, 
-                        accountId: currentUser?.accountId || '', 
+                    const fieldData = {
                         name: form.fname.value,
-                        type: 'text',
-                        context: 'lead_detail',
+                        type: form.ftype.value as CustomFieldType,
+                        context: form.fcontext.value as CustomFieldContext,
                         funnelId: form.ffunnel.value,
-                        visibleStageIds: []
-                    });
+                        visibleStageIds: editingField?.visibleStageIds || []
+                    };
+                    if (editingField) {
+                        updateCustomField(editingField.id, fieldData);
+                    } else {
+                        addCustomField({ id: `cf-${Date.now()}`, accountId: currentUser?.accountId || '', ...fieldData });
+                    }
                     setIsFieldModalOpen(false);
                 }} className="p-8 space-y-5">
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Nome do Campo</label>
-                        <input name="fname" required className="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm font-medium" />
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2">
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Nome do Campo</label>
+                            <input name="fname" defaultValue={editingField?.name || ''} required className="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm font-medium" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Tipo</label>
+                            <select name="ftype" defaultValue={editingField?.type || 'text'} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none bg-white text-sm font-medium">
+                                <option value="text">Texto</option>
+                                <option value="select">Seleção Única</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Exibir em:</label>
+                            <select name="fcontext" defaultValue={editingField?.context || 'lead_detail'} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none bg-white text-sm font-medium">
+                                <option value="lead_detail">Detalhes Lead</option>
+                                <option value="lost_reason">Motivo Perda</option>
+                            </select>
+                        </div>
+                        <div className="col-span-2">
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Funil:</label>
+                            <select name="ffunnel" defaultValue={editingField?.funnelId || selectedFunnelId} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none bg-white text-sm font-medium">
+                                {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                            </select>
+                        </div>
                     </div>
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Funil:</label>
-                        <select name="ffunnel" defaultValue={selectedFunnelId} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none bg-white text-sm font-medium">
-                            {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                        </select>
-                    </div>
-                    <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold hover:bg-blue-700 shadow-md">Adicionar Campo</button>
+                    <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold hover:bg-blue-700 shadow-md">{editingField ? 'Salvar Alterações' : 'Adicionar Campo'}</button>
                 </form>
             </div>
         </div>

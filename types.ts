@@ -37,6 +37,16 @@ export interface User {
   lastLogin?: string;
 }
 
+export interface Webhook {
+  id: string;
+  accountId: string;
+  name: string;
+  funnelId: string;
+  stageId: string;
+  active: boolean;
+  createdAt: string;
+}
+
 export interface Team {
   id: string;
   accountId: string;

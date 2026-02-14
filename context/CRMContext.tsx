@@ -1,6 +1,6 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
-import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole, VisibilityLevel } from '../types.ts';
+import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole, VisibilityLevel, Webhook } from '../types.ts';
 import { api } from '../services/api.ts';
 
 interface CRMContextType {
@@ -9,6 +9,7 @@ interface CRMContextType {
   users: User[];
   teams: Team[];
   customFields: CustomFieldDefinition[];
+  webhooks: Webhook[];
   allAccounts: Account[];
   activeFunnelId: string;
   currentUser: User | null;
@@ -40,6 +41,8 @@ interface CRMContextType {
   addCustomField: (field: CustomFieldDefinition) => Promise<void>;
   updateCustomField: (id: string, updates: Partial<CustomFieldDefinition>) => Promise<void>;
   deleteCustomField: (id: string) => Promise<void>;
+  addWebhook: (name: string, funnelId: string, stageId: string) => Promise<void>;
+  deleteWebhook: (id: string) => Promise<void>;
   addUser: (user: User) => Promise<void>;
   updateUser: (id: string, updates: Partial<User>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
@@ -60,6 +63,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [users, setUsers] = useState<User[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
+  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]); 
   const [activeFunnelId, setActiveFunnelId] = useState<string>(() => localStorage.getItem('nexus_active_funnel') || '');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -95,12 +99,14 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                if (data && data.accounts) setAccounts(data.accounts);
           } else if (currentUser.accountId) {
                const data = await api.get<any>(`/sync/${currentUser.accountId}`);
+               const webhookData = await api.get<Webhook[]>(`/webhooks/${currentUser.accountId}`).catch(() => []);
                if (data) {
                  setFunnels(data.funnels || []);
                  setLeads(data.leads || []);
                  setUsers(data.users || []);
                  setTeams(data.teams || []);
                  setCustomFields(data.customFields || []);
+                 setWebhooks(webhookData || []);
                  if (data.funnels?.length > 0) {
                      const exists = data.funnels.find((f: any) => f.id === activeFunnelId);
                      if (!activeFunnelId || !exists) setActiveFunnelId(data.funnels[0].id);
@@ -271,6 +277,26 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await api.delete(`/custom-fields/${id}`); 
   };
 
+  const addWebhook = async (name: string, funnelId: string, stageId: string) => {
+      if (!currentUser?.accountId) return;
+      const nw: Webhook = {
+          id: `wb_${Date.now()}`,
+          accountId: currentUser.accountId,
+          name,
+          funnelId,
+          stageId,
+          active: true,
+          createdAt: new Date().toISOString()
+      };
+      setWebhooks(prev => [...prev, nw]);
+      await api.post('/webhooks', nw);
+  };
+
+  const deleteWebhook = async (id: string) => {
+      setWebhooks(prev => prev.filter(w => w.id !== id));
+      await api.delete(`/webhooks/${id}`);
+  };
+
   const addUser = async (u: User) => { await api.post('/users', u); refreshData(); };
   const updateUser = async (id: string, updates: Partial<User>) => { await api.patch(`/users/${id}`, updates); refreshData(); };
   const deleteUser = async (id: string) => { await api.delete(`/users/${id}`); refreshData(); };
@@ -298,12 +324,13 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   return (
     <CRMContext.Provider value={{
-      funnels, leads, users, teams, customFields, allAccounts: accounts,
+      funnels, leads, users, teams, customFields, webhooks, allAccounts: accounts,
       activeFunnelId, currentUser, isLoading, isOnline, visibleLeads, visibleUsers, currentAccount,
       setActiveFunnelId, login, registerAccount, logout, refreshData,
       addLead, updateLead, moveLead, duplicateLead, deleteLead, addTask, toggleTask, deleteTask,
       addFunnel, updateFunnel, deleteFunnel, addStage, updateStage, reorderStages, deleteStage,
-      addCustomField, updateCustomField, deleteCustomField, addUser, updateUser, deleteUser,
+      addCustomField, updateCustomField, deleteCustomField, addWebhook, deleteWebhook,
+      addUser, updateUser, deleteUser,
       addTeam, updateTeam, deleteTeam, createAccount, updateAccountStatus, extendAccountSubscription, updateVisibilitySettings
     }}>
       {children}
