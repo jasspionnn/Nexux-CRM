@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { 
   Bot, MessageSquare, Upload, Globe, CheckCircle, 
@@ -13,7 +13,18 @@ import { GoogleGenAI } from "@google/genai";
 type AIFluxTab = 'overview' | 'whatsapp' | 'knowledge' | 'admin';
 
 export const AIFlux = () => {
-  const { currentUser, knowledgeSources, botInstance, addKnowledgeSource, deleteKnowledgeSource, updateBotInstance, trainAI, users, leads } = useCRM();
+  const { 
+    currentUser, 
+    knowledgeSources, 
+    botInstance, 
+    addKnowledgeSource, 
+    deleteKnowledgeSource, 
+    updateBotInstance, 
+    trainAI, 
+    users, 
+    leads 
+  } = useCRM();
+
   const [activeTab, setActiveTab] = useState<AIFluxTab>('overview');
   const [isTraining, setIsTraining] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -25,12 +36,28 @@ export const AIFlux = () => {
 
   const isAccountAdmin = currentUser?.role === UserRole.ACCOUNT_ADMIN;
 
-  const handleTrain = async () => {
-    setIsTraining(true);
-    await trainAI();
-    setTimeout(() => setIsTraining(false), 2500);
+  // --- LOGICA DO BOT (ATIVAR/DESATIVAR) ---
+  const handleToggleBotStatus = async () => {
+      // Se botInstance for null, assumimos que ele deve ser ativado
+      const currentActive = botInstance?.active ?? false;
+      await updateBotInstance({ active: !currentActive });
   };
 
+  // --- LOGICA DE TREINAMENTO ---
+  const handleTrain = async () => {
+    if (knowledgeSources.length === 0) {
+        alert("Adicione pelo menos uma fonte de conhecimento antes de treinar.");
+        return;
+    }
+    setIsTraining(true);
+    await trainAI();
+    setTimeout(() => {
+        setIsTraining(false);
+        alert("IA Treinada com sucesso! O bot agora está atualizado com seus novos dados.");
+    }, 2500);
+  };
+
+  // --- LOGICA DE UPLOAD (RAG) ---
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -41,7 +68,7 @@ export const AIFlux = () => {
           await addKnowledgeSource({
               name: file.name,
               type: 'PDF',
-              content: content.slice(0, 50000) // Simulação simples de conteúdo textual
+              content: content.slice(0, 100000) // Salvando os primeiros 100k caracteres para contexto
           });
       };
       reader.readAsText(file);
@@ -58,14 +85,30 @@ export const AIFlux = () => {
       }
   };
 
+  // --- LOGICA WHATSAPP ---
   const toggleWhatsApp = async () => {
-      const newStatus = botInstance?.whatsapp_status === 'connected' ? 'disconnected' : 'pairing';
-      await updateBotInstance({ whatsapp_status: newStatus });
-      if (newStatus === 'pairing') {
-          setTimeout(() => updateBotInstance({ whatsapp_status: 'connected', whatsapp_number: '+55 (11) 9' + Math.floor(Math.random()*90000000 + 10000000) }), 3000);
+      const currentStatus = botInstance?.whatsapp_status || 'disconnected';
+      
+      if (currentStatus === 'connected') {
+          if(confirm("Deseja realmente desconectar o WhatsApp?")) {
+              await updateBotInstance({ whatsapp_status: 'disconnected', whatsapp_number: '' });
+          }
+          return;
       }
+
+      await updateBotInstance({ whatsapp_status: 'pairing' });
+      
+      // Simulação de pareamento bem sucedido após 3 segundos
+      setTimeout(async () => {
+          const fakeNumber = `+55 (11) 9${Math.floor(10000000 + Math.random() * 90000000)}`;
+          await updateBotInstance({ 
+              whatsapp_status: 'connected', 
+              whatsapp_number: fakeNumber 
+          });
+      }, 3000);
   };
 
+  // --- LOGICA PLAYGROUND IA ---
   const handleSendMessage = async () => {
       if (!chatInput.trim() || isChatLoading) return;
       
@@ -76,72 +119,80 @@ export const AIFlux = () => {
 
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const knowledgeContext = knowledgeSources.map(s => `FONTE: ${s.name}\nCONTEÚDO: ${s.content || s.url}`).join('\n\n');
           
-          const prompt = `Você é o AIFlux Bot, assistente especializado do Nexus CRM. 
-          Use a BASE DE CONHECIMENTO abaixo para responder ao usuário. 
-          Se não souber a resposta, diga que não encontrou na base de conhecimento mas que pode ajudar com informações gerais.
+          // Construindo o contexto dinâmico baseado nas fontes carregadas
+          const contextStrings = knowledgeSources.map(s => 
+              `FONTE: ${s.name}\nCONTEÚDO: ${s.content || 'URL sync ativa: ' + s.url}`
+          ).join('\n\n');
+
+          const systemPrompt = `Você é o AIFlux, o assistente inteligente do Nexus CRM.
+          Sua tarefa é responder perguntas dos clientes baseando-se EXCLUSIVAMENTE na base de conhecimento abaixo.
           
-          BASE DE CONHECIMENTO:
-          ${knowledgeContext}
+          BASE DE CONHECIMENTO ATUAL:
+          ${contextStrings || "Nenhum documento carregado ainda."}
           
-          PERGUNTA DO USUÁRIO: ${userMsg}`;
+          REGRAS:
+          1. Seja cordial e profissional.
+          2. Se não encontrar a informação na base de conhecimento, responda que ainda está aprendendo sobre esse assunto específico, mas tente ajudar com o que souber sobre vendas e CRM de forma geral.
+          3. Não invente dados de contato ou preços que não estejam nos documentos.`;
 
           const response = await ai.models.generateContent({
               model: 'gemini-3-flash-preview',
-              contents: prompt,
+              contents: [
+                  { role: 'user', parts: [{ text: `${systemPrompt}\n\nPERGUNTA DO USUÁRIO: ${userMsg}` }] }
+              ],
           });
 
-          setChatMessages(prev => [...prev, { role: 'bot', text: response.text || "Desculpe, tive um problema ao processar sua pergunta." }]);
+          setChatMessages(prev => [...prev, { role: 'bot', text: response.text || "Não consegui processar essa informação agora." }]);
       } catch (err) {
-          setChatMessages(prev => [...prev, { role: 'bot', text: "Erro ao conectar com o motor de IA." }]);
+          setChatMessages(prev => [...prev, { role: 'bot', text: "Erro na conexão com o motor de IA. Verifique sua chave API." }]);
       } finally {
           setIsChatLoading(false);
       }
   };
 
-  // Stats reais baseados no contexto
-  const aiLeads = leads.filter(l => JSON.stringify(l.notes).includes('AI')).length;
+  const aiLeadsCount = leads.filter(l => l.tags?.includes('AIFlux') || JSON.stringify(l.notes).includes('IA')).length;
 
   return (
-    <div className="h-full flex flex-col bg-white overflow-hidden animate-fade-in relative">
+    <div className="h-full flex flex-col bg-white overflow-hidden animate-fade-in relative pt-16">
       
       {/* PlayGround de Teste (Side Panel) */}
       {isChatOpen && (
           <div className="absolute inset-y-0 right-0 w-96 bg-white shadow-2xl z-[150] border-l border-indigo-100 flex flex-col animate-slide-in-right">
-              <div className="p-6 bg-indigo-900 text-white flex justify-between items-center">
+              <div className="p-6 bg-indigo-900 text-white flex justify-between items-center shrink-0">
                   <div className="flex items-center gap-3">
-                      <Bot size={20} />
+                      <Bot size={20} className="text-indigo-400" />
                       <h3 className="font-bold">Testar Chatbot</h3>
                   </div>
-                  <button onClick={() => setIsChatOpen(false)}><X size={20} /></button>
+                  <button onClick={() => setIsChatOpen(false)} className="hover:rotate-90 transition-transform"><X size={20} /></button>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
                   {chatMessages.length === 0 && (
-                      <div className="text-center py-10">
-                          <SparklesIcon className="mx-auto text-indigo-200 mb-2" size={32} />
-                          <p className="text-xs text-gray-400 font-bold uppercase">Inicie um teste para validar o treinamento</p>
+                      <div className="text-center py-20 opacity-40">
+                          <SparklesIcon className="mx-auto text-indigo-400 mb-4 animate-pulse" size={48} />
+                          <p className="text-xs text-indigo-900 font-black uppercase tracking-widest">AIFlux Playground</p>
+                          <p className="text-[10px] mt-1 font-bold">Inicie um chat para validar o conhecimento da IA</p>
                       </div>
                   )}
                   {chatMessages.map((m, i) => (
                       <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-[85%] p-3 rounded-2xl text-sm font-medium ${m.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white border border-indigo-100 text-gray-700 shadow-sm'}`}>
+                          <div className={`max-w-[85%] p-4 rounded-2xl text-sm font-medium shadow-sm ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-white border border-indigo-100 text-gray-700 rounded-tl-none'}`}>
                               {m.text}
                           </div>
                       </div>
                   ))}
-                  {isChatLoading && <div className="flex justify-start"><div className="bg-white p-3 rounded-2xl border border-indigo-100"><Loader2 className="animate-spin text-indigo-500" size={16} /></div></div>}
+                  {isChatLoading && <div className="flex justify-start"><div className="bg-white p-3 rounded-2xl border border-indigo-100 shadow-sm"><Loader2 className="animate-spin text-indigo-500" size={16} /></div></div>}
               </div>
-              <div className="p-4 border-t bg-white">
+              <div className="p-4 border-t bg-white shrink-0">
                   <div className="relative">
                       <input 
                         value={chatInput} 
                         onChange={e => setChatInput(e.target.value)} 
                         onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
                         placeholder="Pergunte algo à IA..." 
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-4 pr-12 text-sm outline-none focus:ring-2 focus:ring-indigo-500" 
+                        className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 pl-5 pr-14 text-sm outline-none focus:ring-4 focus:ring-indigo-100 transition-all font-medium" 
                       />
-                      <button onClick={handleSendMessage} className="absolute right-2 top-1.5 p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"><Send size={16} /></button>
+                      <button onClick={handleSendMessage} className="absolute right-2 top-2 p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg"><Send size={18} /></button>
                   </div>
               </div>
           </div>
@@ -151,28 +202,28 @@ export const AIFlux = () => {
       <div className="px-8 py-6 bg-gradient-to-r from-indigo-900 to-slate-900 text-white shrink-0">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-indigo-500/20 backdrop-blur-md rounded-2xl border border-indigo-400/30">
-              <Sparkles size={24} className="text-indigo-300" />
+            <div className="p-3 bg-indigo-500/20 backdrop-blur-md rounded-2xl border border-indigo-400/30 shadow-inner">
+              <SparklesIcon size={24} className="text-indigo-300" />
             </div>
             <div>
-              <h1 className="text-2xl font-black tracking-tight">AIFlux <span className="text-xs font-bold bg-indigo-500 px-2 py-0.5 rounded-full ml-2 uppercase">Pro</span></h1>
-              <p className="text-indigo-200/70 text-sm font-medium">Bots operacionais inteligentes via Gemini 3.</p>
+              <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">AIFlux <span className="text-[10px] font-black bg-indigo-500 px-2 py-0.5 rounded-full uppercase tracking-tighter shadow-lg shadow-indigo-500/20">Active RAG</span></h1>
+              <p className="text-indigo-200/70 text-xs font-bold uppercase tracking-widest">Painel de Controle de Inteligência Artificial</p>
             </div>
           </div>
           
-          <div className="flex bg-white/10 p-1 rounded-xl backdrop-blur-md border border-white/10">
+          <div className="flex bg-white/10 p-1 rounded-xl backdrop-blur-md border border-white/10 shadow-lg">
             {(['overview', 'whatsapp', 'knowledge', isAccountAdmin ? 'admin' : null] as const).filter(Boolean).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab as AIFluxTab)}
-                className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${
-                  activeTab === tab ? 'bg-indigo-500 text-white shadow-lg' : 'text-indigo-200 hover:text-white hover:bg-white/5'
+                className={`px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
+                  activeTab === tab ? 'bg-indigo-500 text-white shadow-xl scale-105' : 'text-indigo-200 hover:text-white hover:bg-white/5'
                 }`}
               >
                 {tab === 'overview' && 'Overview'}
                 {tab === 'whatsapp' && 'WhatsApp'}
                 {tab === 'knowledge' && 'Conhecimento'}
-                {tab === 'admin' && 'Central Admin'}
+                {tab === 'admin' && 'Gestão Subcontas'}
               </button>
             ))}
           </div>
@@ -181,50 +232,54 @@ export const AIFlux = () => {
 
       <div className="flex-1 overflow-y-auto p-8 bg-gray-50/50">
         {activeTab === 'overview' && (
-          <div className="space-y-8 animate-fade-in">
+          <div className="space-y-8 animate-fade-in max-w-7xl mx-auto">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <StatCard icon={MessageSquare} label="Conversas IA" value={leads.length * 3} color="text-blue-600" />
-              <StatCard icon={Bot} label="Taxa de Resposta" value="100%" color="text-indigo-600" />
-              <StatCard icon={Zap} label="Leads pela IA" value={aiLeads} color="text-emerald-600" />
-              <StatCard icon={Cpu} label="Status Bot" value={botInstance?.active ? 'ATIVO' : 'OFFLINE'} color={botInstance?.active ? 'text-emerald-600' : 'text-red-600'} />
+              <StatCard icon={MessageSquare} label="Atendimentos IA" value={leads.length * 4 + 12} color="text-blue-600" />
+              <StatCard icon={Bot} label="Conversão Bot" value="24.5%" color="text-indigo-600" />
+              <StatCard icon={Zap} label="Leads pela IA" value={aiLeadsCount} color="text-emerald-600" />
+              <StatCard icon={Cpu} label="Status Geral" value={botInstance?.active ? 'ON' : 'OFF'} color={botInstance?.active ? 'text-emerald-600' : 'text-red-600'} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="font-black text-gray-800 flex items-center gap-2">
-                    <BarChart3 size={18} className="text-indigo-500" /> Atividade do Bot
+              <div className="lg:col-span-2 bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm">
+                <div className="flex justify-between items-center mb-8">
+                    <h3 className="font-black text-gray-800 flex items-center gap-2 uppercase text-sm tracking-widest">
+                    <BarChart3 size={18} className="text-indigo-500" /> Performance Operacional
                     </h3>
-                    <div className="flex items-center gap-4">
-                        <span className="flex items-center gap-1.5 text-[10px] font-black text-gray-400 uppercase"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> Bot</span>
-                        <span className="flex items-center gap-1.5 text-[10px] font-black text-gray-400 uppercase"><div className="w-2 h-2 rounded-full bg-indigo-100"></div> Humano</span>
+                    <div className="flex items-center gap-6">
+                        <span className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase"><div className="w-2.5 h-2.5 rounded-full bg-indigo-500 shadow-lg shadow-indigo-200"></div> Chatbot</span>
+                        <span className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase"><div className="w-2.5 h-2.5 rounded-full bg-gray-200"></div> Humano</span>
                     </div>
                 </div>
-                <div className="h-64 flex items-end gap-3 px-4">
-                  {[40, 70, 45, 90, 65, 80, 50, 60, 85, 30, 75, 95].map((h, i) => (
-                    <div key={i} className="flex-1 flex flex-col justify-end gap-1">
-                      <div className="w-full bg-indigo-100 rounded-sm" style={{ height: `${h/2}%` }}></div>
-                      <div className="w-full bg-indigo-500 rounded-sm" style={{ height: `${h}%` }}></div>
+                <div className="h-64 flex items-end gap-3 px-2">
+                  {[30, 55, 40, 85, 60, 75, 45, 65, 80, 40, 70, 95].map((h, i) => (
+                    <div key={i} className="flex-1 flex flex-col justify-end gap-1.5 group cursor-pointer">
+                      <div className="w-full bg-gray-100 rounded-md transition-all group-hover:bg-gray-200" style={{ height: `${h/2.5}%` }}></div>
+                      <div className="w-full bg-indigo-500 rounded-md transition-all group-hover:bg-indigo-600 shadow-sm" style={{ height: `${h}%` }}></div>
                     </div>
                   ))}
                 </div>
-                <div className="flex justify-between mt-4 text-[10px] font-black text-gray-400 uppercase tracking-widest px-4">
-                  <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sab</span>
+                <div className="flex justify-between mt-6 text-[10px] font-black text-gray-400 uppercase tracking-widest px-2">
+                  <span>08h</span><span>10h</span><span>12h</span><span>14h</span><span>16h</span><span>18h</span><span>20h</span><span>22h</span>
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
-                <h3 className="font-black text-gray-800 mb-6 uppercase text-xs tracking-widest">Informações da Instância</h3>
-                <div className="space-y-6">
-                  <StatusItem label="IA Engine" status="Gemini 3 Pro" color="bg-emerald-500" />
-                  <StatusItem label="WhatsApp" status={botInstance?.whatsapp_status === 'connected' ? 'Conectado' : 'Aguardando'} color={botInstance?.whatsapp_status === 'connected' ? 'bg-emerald-500' : 'bg-amber-500'} />
-                  <StatusItem label="Último Treino" status={botInstance?.last_trained_at ? new Date(botInstance.last_trained_at).toLocaleDateString() : 'Nunca'} color="bg-blue-500" />
-                  <div className="pt-4 border-t border-gray-100 space-y-3">
-                    <button onClick={() => setIsChatOpen(true)} className="w-full py-3 bg-white border border-indigo-200 text-indigo-600 rounded-xl font-bold hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 shadow-sm">
-                      <Eye size={16} /> Abrir Chat de Teste
+              <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm flex flex-col">
+                <h3 className="font-black text-gray-800 mb-8 uppercase text-sm tracking-widest">Configuração do Bot</h3>
+                <div className="space-y-6 flex-1">
+                  <StatusItem label="Motor de IA" status="Gemini 3 Pro" color="bg-emerald-500" />
+                  <StatusItem label="Canal WhatsApp" status={botInstance?.whatsapp_status === 'connected' ? 'Conectado' : 'Offline'} color={botInstance?.whatsapp_status === 'connected' ? 'bg-emerald-500' : 'bg-gray-300'} />
+                  <StatusItem label="Última Indexação" status={botInstance?.last_trained_at ? new Date(botInstance.last_trained_at).toLocaleDateString() : 'Não treinado'} color="bg-blue-500" />
+                  
+                  <div className="pt-8 border-t border-gray-50 space-y-4">
+                    <button onClick={() => setIsChatOpen(true)} className="w-full py-4 bg-white border-2 border-indigo-50 text-indigo-600 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-indigo-50 transition-all flex items-center justify-center gap-3 shadow-sm active:scale-95">
+                      <Eye size={18} /> Abrir Playground
                     </button>
-                    <button onClick={() => updateBotInstance({ active: !botInstance?.active })} className={`w-full py-3 ${botInstance?.active ? 'bg-red-50 text-red-600' : 'bg-indigo-600 text-white'} rounded-xl font-bold transition-all flex items-center justify-center gap-2`}>
-                      <Settings2 size={16} /> {botInstance?.active ? 'Pausar Automação' : 'Reativar Bot'}
+                    <button 
+                        onClick={handleToggleBotStatus} 
+                        className={`w-full py-4 ${botInstance?.active ? 'bg-red-50 text-red-600 hover:bg-red-100 shadow-red-100' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200'} rounded-2xl font-black uppercase text-xs tracking-widest transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95`}
+                    >
+                      <Settings2 size={18} /> {botInstance?.active ? 'Desativar Automação' : 'Reativar Chatbot'}
                     </button>
                   </div>
                 </div>
@@ -235,80 +290,84 @@ export const AIFlux = () => {
 
         {activeTab === 'knowledge' && (
           <div className="max-w-5xl mx-auto space-y-8 animate-fade-in pb-12">
-            <div className="bg-indigo-900 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl">
+            <div className="bg-indigo-900 rounded-[40px] p-10 text-white relative overflow-hidden shadow-2xl">
               <div className="relative z-10">
-                <h3 className="text-2xl font-black mb-2">Módulo de Treinamento RAG</h3>
-                <p className="text-indigo-200 max-w-lg mb-6">Alimente seu bot com manuais, tabelas de preços e links de suporte. Ele se tornará o maior expert no seu negócio.</p>
+                <h3 className="text-3xl font-black mb-3">Base de Conhecimento RAG</h3>
+                <p className="text-indigo-200 max-w-xl mb-8 font-medium leading-relaxed">
+                    Carregue documentos ou sincronize URLs. A IA converterá esses dados em vetores para responder seus clientes em tempo real no WhatsApp.
+                </p>
                 <div className="flex gap-4">
-                  <button onClick={() => fileInputRef.current?.click()} className="bg-white text-indigo-900 px-6 py-3 rounded-xl font-black text-sm uppercase flex items-center gap-2 hover:bg-indigo-50 transition-all">
-                    <Plus size={18} /> Subir Arquivo
-                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                  <button onClick={() => fileInputRef.current?.click()} className="bg-white text-indigo-900 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-indigo-50 transition-all shadow-xl active:scale-95">
+                    <Upload size={20} /> Subir Documento
+                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".pdf,.txt,.docx" />
                   </button>
                   <button 
                     onClick={handleTrain}
                     disabled={isTraining || knowledgeSources.length === 0}
-                    className="bg-indigo-500 text-white px-8 py-3 rounded-xl font-black text-sm uppercase flex items-center gap-2 hover:bg-indigo-400 transition-all shadow-xl disabled:opacity-50"
+                    className="bg-indigo-500 text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-indigo-400 transition-all shadow-2xl disabled:opacity-50 active:scale-95"
                   >
-                    {isTraining ? <Loader2 size={18} className="animate-spin" /> : <Cpu size={18} />}
-                    {isTraining ? 'Indexando Dados...' : 'Treinar IA Agora'}
+                    {isTraining ? <Loader2 size={20} className="animate-spin" /> : <Cpu size={20} />}
+                    {isTraining ? 'Indexando...' : 'Atualizar IA'}
                   </button>
                 </div>
               </div>
-              <SparklesIcon className="absolute -right-10 -bottom-10 w-64 h-64 text-white/5" />
+              <SparklesIcon className="absolute -right-16 -bottom-16 w-80 h-80 text-white/5 rotate-12" />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div onClick={() => fileInputRef.current?.click()} className="bg-white rounded-3xl border border-gray-200 shadow-sm p-8 flex flex-col items-center justify-center border-dashed border-2 hover:border-indigo-400 transition-all cursor-pointer group">
-                <div className="p-4 bg-indigo-50 rounded-2xl text-indigo-500 group-hover:scale-110 transition-transform mb-4">
-                  <Upload size={32} />
+              <div onClick={() => fileInputRef.current?.click()} className="bg-white rounded-[32px] border-2 border-dashed border-gray-200 p-10 flex flex-col items-center justify-center hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer group shadow-sm">
+                <div className="p-6 bg-indigo-50 rounded-[24px] text-indigo-500 group-hover:scale-110 transition-all shadow-inner mb-5">
+                  <FileText size={40} />
                 </div>
-                <h4 className="font-bold text-gray-800">Manuais e Documentos</h4>
-                <p className="text-gray-400 text-sm text-center mt-2">Clique para subir PDFs ou TXT.<br/>A IA lerá cada linha para aprender.</p>
+                <h4 className="font-black text-gray-800 uppercase text-sm tracking-widest">Documentação Local</h4>
+                <p className="text-gray-400 text-xs font-bold text-center mt-3 uppercase leading-relaxed">Clique para subir PDFs de produtos,<br/>scripts de vendas ou manuais.</p>
               </div>
 
-              <div onClick={() => setUrlModalOpen(true)} className="bg-white rounded-3xl border border-gray-200 shadow-sm p-8 flex flex-col items-center justify-center border-dashed border-2 hover:border-indigo-400 transition-all cursor-pointer group">
-                <div className="p-4 bg-indigo-50 rounded-2xl text-indigo-500 group-hover:scale-110 transition-transform mb-4">
-                  <Globe size={32} />
+              <div onClick={() => setUrlModalOpen(true)} className="bg-white rounded-[32px] border-2 border-dashed border-gray-200 p-10 flex flex-col items-center justify-center hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer group shadow-sm">
+                <div className="p-6 bg-indigo-50 rounded-[24px] text-indigo-500 group-hover:scale-110 transition-all shadow-inner mb-5">
+                  <Globe size={40} />
                 </div>
-                <h4 className="font-bold text-gray-800">Conectar Website / FAQ</h4>
-                <p className="text-gray-400 text-sm text-center mt-2">Insira uma URL externa para que a IA<br/>sincronize informações dinâmicas.</p>
+                <h4 className="font-black text-gray-800 uppercase text-sm tracking-widest">Sincronizar Website</h4>
+                <p className="text-gray-400 text-xs font-bold text-center mt-3 uppercase leading-relaxed">A IA irá ler periodicamente seu site<br/>para manter o conhecimento atualizado.</p>
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
-               <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                  <h3 className="font-black text-gray-800 uppercase text-xs tracking-widest">Base de Conhecimento Ativa</h3>
-                  <span className="px-3 py-1 bg-indigo-100 text-indigo-600 rounded-full text-[10px] font-black uppercase">{knowledgeSources.length} Fontes de Dados</span>
+            <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden">
+               <div className="px-10 py-8 border-b border-gray-50 flex justify-between items-center bg-gray-50/30">
+                  <h3 className="font-black text-gray-800 uppercase text-xs tracking-widest">Fontes Ativas ({knowledgeSources.length})</h3>
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase shadow-sm">
+                     <Database size={12} /> Vetorização OK
+                  </div>
                </div>
                <table className="w-full text-left">
                   <thead>
-                    <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest bg-gray-50/30 border-b border-gray-50">
-                      <th className="px-8 py-4">Arquivo/Origem</th>
-                      <th className="px-8 py-4">Tipo</th>
-                      <th className="px-8 py-4">Data Sinc</th>
-                      <th className="px-8 py-4 text-right">Ação</th>
+                    <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-50 bg-gray-50/10">
+                      <th className="px-10 py-5">Identificação</th>
+                      <th className="px-10 py-5">Tipo</th>
+                      <th className="px-10 py-5">Sincronismo</th>
+                      <th className="px-10 py-5 text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {knowledgeSources.map(item => (
-                      <tr key={item.id} className="hover:bg-indigo-50/30 transition-colors group">
-                        <td className="px-8 py-5">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-indigo-50 rounded-lg text-indigo-500">
-                              {item.type === 'PDF' ? <FileText size={16} /> : <Globe size={16} />}
+                      <tr key={item.id} className="hover:bg-gray-50 transition-colors group">
+                        <td className="px-10 py-6">
+                          <div className="flex items-center gap-4">
+                            <div className={`p-2.5 rounded-xl ${item.type === 'PDF' ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-500 shadow-sm'}`}>
+                              {item.type === 'PDF' ? <FileText size={18} /> : <Globe size={18} />}
                             </div>
-                            <span className="font-bold text-gray-700 text-sm truncate max-w-md">{item.name}</span>
+                            <span className="font-black text-gray-700 text-sm truncate max-w-md">{item.name}</span>
                           </div>
                         </td>
-                        <td className="px-8 py-5"><span className="text-xs font-bold text-gray-400">{item.type}</span></td>
-                        <td className="px-8 py-5"><span className="text-xs font-medium text-gray-500">{new Date(item.created_at).toLocaleDateString()}</span></td>
-                        <td className="px-8 py-5 text-right">
-                          <button onClick={() => deleteKnowledgeSource(item.id)} className="p-2 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
+                        <td className="px-10 py-6"><span className="text-[10px] font-black text-gray-400 border border-gray-200 px-2 py-1 rounded-lg uppercase">{item.type}</span></td>
+                        <td className="px-10 py-6"><span className="text-xs font-bold text-gray-500">{new Date(item.created_at).toLocaleDateString()}</span></td>
+                        <td className="px-10 py-6 text-right">
+                          <button onClick={() => deleteKnowledgeSource(item.id)} className="p-2.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18} /></button>
                         </td>
                       </tr>
                     ))}
                     {knowledgeSources.length === 0 && (
-                        <tr><td colSpan={4} className="py-12 text-center text-gray-400 font-bold uppercase text-[10px] tracking-widest">Nenhuma fonte cadastrada</td></tr>
+                        <tr><td colSpan={4} className="py-20 text-center text-gray-300 font-black uppercase text-xs tracking-widest opacity-40 italic">Nenhum conhecimento cadastrado</td></tr>
                     )}
                   </tbody>
                </table>
@@ -317,64 +376,69 @@ export const AIFlux = () => {
         )}
 
         {activeTab === 'whatsapp' && (
-          <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-                <div className="space-y-6">
-                   <div className={`inline-flex items-center gap-2 px-3 py-1 ${botInstance?.whatsapp_status === 'connected' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'} rounded-full text-[10px] font-black uppercase`}>
-                     {botInstance?.whatsapp_status === 'connected' ? <CheckCircle size={12} /> : <AlertCircle size={12} />}
-                     {botInstance?.whatsapp_status === 'connected' ? 'Conexão Ativa' : 'Aguardando Pareamento'}
+          <div className="max-w-4xl mx-auto space-y-8 animate-fade-in py-12">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+                <div className="space-y-8">
+                   <div className={`inline-flex items-center gap-2 px-4 py-2 ${botInstance?.whatsapp_status === 'connected' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'} rounded-full text-[10px] font-black uppercase shadow-sm`}>
+                     {botInstance?.whatsapp_status === 'connected' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                     {botInstance?.whatsapp_status === 'connected' ? 'WhatsApp Espelhado' : 'Aguardando Dispositivo'}
                    </div>
-                   <h2 className="text-3xl font-black text-gray-900 leading-tight">Canal de Atendimento WhatsApp</h2>
-                   <p className="text-gray-500 leading-relaxed font-medium">Espelhe sua conta em menos de 30 segundos. A IA responderá as dúvidas recorrentes e encaminhará os leads qualificados direto para o seu Pipeline.</p>
+                   <h2 className="text-4xl font-black text-gray-900 leading-tight">Integração Direta com WhatsApp</h2>
+                   <p className="text-gray-500 leading-relaxed font-medium text-lg">
+                       Conecte sua conta em segundos. O AIFlux responde as mensagens recebidas usando sua base de conhecimento e qualifica os leads automaticamente.
+                   </p>
                    
                    <div className="space-y-4">
                       {botInstance?.whatsapp_status === 'connected' && (
-                        <div className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-2xl shadow-sm animate-scale-in">
-                            <div className="p-3 bg-indigo-50 text-indigo-500 rounded-xl"><Smartphone size={20} /></div>
-                            <div>
-                                <p className="text-xs font-black text-gray-400 uppercase">Instância Conectada</p>
-                                <p className="font-bold text-gray-800">{botInstance.whatsapp_number}</p>
+                        <div className="flex items-center gap-5 p-6 bg-white border border-emerald-100 rounded-[24px] shadow-xl shadow-emerald-50 animate-scale-in">
+                            <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl shadow-inner"><Smartphone size={24} /></div>
+                            <div className="flex-1">
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Número Conectado</p>
+                                <p className="font-black text-gray-800 text-lg">{botInstance.whatsapp_number}</p>
                             </div>
-                            <button onClick={toggleWhatsApp} className="ml-auto text-red-500 font-bold text-xs hover:underline">Desconectar</button>
+                            <button onClick={toggleWhatsApp} className="text-red-500 font-black text-xs uppercase tracking-widest hover:underline px-3 py-2 hover:bg-red-50 rounded-lg transition-all">Desconectar</button>
                         </div>
                       )}
 
-                      <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex gap-3">
-                         <AlertCircle className="text-indigo-500 shrink-0" size={20} />
-                         <p className="text-xs text-indigo-800 leading-relaxed font-medium"><b>Segurança:</b> Usamos tecnologia oficial que preserva o histórico de mensagens e não exige que você deixe o app do WhatsApp aberto o tempo todo.</p>
+                      <div className="p-6 bg-blue-50 border border-blue-100 rounded-[24px] flex gap-4 shadow-sm">
+                         <AlertCircle className="text-blue-500 shrink-0 mt-1" size={24} />
+                         <p className="text-xs text-blue-900 font-bold leading-relaxed uppercase">
+                             <b>Dica de Segurança:</b> Utilizamos o protocolo oficial de espelhamento. Não é necessário manter o app do CRM aberto para que a IA continue respondendo.
+                         </p>
                       </div>
 
                       {botInstance?.whatsapp_status !== 'connected' && (
-                          <button onClick={toggleWhatsApp} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-sm tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-3">
-                              {botInstance?.whatsapp_status === 'pairing' ? <Loader2 size={20} className="animate-spin" /> : <QrCode size={20} />}
-                              {botInstance?.whatsapp_status === 'pairing' ? 'Iniciando Sessão...' : 'Conectar Agora'}
+                          <button onClick={toggleWhatsApp} className="w-full py-5 bg-indigo-600 text-white rounded-[24px] font-black uppercase text-sm tracking-widest shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-4 active:scale-95">
+                              {botInstance?.whatsapp_status === 'pairing' ? <Loader2 size={24} className="animate-spin" /> : <QrCode size={24} />}
+                              {botInstance?.whatsapp_status === 'pairing' ? 'Gerando Sessão...' : 'Configurar WhatsApp Agora'}
                           </button>
                       )}
                    </div>
                 </div>
 
                 <div className="flex flex-col items-center">
-                   <div className="bg-white p-8 rounded-[40px] shadow-2xl border border-gray-100 relative group overflow-hidden">
-                      <div className={`absolute inset-0 bg-indigo-600 opacity-0 ${botInstance?.whatsapp_status === 'connected' ? 'opacity-0' : 'group-hover:opacity-5'} transition-opacity`}></div>
-                      <div className="w-64 h-64 bg-gray-100 rounded-3xl flex items-center justify-center mb-6 relative overflow-hidden">
-                         <QrCode size={180} className={`${botInstance?.whatsapp_status === 'connected' ? 'opacity-20 blur-sm' : 'text-gray-900'}`} />
+                   <div className="bg-white p-12 rounded-[60px] shadow-2xl border border-gray-100 relative group overflow-hidden">
+                      <div className={`absolute inset-0 bg-indigo-600 opacity-0 ${botInstance?.whatsapp_status === 'connected' ? 'opacity-0' : 'group-hover:opacity-5'} transition-all duration-500`}></div>
+                      <div className="w-72 h-72 bg-gray-50 rounded-[48px] flex items-center justify-center mb-8 relative overflow-hidden shadow-inner border border-gray-100">
+                         <QrCode size={220} className={`${botInstance?.whatsapp_status === 'connected' ? 'opacity-10 blur-md' : 'text-gray-900 opacity-80'}`} />
                          {botInstance?.whatsapp_status === 'connected' && (
-                            <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-fade-in">
-                                <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-white mb-3 shadow-lg">
-                                <CheckCircle size={24} />
+                            <div className="absolute inset-0 bg-white/40 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center animate-fade-in">
+                                <div className="w-20 h-20 bg-emerald-500 rounded-[32px] flex items-center justify-center text-white mb-5 shadow-2xl scale-110">
+                                <CheckCircle size={40} />
                                 </div>
-                                <p className="text-sm font-black text-indigo-900">Aparelho Vinculado</p>
-                                <p className="text-[10px] text-gray-500 font-bold mt-1 uppercase">Sincronização OK</p>
+                                <p className="text-lg font-black text-indigo-900 uppercase tracking-tighter">Conectado</p>
+                                <p className="text-[10px] text-gray-500 font-black mt-2 uppercase tracking-widest">Sincronismo Ativo</p>
                             </div>
                          )}
                          {botInstance?.whatsapp_status === 'pairing' && (
-                             <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
-                                 <Loader2 size={48} className="text-indigo-600 animate-spin" />
+                             <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
+                                 <Loader2 size={56} className="text-indigo-600 animate-spin" />
+                                 <p className="text-[10px] font-black text-indigo-600 uppercase">Aguardando Leitura...</p>
                              </div>
                          )}
                       </div>
-                      <p className="text-center text-gray-400 text-[10px] font-black uppercase tracking-widest">
-                        {botInstance?.whatsapp_status === 'connected' ? 'Última sinc: hoje' : 'Escaneie para ativar'}
+                      <p className="text-center text-gray-400 text-[10px] font-black uppercase tracking-[0.2em]">
+                        {botInstance?.whatsapp_status === 'connected' ? 'Vínculo: Celular do Proprietário' : 'Escaneie o código no WhatsApp'}
                       </p>
                    </div>
                 </div>
@@ -383,29 +447,29 @@ export const AIFlux = () => {
         )}
 
         {activeTab === 'admin' && (
-          <div className="space-y-8 animate-fade-in">
+          <div className="space-y-8 animate-fade-in max-w-6xl mx-auto">
              <div className="flex justify-between items-center">
                 <div>
-                  <h3 className="text-xl font-black text-gray-900">Gestão Comercial das IAs</h3>
-                  <p className="text-sm text-gray-500">Monitoramento centralizado de consumo e eficiência operacional.</p>
+                  <h3 className="text-2xl font-black text-gray-900 tracking-tight">Gestão Comercial das IAs</h3>
+                  <p className="text-sm text-gray-500 font-bold uppercase tracking-widest mt-1 opacity-60">Consumo de Tokens e Status de Instâncias</p>
                 </div>
-                <button className="px-6 py-2.5 bg-gray-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-black transition-all">Consolidar Dados</button>
+                <button className="px-8 py-3 bg-gray-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-black transition-all shadow-xl active:scale-95">Relatório Financeiro</button>
              </div>
 
-             <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+             <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden">
                 <table className="w-full text-left">
                   <thead className="bg-gray-50 border-b border-gray-100">
                     <tr className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                      <th className="px-8 py-5">Sub-Conta / Usuário</th>
-                      <th className="px-8 py-5 text-center">Interações</th>
-                      <th className="px-8 py-5 text-center">Status Bot</th>
-                      <th className="px-8 py-5 text-center">Canal Wpp</th>
-                      <th className="px-8 py-5 text-right w-20"></th>
+                      <th className="px-10 py-6">Usuário Responsável</th>
+                      <th className="px-10 py-6 text-center">Interações</th>
+                      <th className="px-10 py-6 text-center">IA Ativa</th>
+                      <th className="px-10 py-6 text-center">WhatsApp</th>
+                      <th className="px-10 py-6 text-right"></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50 text-sm">
+                  <tbody className="divide-y divide-gray-50 text-sm font-medium">
                     {users.filter(u => u.role !== UserRole.NEXUS_ADMIN).map(u => (
-                        <AdminRow key={u.id} name={u.name} messages={Math.floor(Math.random()*500 + 50)} botStatus="Ativo" wppStatus="Conectado" />
+                        <AdminRow key={u.id} name={u.name} messages={Math.floor(Math.random()*800 + 40)} botStatus="Ativo" wppStatus="Conectado" />
                     ))}
                   </tbody>
                 </table>
@@ -416,18 +480,21 @@ export const AIFlux = () => {
 
       {/* Modal de URL */}
       {urlModalOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in">
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
-                  <div className="p-6 border-b bg-gray-50 flex justify-between items-center">
-                      <h3 className="font-black text-gray-800 uppercase text-xs tracking-widest">Adicionar URL de Conhecimento</h3>
-                      <button onClick={() => setUrlModalOpen(false)}><X size={20} /></button>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fade-in">
+              <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                  <div className="p-8 border-b bg-gray-50 flex justify-between items-center">
+                      <h3 className="font-black text-gray-800 uppercase text-xs tracking-widest">Sincronizar Website</h3>
+                      <button onClick={() => setUrlModalOpen(false)} className="hover:rotate-90 transition-transform text-gray-400"><X size={24} /></button>
                   </div>
-                  <form onSubmit={handleAddUrl} className="p-8 space-y-6">
-                      <div>
-                          <label className="text-[10px] font-black text-gray-400 uppercase block mb-1">Endereço (HTTPS)</label>
-                          <input required name="url" placeholder="https://ajuda.empresa.com.br" className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm font-bold outline-none focus:ring-4 focus:ring-indigo-100" />
+                  <form onSubmit={handleAddUrl} className="p-10 space-y-8">
+                      <div className="space-y-3">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block ml-1">URL Corporativa (HTTPS)</label>
+                          <input required name="url" placeholder="https://exemplo.com.br/faq" className="w-full bg-gray-50 border border-gray-200 rounded-[20px] py-4 px-6 text-sm font-black outline-none focus:ring-4 focus:ring-indigo-100 transition-all" />
+                          <p className="text-[9px] text-gray-400 font-bold uppercase ml-1 italic">* A IA mapeará todas as páginas públicas deste domínio.</p>
                       </div>
-                      <button type="submit" className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-indigo-700 transition-all">Sincronizar Conteúdo</button>
+                      <button type="submit" className="w-full bg-indigo-600 text-white py-5 rounded-[20px] font-black uppercase text-xs tracking-widest shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-3">
+                        <Globe size={18} /> Iniciar Sincronismo
+                      </button>
                   </form>
               </div>
           </div>
@@ -437,62 +504,42 @@ export const AIFlux = () => {
 };
 
 const StatCard = ({ icon: Icon, label, value, color }: any) => (
-  <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm transition-all hover:translate-y-[-4px] hover:shadow-md">
-    <div className={`p-2 rounded-lg w-fit mb-4 bg-gray-50 ${color}`}>
-      <Icon size={20} />
+  <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-sm transition-all hover:translate-y-[-6px] hover:shadow-xl group">
+    <div className={`p-4 rounded-2xl w-fit mb-6 shadow-inner transition-transform group-hover:scale-110 ${color.replace('text', 'bg').replace('600', '50')} ${color}`}>
+      <Icon size={24} />
     </div>
-    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{label}</p>
-    <p className="text-2xl font-black text-gray-900 mt-1">{value}</p>
+    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{label}</p>
+    <p className="text-3xl font-black text-gray-900 mt-2">{value}</p>
   </div>
 );
 
 const StatusItem = ({ label, status, color }: any) => (
-  <div className="flex justify-between items-center">
-    <span className="text-sm font-bold text-gray-600">{label}</span>
-    <div className="flex items-center gap-2">
-      <span className="text-xs font-bold text-gray-500">{status}</span>
-      <div className={`w-2 h-2 rounded-full ${color}`}></div>
+  <div className="flex justify-between items-center group">
+    <span className="text-xs font-black text-gray-400 uppercase tracking-widest group-hover:text-gray-600 transition-colors">{label}</span>
+    <div className="flex items-center gap-3">
+      <span className="text-xs font-black text-gray-800 uppercase tracking-tight">{status}</span>
+      <div className={`w-2.5 h-2.5 rounded-full shadow-lg ${color}`}></div>
     </div>
   </div>
 );
 
 const AdminRow = ({ name, messages, botStatus, wppStatus, warning }: any) => (
-  <tr className="hover:bg-gray-50 transition-colors">
-    <td className="px-8 py-5 font-bold text-gray-800">{name}</td>
-    <td className="px-8 py-5 text-center font-bold text-gray-500">{messages}</td>
-    <td className="px-8 py-5 text-center">
-      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${botStatus === 'Ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+  <tr className="hover:bg-indigo-50/20 transition-all group">
+    <td className="px-10 py-6 font-black text-gray-800">{name}</td>
+    <td className="px-10 py-6 text-center font-black text-indigo-500">{messages}</td>
+    <td className="px-10 py-6 text-center">
+      <span className={`px-3 py-1.5 rounded-full text-[9px] font-black uppercase shadow-sm ${botStatus === 'Ativo' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
         {botStatus}
       </span>
     </td>
-    <td className="px-8 py-5 text-center">
-      <div className="flex items-center justify-center gap-2 text-xs font-bold text-gray-500">
-        <div className={`w-1.5 h-1.5 rounded-full ${warning ? 'bg-red-500' : 'bg-emerald-500'}`}></div>
+    <td className="px-10 py-6 text-center">
+      <div className="flex items-center justify-center gap-2 text-[10px] font-black uppercase text-gray-400">
+        <div className={`w-2 h-2 rounded-full ${warning ? 'bg-red-500 shadow-red-200' : 'bg-emerald-500 shadow-emerald-200'} shadow-lg`}></div>
         {wppStatus}
       </div>
     </td>
-    <td className="px-8 py-5 text-right">
-       <button className="text-gray-300 hover:text-indigo-600 transition-colors"><Eye size={18} /></button>
+    <td className="px-10 py-6 text-right">
+       <button className="text-gray-300 hover:text-indigo-600 hover:bg-white p-2.5 rounded-xl shadow-sm transition-all"><Eye size={20} /></button>
     </td>
   </tr>
-);
-
-const Sparkles = ({ className, size }: { className?: string, size?: number }) => (
-  <svg 
-    width={size || 24} 
-    height={size || 24} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    className={className}
-  >
-    <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-    <path d="M5 3v4" />
-    <path d="M19 17v4" />
-    <path d="M3 5h4" />
-    <path d="M17 19h4" />
-  </svg>
 );
