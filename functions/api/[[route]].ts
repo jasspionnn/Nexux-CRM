@@ -8,8 +8,9 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
-// Migrations automáticas
+// Migrations automáticas e Garantia de Tabelas
 app.use('*', async (c, next) => {
+    // Tabelas de IA e Bot
     await c.env.DB.prepare(`
         CREATE TABLE IF NOT EXISTS knowledge_sources (
             id TEXT PRIMARY KEY,
@@ -30,14 +31,23 @@ app.use('*', async (c, next) => {
             last_trained_at TEXT
         )
     `).run();
+    await c.env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS webhooks (
+            id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            funnel_id TEXT NOT NULL,
+            stage_id TEXT NOT NULL,
+            active INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    `).run();
     await next();
 });
 
-// --- KNOWLEDGE BASE ENDPOINTS ---
-
+// --- KNOWLEDGE BASE ---
 app.get('/knowledge/:accountId', async (c) => {
-    const accountId = c.req.param('accountId');
-    const result = await c.env.DB.prepare('SELECT * FROM knowledge_sources WHERE account_id = ? ORDER BY created_at DESC').bind(accountId).all();
+    const result = await c.env.DB.prepare('SELECT * FROM knowledge_sources WHERE account_id = ? ORDER BY created_at DESC').bind(c.req.param('accountId')).all();
     return c.json(result.results);
 });
 
@@ -54,69 +64,45 @@ app.delete('/knowledge/:id', async (c) => {
     return c.json({ success: true });
 });
 
-// --- BOT INSTANCE ENDPOINTS ---
-
+// --- BOT INSTANCE ---
 app.get('/bot/:accountId', async (c) => {
-    const accountId = c.req.param('accountId');
-    let bot = await c.env.DB.prepare('SELECT * FROM bot_instances WHERE account_id = ?').bind(accountId).first();
+    let bot = await c.env.DB.prepare('SELECT * FROM bot_instances WHERE account_id = ?').bind(c.req.param('accountId')).first();
     if (!bot) {
-        await c.env.DB.prepare('INSERT INTO bot_instances (account_id) VALUES (?)').bind(accountId).run();
-        bot = { account_id: accountId, whatsapp_status: 'disconnected', active: 1 };
+        await c.env.DB.prepare('INSERT INTO bot_instances (account_id) VALUES (?)').bind(c.req.param('accountId')).run();
+        bot = { account_id: c.req.param('accountId'), whatsapp_status: 'disconnected', active: 1 };
     }
     return c.json(bot);
 });
 
 app.patch('/bot/:accountId', async (c) => {
-    const accountId = c.req.param('accountId');
     const data = await c.req.json() as any;
     const fields: string[] = [];
     const values: any[] = [];
-    
     if (data.whatsapp_status !== undefined) { fields.push('whatsapp_status = ?'); values.push(data.whatsapp_status); }
     if (data.whatsapp_number !== undefined) { fields.push('whatsapp_number = ?'); values.push(data.whatsapp_number); }
     if (data.active !== undefined) { fields.push('active = ?'); values.push(data.active ? 1 : 0); }
     if (data.last_trained_at !== undefined) { fields.push('last_trained_at = ?'); values.push(data.last_trained_at); }
     
     if (fields.length > 0) {
-        await c.env.DB.prepare(`UPDATE bot_instances SET ${fields.join(', ')} WHERE account_id = ?`).bind(...values, accountId).run();
+        await c.env.DB.prepare(`UPDATE bot_instances SET ${fields.join(', ')} WHERE account_id = ?`).bind(...values, c.req.param('accountId')).run();
     }
     return c.json({ success: true });
 });
 
-// --- CONTINUAÇÃO DOS ENDPOINTS EXISTENTES ---
-
-app.get('/public/settings', async (c) => {
-    try {
-        const settings = await c.env.DB.prepare('SELECT * FROM system_settings').all();
-        const config = settings.results.reduce((acc: any, curr: any) => {
-            acc[curr.key] = curr.value;
-            return acc;
-        }, {});
-        return c.json(config);
-    } catch (e) {
-        return c.json({ login_background: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=2000' });
-    }
+// --- WEBHOOKS ---
+app.get('/webhooks/:accountId', async (c) => {
+    const result = await c.env.DB.prepare('SELECT * FROM webhooks WHERE account_id = ?').bind(c.req.param('accountId')).all();
+    return c.json(result.results);
 });
 
-app.post('/auth/login', async (c) => {
-    const { email, password } = await c.req.json() as any;
-    const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ? AND password = ?')
-        .bind(email, password).first() as any;
-    if (!user) return c.json({ error: 'Credenciais inválidas' }, 401);
-    return c.json({ user: { id: user.id, accountId: user.account_id, name: user.name, email: user.email, role: user.role, avatar: user.avatar } });
-});
-
-app.post('/auth/register', async (c) => {
-    const { userName, email, password, companyName } = await c.req.json() as any;
-    const accountId = `acc_${Date.now()}`;
-    const userId = `u_${Date.now()}`;
-    await c.env.DB.batch([
-        c.env.DB.prepare('INSERT INTO accounts (id, company_name, owner_name, email) VALUES (?, ?, ?, ?)').bind(accountId, companyName, userName, email),
-        c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, avatar) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(userId, accountId, userName, email, password, 'ACCOUNT_ADMIN', `https://ui-avatars.com/api/?name=${userName}`)
-    ]);
+app.post('/webhooks', async (c) => {
+    const w = await c.req.json() as any;
+    await c.env.DB.prepare('INSERT INTO webhooks (id, account_id, name, funnel_id, stage_id, active) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(w.id, w.accountId, w.name, w.funnelId, w.stageId, w.active ? 1 : 0).run();
     return c.json({ success: true });
 });
 
+// --- CRM SYNC & LEADS ---
 app.get('/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
     const [funnels, leads, users, teams, customFields] = await Promise.all([
@@ -143,33 +129,25 @@ app.get('/sync/:accountId', async (c) => {
             stages: stages.filter((s: any) => s.funnel_id === f.id).map((s: any) => ({ id: s.id, name: s.name, color: s.color, order: s.order }))
         })),
         leads: leads.results.map((l: any) => ({
-            id: l.id,
-            title: l.title,
-            company: l.company,
-            value: l.value,
+            ...l,
+            notes: JSON.parse(l.notes || '[]'),
+            tasks: JSON.parse(l.tasks || '[]'),
+            tags: JSON.parse(l.tags || '[]'),
+            customValues: JSON.parse(l.custom_values || '{}'),
             contactName: l.contact_name,
             contactEmail: l.contact_email,
             contactPhone: l.contact_phone,
             funnelId: l.funnel_id,
             stageId: l.stage_id,
-            assignedUserId: l.assigned_user_id,
-            probability: l.probability,
-            notes: JSON.parse(l.notes || '[]'),
-            tasks: JSON.parse(l.tasks || '[]'),
-            tags: JSON.parse(l.tags || '[]'),
-            customValues: JSON.parse(l.custom_values || '{}'),
-            createdAt: l.created_at
+            assignedUserId: l.assigned_user_id
         })),
         users: users.results,
         teams: teams.results,
         customFields: customFields.results.map((cf: any) => ({
-            id: cf.id,
-            name: cf.name,
-            type: cf.type,
-            context: cf.context,
-            funnelId: cf.funnel_id,
+            ...cf,
             options: JSON.parse(cf.options || '[]'),
-            visibleStageIds: JSON.parse(cf.visible_stage_ids || '[]')
+            visibleStageIds: JSON.parse(cf.visible_stage_ids || '[]'),
+            funnelId: cf.funnel_id
         }))
     });
 });
@@ -188,27 +166,62 @@ app.patch('/leads/:id', async (c) => {
     const data = await c.req.json() as any;
     const fields: string[] = [];
     const values: any[] = [];
-    if (data.title !== undefined) { fields.push('title = ?'); values.push(data.title); }
-    if (data.stageId !== undefined) { fields.push('stage_id = ?'); values.push(data.stageId); }
-    if (data.funnelId !== undefined) { fields.push('funnel_id = ?'); values.push(data.funnelId); }
-    if (data.contactName !== undefined) { fields.push('contact_name = ?'); values.push(data.contactName); }
-    if (data.contactEmail !== undefined) { fields.push('contact_email = ?'); values.push(data.contactEmail); }
-    if (data.contactPhone !== undefined) { fields.push('contact_phone = ?'); values.push(data.contactPhone); }
-    if (data.company !== undefined) { fields.push('company = ?'); values.push(data.company); }
-    if (data.value !== undefined) { fields.push('value = ?'); values.push(data.value); }
-    if (data.assignedUserId !== undefined) { fields.push('assigned_user_id = ?'); values.push(data.assignedUserId); }
-    if (data.probability !== undefined) { fields.push('probability = ?'); values.push(data.probability); }
-    if (data.tags !== undefined) { fields.push('tags = ?'); values.push(JSON.stringify(data.tags)); }
-    if (data.customValues !== undefined) { fields.push('custom_values = ?'); values.push(JSON.stringify(data.customValues)); }
-    if (data.notes !== undefined) { fields.push('notes = ?'); values.push(JSON.stringify(data.notes)); }
-    if (data.tasks !== undefined) { fields.push('tasks = ?'); values.push(JSON.stringify(data.tasks)); }
-    if (fields.length > 0) { await c.env.DB.prepare(`UPDATE leads SET ${fields.join(', ')} WHERE id = ?`).bind(...values, id).run(); }
+    
+    const map = {
+        title: 'title',
+        stageId: 'stage_id',
+        funnelId: 'funnel_id',
+        contactName: 'contact_name',
+        contactEmail: 'contact_email',
+        contactPhone: 'contact_phone',
+        company: 'company',
+        value: 'value',
+        assignedUserId: 'assigned_user_id',
+        probability: 'probability',
+        tags: 'tags',
+        customValues: 'custom_values',
+        notes: 'notes',
+        tasks: 'tasks'
+    };
+
+    for (const [key, dbKey] of Object.entries(map)) {
+        if (data[key] !== undefined) {
+            fields.push(`${dbKey} = ?`);
+            values.push(typeof data[key] === 'object' ? JSON.stringify(data[key]) : data[key]);
+        }
+    }
+
+    if (fields.length > 0) {
+        await c.env.DB.prepare(`UPDATE leads SET ${fields.join(', ')} WHERE id = ?`).bind(...values, id).run();
+    }
     return c.json({ success: true });
 });
 
-app.delete('/leads/:id', async (c) => {
-    await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(c.req.param('id')).run();
+// --- AUTH ---
+app.post('/auth/login', async (c) => {
+    const { email, password } = await c.req.json() as any;
+    const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ? AND password = ?')
+        .bind(email, password).first() as any;
+    if (!user) return c.json({ error: 'Credenciais inválidas' }, 401);
+    return c.json({ user: { id: user.id, accountId: user.account_id, name: user.name, email: user.email, role: user.role, avatar: user.avatar } });
+});
+
+app.post('/auth/register', async (c) => {
+    const { userName, email, password, companyName } = await c.req.json() as any;
+    const accountId = `acc_${Date.now()}`;
+    const userId = `u_${Date.now()}`;
+    await c.env.DB.batch([
+        c.env.DB.prepare('INSERT INTO accounts (id, company_name, owner_name, email) VALUES (?, ?, ?, ?)').bind(accountId, companyName, userName, email),
+        c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, avatar) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(userId, accountId, userName, email, password, 'ACCOUNT_ADMIN', `https://ui-avatars.com/api/?name=${userName}`)
+    ]);
     return c.json({ success: true });
+});
+
+// --- SETTINGS ---
+app.get('/public/settings', async (c) => {
+    const result = await c.env.DB.prepare('SELECT * FROM system_settings').all();
+    const config = result.results.reduce((acc: any, curr: any) => { acc[curr.key] = curr.value; return acc; }, {});
+    return c.json(config);
 });
 
 app.patch('/admin/settings', async (c) => {

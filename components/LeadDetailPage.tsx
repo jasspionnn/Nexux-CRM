@@ -3,12 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { 
   ArrowLeft, Check, X, User, Phone, Mail, Building, 
-  Calendar, Clock, ChevronDown, ChevronUp,
-  Plus, MoreVertical, CheckCircle, XCircle,
-  Edit2, PhoneCall, Layers, Trash2,
+  ChevronDown, Plus, Trash2, Edit2, PhoneCall, 
   Briefcase, DollarSign, SlidersHorizontal, 
-  Tag as TagIcon, Target, Send, MessageSquare,
-  AlertCircle, ThumbsUp as LucideThumbsUp, ThumbsDown as LucideThumbsDown
+  ThumbsUp as LucideThumbsUp, ThumbsDown as LucideThumbsDown,
+  Layers, RefreshCw, Loader2, Sparkles, Send, Calendar, CheckCircle, XCircle,
+  MessageSquare
 } from 'lucide-react';
 import { CustomFieldDefinition, Lead, Task, User as UserType } from '../types';
 
@@ -28,8 +27,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   const [activeTab, setActiveTab] = useState('history');
   const [noteText, setNoteText] = useState('');
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [newTask, setNewTask] = useState({ title: '', date: '', type: 'call' as Task['type'] });
+  const [isTransferring, setIsTransferring] = useState(false);
   const [newTag, setNewTag] = useState('');
 
   if (!lead) return <div className="p-8 text-center text-gray-500 font-bold">Oportunidade não encontrada.</div>;
@@ -37,8 +35,6 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   const currentFunnel = funnels.find(f => f.id === lead.funnelId);
   const currentStageIndex = currentFunnel?.stages.findIndex(s => s.id === lead.stageId) ?? -1;
   const assignedUser = users.find(u => u.id === lead.assignedUserId);
-
-  const visibleCustomFields = customFields.filter(f => f.funnelId === lead.funnelId);
 
   const handleSaveNote = () => {
       if (!noteText.trim()) return;
@@ -52,55 +48,34 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
       setNoteText('');
   };
 
-  const handleTaskSubmit = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!newTask.title) return;
+  const handleTransferFunnel = async (targetFunnelId: string) => {
+      if (targetFunnelId === lead.funnelId) return;
+      setIsTransferring(true);
+      
+      const targetFunnel = funnels.find(f => f.id === targetFunnelId);
+      if (!targetFunnel) return;
+      
+      const firstStageId = targetFunnel.stages[0]?.id || '';
+      
+      const transferNote = {
+          id: `sys-${Date.now()}`,
+          content: `🔄 Encaminhamento: Lead transferido de "${currentFunnel?.name}" para "${targetFunnel.name}".`,
+          createdAt: new Date().toISOString(),
+          authorName: 'Sistema'
+      };
 
-      if (editingTask) {
-          const updatedTasks = (lead.tasks || []).map(t => 
-            t.id === editingTask.id 
-                ? { ...t, title: newTask.title, dueDate: newTask.date, type: newTask.type } 
-                : t
-          );
-          await updateLead(lead.id, { tasks: updatedTasks });
-      } else {
-          await addTask(lead.id, {
-              id: `t-${Date.now()}`,
-              title: newTask.title,
-              dueDate: newTask.date || new Date().toISOString(),
-              type: newTask.type,
-              completed: false
-          });
-      }
-      closeTaskModal();
-  };
-
-  const openEditTask = (task: Task) => {
-      setEditingTask(task);
-      setNewTask({ title: task.title, date: task.dueDate.slice(0, 16), type: task.type });
-      setIsTaskModalOpen(true);
-  };
-
-  const closeTaskModal = () => {
-      setIsTaskModalOpen(false);
-      setEditingTask(null);
-      setNewTask({ title: '', date: '', type: 'call' });
-  };
-
-  const handleAddTag = (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && newTag.trim()) {
-          const tags = [...(lead.tags || [])];
-          if (!tags.includes(newTag.trim())) {
-              updateLead(lead.id, { tags: [...tags, newTag.trim()] });
-          }
-          setNewTag('');
-      }
+      await updateLead(lead.id, { 
+          funnelId: targetFunnelId, 
+          stageId: firstStageId,
+          notes: [transferNote, ...lead.notes]
+      });
+      
+      setTimeout(() => setIsTransferring(false), 800);
   };
 
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden animate-fade-in">
-      
-      {/* Header Estilo RD */}
+      {/* Header Premium */}
       <div className="px-8 py-6 flex flex-col gap-4 shrink-0 bg-white border-b border-gray-100">
           <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -113,42 +88,33 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                   </div>
               </div>
               <div className="flex items-center gap-3">
-                  <button onClick={() => updateLead(lead.id, { probability: 0 })} className="px-5 py-2.5 bg-[#A5EDFF] hover:bg-[#80E6FF] text-[#00455B] font-black rounded-xl text-xs uppercase tracking-widest flex items-center gap-2 shadow-sm transition-all">
+                  <button onClick={() => updateLead(lead.id, { probability: 0 })} className="px-5 py-2.5 bg-[#A5EDFF] hover:bg-[#80E6FF] text-[#00455B] font-black rounded-xl text-xs uppercase tracking-widest flex items-center gap-2 shadow-sm transition-all active:scale-95">
                       <LucideThumbsDown size={16} strokeWidth={3} /> Perda
                   </button>
-                  <button onClick={() => updateLead(lead.id, { probability: 100 })} className="px-5 py-2.5 bg-[#00455B] hover:bg-[#003646] text-white font-black rounded-xl text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all">
-                      <LucideThumbsUp size={16} strokeWidth={3} /> Venda
+                  <button onClick={() => updateLead(lead.id, { probability: 100 })} className="px-5 py-2.5 bg-[#00455B] hover:bg-[#003646] text-white font-black rounded-xl text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all active:scale-95">
+                      <LucideThumbsUp size={16} strokeWidth={3} /> Ganho
                   </button>
               </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
                <div className="px-3 py-1 bg-gray-100 text-gray-500 text-[10px] font-black uppercase rounded-lg border border-gray-200">
-                   STATUS: {lead.probability === 100 ? 'GANHO' : lead.probability === 0 ? 'PERDIDO' : 'EM ABERTO'}
+                   {lead.probability === 100 ? 'VENDA GANHA' : lead.probability === 0 ? 'VENDA PERDIDA' : 'EM NEGOCIAÇÃO'}
                </div>
                <div className="px-3 py-1 bg-[#00D2FF] text-[#00455B] text-[10px] font-black uppercase rounded-lg">
                    {currentFunnel?.name}
                </div>
-               
-               <div className="flex items-center gap-2 border-l pl-3 border-gray-200">
+               <div className="flex gap-1">
                   {lead.tags.map(tag => (
-                      <span key={tag} className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[9px] font-black uppercase rounded border border-blue-100 flex items-center gap-1">
+                      <span key={tag} className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[9px] font-black uppercase rounded border border-blue-100">
                           {tag}
-                          <button onClick={() => updateLead(lead.id, { tags: lead.tags.filter(t => t !== tag) })} className="hover:text-red-500"><X size={10} /></button>
                       </span>
                   ))}
-                  <input 
-                    value={newTag}
-                    onChange={e => setNewTag(e.target.value)}
-                    onKeyDown={handleAddTag}
-                    placeholder="+ Tag"
-                    className="text-[9px] font-bold bg-transparent outline-none border-b border-dashed border-gray-300 w-16 px-1 focus:border-blue-500"
-                  />
                </div>
           </div>
       </div>
 
-      {/* Progress Bar */}
+      {/* Progress Bar Chevron */}
       <div className="px-8 py-4 flex items-center shrink-0 bg-white shadow-sm z-10 overflow-x-auto">
           {currentFunnel?.stages.map((stage, idx) => (
               <div 
@@ -162,31 +128,40 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
       </div>
 
       <div className="flex-1 flex overflow-hidden">
+          {/* Sidebar de Informações */}
           <div className="w-[340px] bg-gray-50 border-r border-gray-100 overflow-y-auto shrink-0 p-6 flex flex-col gap-8">
-              <section className="space-y-4">
-                  <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                    <User size={14} /> Responsável
-                  </h3>
-                  <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3">
-                      <img src={assignedUser?.avatar} className="w-8 h-8 rounded-full border" />
-                      <select 
-                        value={lead.assignedUserId}
-                        onChange={(e) => updateLead(lead.id, { assignedUserId: e.target.value })}
-                        className="flex-1 bg-transparent text-sm font-bold text-gray-800 outline-none"
-                      >
-                          {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                      </select>
+              {/* Widget de Encaminhamento */}
+              <section className="bg-indigo-600 rounded-2xl p-5 text-white shadow-xl shadow-indigo-100 relative overflow-hidden group">
+                  <div className="relative z-10">
+                      <h4 className="text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <Layers size={14} /> Encaminhar Lead
+                      </h4>
+                      <div className="relative">
+                          <select 
+                            disabled={isTransferring}
+                            value={lead.funnelId}
+                            onChange={(e) => handleTransferFunnel(e.target.value)}
+                            className="w-full bg-white/10 border border-white/20 text-white text-sm font-bold rounded-xl p-2.5 outline-none focus:bg-white/20 transition-all cursor-pointer appearance-none"
+                          >
+                            {funnels.map(f => (
+                                <option key={f.id} value={f.id} className="text-gray-900">{f.name}</option>
+                            ))}
+                          </select>
+                          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
+                      {isTransferring && <div className="mt-3 flex items-center gap-2 text-[10px] font-bold"><Loader2 className="animate-spin" size={12} /> Movendo...</div>}
                   </div>
+                  <RefreshCw size={80} className="absolute -bottom-6 -right-6 text-white/5 rotate-12 group-hover:rotate-45 transition-transform duration-700" />
               </section>
 
               <section className="space-y-4">
                   <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                    <Briefcase size={14} /> Negociação
+                    <Briefcase size={14} /> Negócio
                   </h3>
                   <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-5 shadow-sm">
-                      <EditableSidebarField label="Título" value={lead.title} onSave={(v) => updateLead(lead.id, { title: v })} />
-                      <EditableSidebarField label="Empresa" value={lead.company} onSave={(v) => updateLead(lead.id, { company: v })} />
-                      <EditableSidebarField label="Valor (R$)" value={lead.value.toString()} type="number" onSave={(v) => updateLead(lead.id, { value: parseFloat(v) || 0 })} />
+                      <SidebarItem label="Empresa" value={lead.company} onSave={v => updateLead(lead.id, { company: v })} />
+                      <SidebarItem label="Valor" value={`R$ ${lead.value.toLocaleString()}`} onSave={v => updateLead(lead.id, { value: parseFloat(v.replace(/\D/g, '')) })} />
+                      <SidebarItem label="Responsável" value={assignedUser?.name || '---'} />
                   </div>
               </section>
 
@@ -195,40 +170,59 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                     <Phone size={14} /> Contato
                   </h3>
                   <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-5 shadow-sm">
-                      <EditableSidebarField label="Nome" value={lead.contactName} onSave={(v) => updateLead(lead.id, { contactName: v })} />
-                      <EditableSidebarField label="E-mail" value={lead.contactEmail} onSave={(v) => updateLead(lead.id, { contactEmail: v })} />
-                      <EditableSidebarField label="Telefone" value={lead.contactPhone} onSave={(v) => updateLead(lead.id, { contactPhone: v })} />
+                      <SidebarItem label="Nome" value={lead.contactName} onSave={v => updateLead(lead.id, { contactName: v })} />
+                      <SidebarItem label="E-mail" value={lead.contactEmail} onSave={v => updateLead(lead.id, { contactEmail: v })} />
+                      <SidebarItem label="WhatsApp" value={lead.contactPhone} onSave={v => updateLead(lead.id, { contactPhone: v })} />
                   </div>
               </section>
           </div>
 
+          {/* Area de Histórico e Notas */}
           <div className="flex-1 flex flex-col bg-white overflow-hidden">
-              <div className="p-8 flex flex-col gap-8 flex-1 overflow-y-auto">
-                  <section>
-                      <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-lg font-black text-gray-900 tracking-tight">Atividades Pendentes</h3>
+              <div className="p-8 h-full flex flex-col max-w-4xl mx-auto w-full gap-8">
+                  <section className="bg-gray-50 rounded-3xl p-6 border border-gray-100">
+                      <div className="flex items-center gap-2 mb-4">
+                          <MessageSquare size={18} className="text-indigo-600" />
+                          <h3 className="text-sm font-black text-gray-900 uppercase">Anotações do Lead</h3>
+                      </div>
+                      <div className="relative group">
+                          <textarea 
+                            value={noteText}
+                            onChange={e => setNoteText(e.target.value)}
+                            placeholder="Descreva o andamento da negociação..." 
+                            className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-sm font-medium outline-none focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all min-h-[120px] resize-none"
+                          />
                           <button 
-                            onClick={() => setIsTaskModalOpen(true)}
-                            className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-100 transition-all flex items-center gap-2"
+                            disabled={!noteText.trim()}
+                            onClick={handleSaveNote}
+                            className="absolute bottom-4 right-4 bg-indigo-600 text-white p-2 rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-30 shadow-lg"
                           >
-                              <Plus size={16} /> Nova Tarefa
+                              <Send size={18} />
                           </button>
                       </div>
-                      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-                          {lead.tasks.filter(t => !t.completed).length > 0 ? (
-                              lead.tasks.filter(t => !t.completed).map(task => (
-                                  <TaskRow 
-                                    key={task.id} 
-                                    task={task} 
-                                    onToggle={() => toggleTask(lead.id, task.id)} 
-                                    onDelete={() => deleteTask(lead.id, task.id)} 
-                                    onEdit={() => openEditTask(task)}
-                                  />
-                              ))
-                          ) : (
-                              <div className="p-10 text-center text-gray-400 italic text-sm">Nenhuma tarefa pendente.</div>
-                          )}
-                      </div>
+                  </section>
+
+                  <section className="flex-1 overflow-y-auto space-y-6 pb-20 scrollbar-hide">
+                      {lead.notes.map(note => (
+                          <div key={note.id} className={`flex gap-4 animate-fade-in ${note.authorName === 'Sistema' ? 'bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100 border-dashed' : ''}`}>
+                              <div className="flex flex-col items-center gap-2">
+                                  <div className={`w-10 h-10 rounded-full flex items-center justify-center border font-black text-xs ${note.authorName === 'Sistema' ? 'bg-white text-indigo-500' : 'bg-indigo-600 text-white'}`}>
+                                      {note.authorName[0]}
+                                  </div>
+                                  <div className="flex-1 w-px bg-gray-100"></div>
+                              </div>
+                              <div className="flex-1 pt-1">
+                                  <div className="flex justify-between items-center mb-2">
+                                      <span className="text-xs font-black text-gray-800 uppercase tracking-tight">{note.authorName}</span>
+                                      <span className="text-[10px] font-bold text-gray-400">{new Date(note.createdAt).toLocaleString()}</span>
+                                  </div>
+                                  <p className={`text-sm leading-relaxed ${note.authorName === 'Sistema' ? 'text-indigo-700 font-bold italic' : 'text-gray-600 font-medium'}`}>{note.content}</p>
+                              </div>
+                          </div>
+                      ))}
+                      {lead.notes.length === 0 && (
+                          <div className="text-center py-20 text-gray-300 font-black uppercase text-[10px] tracking-widest">Início do Histórico</div>
+                      )}
                   </section>
               </div>
           </div>
@@ -237,46 +231,24 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   );
 };
 
-const EditableSidebarField = ({ label, value, onSave, type = 'text' }: { label: string, value: string, onSave: (v: string) => void, type?: string }) => {
+const SidebarItem = ({ label, value, onSave }: { label: string, value: string, onSave?: (v: string) => void }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [temp, setTemp] = useState(value);
     useEffect(() => { setTemp(value); }, [value]);
-    const handleBlur = () => { setIsEditing(false); if (temp !== value) onSave(temp); };
+
+    const handleBlur = () => { setIsEditing(false); if (temp !== value && onSave) onSave(temp); };
+
     return (
-        <div className="flex flex-col gap-1 group">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">{label}</p>
+        <div className="group">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{label}</p>
             {isEditing ? (
-                <input autoFocus type={type} value={temp} onChange={e => setTemp(e.target.value)} onBlur={handleBlur} onKeyDown={e => e.key === 'Enter' && handleBlur()} className="text-sm font-bold text-gray-800 bg-blue-50 border-b border-blue-500 outline-none w-full" />
+                <input autoFocus value={temp} onChange={e => setTemp(e.target.value)} onBlur={handleBlur} onKeyDown={e => e.key === 'Enter' && handleBlur()} className="text-sm font-bold text-gray-900 border-b border-indigo-500 outline-none w-full bg-indigo-50 px-1" />
             ) : (
-                <div onClick={() => setIsEditing(true)} className="text-sm font-bold text-gray-800 cursor-pointer hover:text-blue-600 flex justify-between items-center transition-all rounded px-1 -mx-1">
+                <div onClick={() => onSave && setIsEditing(true)} className={`text-sm font-bold text-gray-800 flex justify-between items-center transition-all ${onSave ? 'cursor-pointer hover:text-indigo-600' : ''}`}>
                     <span className="truncate">{value || '---'}</span>
-                    <Edit2 size={10} className="opacity-0 group-hover:opacity-100 text-gray-300" />
+                    {onSave && <Edit2 size={10} className="opacity-0 group-hover:opacity-100 text-gray-300" />}
                 </div>
             )}
         </div>
     );
 };
-
-const TaskRow = ({ task, onToggle, onDelete, onEdit }: { task: Task, onToggle: () => void, onDelete: () => void, onEdit: () => void }) => {
-    return (
-        <div className={`p-4 flex items-center gap-4 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors group ${task.completed ? 'opacity-50' : ''}`}>
-            <button onClick={(e) => { e.stopPropagation(); onToggle(); }} className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center transition-all ${task.completed ? 'bg-green-500 border-green-500 text-white' : 'border-gray-200 hover:border-blue-400'}`}>
-                <Check size={16} strokeWidth={4} />
-            </button>
-            <div className="flex-1 cursor-pointer" onClick={onEdit}>
-                <span className={`text-sm font-bold ${task.completed ? 'line-through text-gray-400' : 'text-gray-800'}`}>{task.title}</span>
-            </div>
-            <button onClick={(e) => { e.stopPropagation(); if(confirm('Excluir?')) onDelete(); }} className="p-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
-        </div>
-    );
-};
-
-const tabItems = [
-    { id: 'history', label: 'Histórico' },
-    { id: 'email', label: 'E-mail' },
-    { id: 'tasks', label: 'Tarefas' },
-    { id: 'products', label: 'Produtos e Serviços' },
-    { id: 'files', label: 'Arquivos' },
-    { id: 'proposals', label: 'Propostas' },
-    { id: 'signature', label: 'Assinatura Eletrônica' },
-];
