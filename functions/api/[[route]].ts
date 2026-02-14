@@ -8,152 +8,82 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
-// Lazy Migration para Webhooks
+// Migrations automáticas
 app.use('*', async (c, next) => {
     await c.env.DB.prepare(`
-        CREATE TABLE IF NOT EXISTS webhooks (
+        CREATE TABLE IF NOT EXISTS knowledge_sources (
             id TEXT PRIMARY KEY,
             account_id TEXT NOT NULL,
             name TEXT NOT NULL,
-            funnel_id TEXT NOT NULL,
-            stage_id TEXT NOT NULL,
-            active INTEGER DEFAULT 1,
+            type TEXT NOT NULL,
+            content TEXT,
+            url TEXT,
             created_at TEXT DEFAULT (datetime('now'))
+        )
+    `).run();
+    await c.env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS bot_instances (
+            account_id TEXT PRIMARY KEY,
+            whatsapp_status TEXT DEFAULT 'disconnected',
+            whatsapp_number TEXT,
+            active INTEGER DEFAULT 1,
+            last_trained_at TEXT
         )
     `).run();
     await next();
 });
 
-app.onError((err, c) => {
-  console.error(`[API ERROR]:`, err);
-  return c.json({ error: err.message || 'Erro interno', status: 500 }, 500);
-});
+// --- KNOWLEDGE BASE ENDPOINTS ---
 
-// --- WEBHOOKS MANAGEMENT ---
-
-app.get('/webhooks/:accountId', async (c) => {
+app.get('/knowledge/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
-    const result = await c.env.DB.prepare('SELECT * FROM webhooks WHERE account_id = ?').bind(accountId).all();
+    const result = await c.env.DB.prepare('SELECT * FROM knowledge_sources WHERE account_id = ? ORDER BY created_at DESC').bind(accountId).all();
     return c.json(result.results);
 });
 
-app.post('/webhooks', async (c) => {
-    const w = await c.req.json() as any;
+app.post('/knowledge', async (c) => {
+    const data = await c.req.json() as any;
     await c.env.DB.prepare(
-        'INSERT INTO webhooks (id, account_id, name, funnel_id, stage_id, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(w.id, w.accountId, w.name, w.funnelId, w.stage_id || w.stageId, w.active ? 1 : 0, w.createdAt).run();
+        'INSERT INTO knowledge_sources (id, account_id, name, type, content, url) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(data.id, data.accountId, data.name, data.type, data.content || null, data.url || null).run();
     return c.json({ success: true });
 });
 
-app.patch('/webhooks/:id', async (c) => {
-    const id = c.req.param('id');
+app.delete('/knowledge/:id', async (c) => {
+    await c.env.DB.prepare('DELETE FROM knowledge_sources WHERE id = ?').bind(c.req.param('id')).run();
+    return c.json({ success: true });
+});
+
+// --- BOT INSTANCE ENDPOINTS ---
+
+app.get('/bot/:accountId', async (c) => {
+    const accountId = c.req.param('accountId');
+    let bot = await c.env.DB.prepare('SELECT * FROM bot_instances WHERE account_id = ?').bind(accountId).first();
+    if (!bot) {
+        await c.env.DB.prepare('INSERT INTO bot_instances (account_id) VALUES (?)').bind(accountId).run();
+        bot = { account_id: accountId, whatsapp_status: 'disconnected', active: 1 };
+    }
+    return c.json(bot);
+});
+
+app.patch('/bot/:accountId', async (c) => {
+    const accountId = c.req.param('accountId');
     const data = await c.req.json() as any;
     const fields: string[] = [];
     const values: any[] = [];
     
-    if (data.name !== undefined) { fields.push('name = ?'); values.push(data.name); }
-    if (data.funnelId !== undefined) { fields.push('funnel_id = ?'); values.push(data.funnelId); }
-    if (data.stageId !== undefined) { fields.push('stage_id = ?'); values.push(data.stageId); }
+    if (data.whatsapp_status !== undefined) { fields.push('whatsapp_status = ?'); values.push(data.whatsapp_status); }
+    if (data.whatsapp_number !== undefined) { fields.push('whatsapp_number = ?'); values.push(data.whatsapp_number); }
     if (data.active !== undefined) { fields.push('active = ?'); values.push(data.active ? 1 : 0); }
+    if (data.last_trained_at !== undefined) { fields.push('last_trained_at = ?'); values.push(data.last_trained_at); }
     
     if (fields.length > 0) {
-        await c.env.DB.prepare(`UPDATE webhooks SET ${fields.join(', ')} WHERE id = ?`).bind(...values, id).run();
+        await c.env.DB.prepare(`UPDATE bot_instances SET ${fields.join(', ')} WHERE account_id = ?`).bind(...values, accountId).run();
     }
     return c.json({ success: true });
 });
 
-app.delete('/webhooks/:id', async (c) => {
-    await c.env.DB.prepare('DELETE FROM webhooks WHERE id = ?').bind(c.req.param('id')).run();
-    return c.json({ success: true });
-});
-
-// --- PUBLIC WEBHOOK RECEIVER ---
-
-app.post('/webhooks/receive/:webhookId', async (c) => {
-    const webhookId = c.req.param('webhookId');
-    let payload: any;
-    
-    try {
-        payload = await c.req.json();
-    } catch (e) {
-        return c.json({ error: 'Payload JSON inválido' }, 400);
-    }
-
-    // 1. Localizar configuração do Webhook
-    const webhook = await c.env.DB.prepare('SELECT * FROM webhooks WHERE id = ?').bind(webhookId).first() as any;
-    if (!webhook) {
-        return c.json({ error: 'Integração não encontrada' }, 404);
-    }
-    if (!webhook.active) {
-        return c.json({ error: 'Integração inativa' }, 403);
-    }
-
-    // 2. Mapeamento Inteligente de Campos
-    const findInPayload = (keys: string[]) => {
-        for (const k of keys) {
-            const foundKey = Object.keys(payload).find(pKey => pKey.toLowerCase() === k.toLowerCase());
-            if (foundKey) return payload[foundKey];
-        }
-        return '';
-    };
-
-    const name = findInPayload(['nome', 'name', 'full_name', 'contato', 'contact', 'client']);
-    const email = findInPayload(['email', 'e-mail', 'mail', 'user_email']);
-    const phone = findInPayload(['phone', 'telefone', 'tel', 'whatsapp', 'celular', 'mobile']);
-    const company = findInPayload(['company', 'empresa', 'negocio', 'business', 'organizacao']) || 'Origem Externa';
-    const value = parseFloat(findInPayload(['value', 'valor', 'price', 'amount', 'budget'])) || 0;
-
-    const leadId = `l_wb_${Date.now()}`;
-
-    // 3. Criar Lead no banco
-    try {
-        await c.env.DB.prepare(`
-            INSERT INTO leads (
-                id, account_id, title, company, value, 
-                contact_name, contact_email, contact_phone, 
-                funnel_id, stage_id, assigned_user_id, 
-                probability, tags, notes, tasks, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-            leadId,
-            webhook.account_id,
-            `Lead: ${name || company || 'Novo Contato'}`,
-            company,
-            value,
-            name || 'Visitante',
-            email,
-            phone,
-            webhook.funnel_id,
-            webhook.stage_id,
-            null, // Sem dono definido inicialmente
-            10,   // Probabilidade padrão
-            JSON.stringify(['Webhook', webhook.name]),
-            JSON.stringify([{
-                id: `note_wb_${Date.now()}`,
-                content: `Lead recebido via Integração: ${webhook.name}\n\nDados brutos:\n${JSON.stringify(payload, null, 2)}`,
-                createdAt: new Date().toISOString(),
-                authorName: 'Nexus Webhook'
-            }]),
-            JSON.stringify([]),
-            new Date().toISOString()
-        ).run();
-
-        return c.json({ success: true, leadId });
-    } catch (err: any) {
-        return c.json({ error: 'Erro ao processar lead', details: err.message }, 500);
-    }
-});
-
-// --- SISTEMA E OUTRAS ROTAS ---
-
-app.get('/health', async (c) => {
-    try {
-        await c.env.DB.prepare('SELECT 1').first();
-        return c.json({ status: 'ok' });
-    } catch (e: any) {
-        return c.json({ status: 'error', error: e.message }, 500);
-    }
-});
+// --- CONTINUAÇÃO DOS ENDPOINTS EXISTENTES ---
 
 app.get('/public/settings', async (c) => {
     try {

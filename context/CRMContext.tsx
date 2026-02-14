@@ -3,12 +3,22 @@ import React, { createContext, useContext, useState, ReactNode, useEffect, useCa
 import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole, VisibilityLevel, Webhook } from '../types';
 import { api } from '../services/api';
 
-interface CRMNotification {
-  id: string;
-  title: string;
-  message: string;
-  leadId: string;
-  type: 'webhook_lead';
+interface KnowledgeSource {
+    id: string;
+    accountId: string;
+    name: string;
+    type: 'PDF' | 'URL';
+    content?: string;
+    url?: string;
+    created_at: string;
+}
+
+interface BotInstance {
+    account_id: string;
+    whatsapp_status: 'connected' | 'disconnected' | 'pairing';
+    whatsapp_number?: string;
+    active: boolean;
+    last_trained_at?: string;
 }
 
 interface CRMContextType {
@@ -18,12 +28,13 @@ interface CRMContextType {
   teams: Team[];
   customFields: CustomFieldDefinition[];
   webhooks: Webhook[];
+  knowledgeSources: KnowledgeSource[];
+  botInstance: BotInstance | null;
   allAccounts: Account[];
   activeFunnelId: string;
   currentUser: User | null;
   isLoading: boolean;
   isOnline: boolean;
-  notifications: CRMNotification[];
   visibleLeads: Lead[];
   visibleUsers: User[];
   currentAccount: Account | null;
@@ -31,7 +42,6 @@ interface CRMContextType {
   login: (email: string, pass: string) => Promise<string | boolean>;
   registerAccount: (userName: string, email: string, pass: string, companyName: string) => Promise<string | boolean>;
   logout: () => void;
-  removeNotification: (id: string) => void;
   refreshData: () => Promise<void>;
   addLead: (lead: Lead) => Promise<void>;
   updateLead: (id: string, updates: Partial<Lead>) => Promise<void>;
@@ -54,6 +64,10 @@ interface CRMContextType {
   addWebhook: (name: string, funnelId: string, stageId: string) => Promise<void>;
   updateWebhook: (id: string, updates: Partial<Webhook>) => Promise<void>;
   deleteWebhook: (id: string) => Promise<void>;
+  addKnowledgeSource: (source: Partial<KnowledgeSource>) => Promise<void>;
+  deleteKnowledgeSource: (id: string) => Promise<void>;
+  updateBotInstance: (updates: Partial<BotInstance>) => Promise<void>;
+  trainAI: () => Promise<void>;
   addUser: (user: User) => Promise<void>;
   updateUser: (id: string, updates: Partial<User>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
@@ -68,7 +82,6 @@ interface CRMContextType {
 
 const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
-// Fix: CRMProvider implementation with all required members for the context value
 export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [funnels, setFunnels] = useState<Funnel[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -76,8 +89,9 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [teams, setTeams] = useState<Team[]>([]);
   const [customFields, setCustomFields] = useState<CustomFieldDefinition[]>([]);
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+  const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSource[]>([]);
+  const [botInstance, setBotInstance] = useState<BotInstance | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]); 
-  const [notifications, setNotifications] = useState<CRMNotification[]>([]);
   const [activeFunnelId, setActiveFunnelId] = useState<string>(() => localStorage.getItem('nexus_active_funnel') || '');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -115,9 +129,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       try {
           if (currentUser.role === UserRole.NEXUS_ADMIN) {
                const data = await api.get<any>('/admin/accounts');
-               if (data && data.accounts) {
-                 setAccounts(data.accounts);
-               }
+               if (data && data.accounts) setAccounts(data.accounts);
           } else if (currentUser.accountId) {
                const data = await api.get<any>(`/sync/${currentUser.accountId}`);
                if (data) {
@@ -127,9 +139,14 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                  setTeams(data.teams || []);
                  setCustomFields(data.customFields || []);
                  
-                 // Fetch webhooks
-                 const whs = await api.get<Webhook[]>(`/webhooks/${currentUser.accountId}`);
+                 const [whs, kls, bot] = await Promise.all([
+                    api.get<Webhook[]>(`/webhooks/${currentUser.accountId}`),
+                    api.get<KnowledgeSource[]>(`/knowledge/${currentUser.accountId}`),
+                    api.get<BotInstance>(`/bot/${currentUser.accountId}`)
+                 ]);
                  setWebhooks(whs || []);
+                 setKnowledgeSources(kls || []);
+                 setBotInstance(bot || null);
 
                  if (data.funnels?.length > 0) {
                      const exists = data.funnels.find((f: any) => f.id === activeFunnelId);
@@ -158,6 +175,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const visibleLeads = useMemo(() => leads || [], [leads]);
   const visibleUsers = useMemo(() => users || [], [users]);
 
+  // --- AUTH ---
   const login = async (email: string, pass: string): Promise<string | boolean> => {
       setIsLoading(true);
       try {
@@ -168,11 +186,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return true;
           }
           return "Resposta inválida do servidor.";
-      } catch (error: any) { 
-          return error.message || "Credenciais inválidas."; 
-      } finally { 
-          setIsLoading(false); 
-      }
+      } catch (error: any) { return error.message || "Credenciais inválidas."; } finally { setIsLoading(false); }
   };
 
   const logout = () => { 
@@ -185,6 +199,8 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setAccounts([]);
     setUsers([]);
     setWebhooks([]);
+    setKnowledgeSources([]);
+    setBotInstance(null);
   };
 
   const registerAccount = async (u: string, e: string, p: string, c: string) => { 
@@ -192,23 +208,10 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return login(e, p); 
   };
 
-  const removeNotification = (id: string) => setNotifications(prev => prev.filter(n => n.id !== id));
-
-  const addLead = async (lead: Lead) => { 
-    setLeads(prev => [...prev, lead]); 
-    await api.post('/leads', lead); 
-  };
-  
-  const updateLead = async (id: string, updates: Partial<Lead>) => { 
-    setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l)); 
-    await api.patch(`/leads/${id}`, updates); 
-  };
-
-  const moveLead = async (leadId: string, targetStageId: string) => { 
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stageId: targetStageId } : l)); 
-    await api.patch(`/leads/${leadId}`, { stageId: targetStageId }); 
-  };
-
+  // --- LEADS ---
+  const addLead = async (lead: Lead) => { setLeads(prev => [...prev, lead]); await api.post('/leads', lead); };
+  const updateLead = async (id: string, updates: Partial<Lead>) => { setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l)); await api.patch(`/leads/${id}`, updates); };
+  const moveLead = async (leadId: string, targetStageId: string) => { setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stageId: targetStageId } : l)); await api.patch(`/leads/${leadId}`, { stageId: targetStageId }); };
   const duplicateLead = async (originalLeadId: string, targetFunnelId: string, targetStageId: string) => {
     const original = leads.find(l => l.id === originalLeadId);
     if (!original) return;
@@ -216,191 +219,80 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setLeads(prev => [...prev, copy]);
     await api.post('/leads', copy);
   };
+  const deleteLead = async (id: string) => { setLeads(prev => prev.filter(l => l.id !== id)); await api.delete(`/leads/${id}`); };
 
-  const deleteLead = async (id: string) => { 
-    setLeads(prev => prev.filter(l => l.id !== id)); 
-    await api.delete(`/leads/${id}`); 
-  };
+  // --- TASKS ---
+  const addTask = async (leadId: string, task: Task) => { setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: [...(l.tasks || []), task] } : l)); await api.post(`/leads/${leadId}/tasks`, task); };
+  const toggleTask = async (leadId: string, taskId: string) => { setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: (l.tasks || []).map(t => t.id === taskId ? { ...t, completed: !t.completed } : t) } : l)); await api.patch(`/leads/${leadId}/tasks/${taskId}/toggle`, {}); };
+  const deleteTask = async (leadId: string, taskId: string) => { setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: (l.tasks || []).filter(t => t.id !== taskId) } : l)); await api.delete(`/leads/${leadId}/tasks/${taskId}`); };
 
-  const addTask = async (leadId: string, task: Task) => { 
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: [...(l.tasks || []), task] } : l)); 
-    await api.post(`/leads/${leadId}/tasks`, task); 
-  };
-
-  const toggleTask = async (leadId: string, taskId: string) => { 
-    setLeads(prev => prev.map(l => l.id === leadId ? {
-      ...l,
-      tasks: (l.tasks || []).map(t => t.id === taskId ? { ...t, completed: !t.completed } : t)
-    } : l));
-    await api.patch(`/leads/${leadId}/tasks/${taskId}/toggle`, {});
-  };
-
-  const deleteTask = async (leadId: string, taskId: string) => { 
-    setLeads(prev => prev.map(l => l.id === leadId ? {
-      ...l,
-      tasks: (l.tasks || []).filter(t => t.id !== taskId)
-    } : l));
-    await api.delete(`/leads/${leadId}/tasks/${taskId}`);
-  };
-
+  // --- PIPELINES ---
   const addFunnel = async (name: string) => { 
     if (!currentUser?.accountId) return;
-    const nf: Funnel = { 
-      id: `f${Date.now()}`, 
-      accountId: currentUser.accountId, 
-      name, 
-      stages: [
-        { id: `s1-${Date.now()}`, name: 'Lead', color: 'bg-blue-500', order: 0 }, 
-        { id: `s2-${Date.now()}`, name: 'Venda', color: 'bg-green-500', order: 1 }
-      ] 
-    };
-    setFunnels(prev => [...prev, nf]); 
-    await api.post('/funnels', nf); 
+    const nf: Funnel = { id: `f${Date.now()}`, accountId: currentUser.accountId, name, stages: [{ id: `s1-${Date.now()}`, name: 'Lead', color: 'bg-blue-500', order: 0 }, { id: `s2-${Date.now()}`, name: 'Venda', color: 'bg-green-500', order: 1 }] };
+    setFunnels(prev => [...prev, nf]); await api.post('/funnels', nf); 
+  };
+  const updateFunnel = async (id: string, updates: Partial<Funnel>) => { setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); await api.patch(`/funnels/${id}`, updates); };
+  const deleteFunnel = async (id: string) => { setFunnels(prev => prev.filter(f => f.id !== id)); await api.delete(`/funnels/${id}`); };
+  const addStage = async (funnelId: string, name: string) => { const funnel = funnels.find(f => f.id === funnelId); if (!funnel) return; const newStage: Stage = { id: `s-${Date.now()}`, name, color: 'bg-gray-500', order: funnel.stages.length }; updateFunnel(funnelId, { stages: [...funnel.stages, newStage] }); };
+  const updateStage = async (funnelId: string, stageId: string, updates: Partial<Stage>) => { const funnel = funnels.find(f => f.id === funnelId); if (!funnel) return; updateFunnel(funnelId, { stages: funnel.stages.map(s => s.id === stageId ? { ...s, ...updates } : s) }); };
+  const deleteStage = async (funnelId: string, stageId: string) => { const funnel = funnels.find(f => f.id === funnelId); if (!funnel) return; updateFunnel(funnelId, { stages: funnel.stages.filter(s => s.id !== stageId) }); };
+  const reorderStages = async (funnelId: string, newStages: Stage[]) => { updateFunnel(funnelId, { stages: newStages }); };
+
+  // --- CUSTOM FIELDS ---
+  // Fix for missing custom field functions in CRMProvider scope
+  const addCustomField = async (f: CustomFieldDefinition) => { setCustomFields(prev => [...prev, f]); await api.post('/custom-fields', f); };
+  const updateCustomField = async (id: string, updates: Partial<CustomFieldDefinition>) => { setCustomFields(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); await api.patch(`/custom-fields/${id}`, updates); };
+  const deleteCustomField = async (id: string) => { setCustomFields(prev => prev.filter(f => f.id !== id)); await api.delete(`/custom-fields/${id}`); };
+
+  // --- WEBHOOKS ---
+  const addWebhook = async (name: string, funnelId: string, stageId: string) => { if (!currentUser?.accountId) return; const nw: Webhook = { id: `wh-${Date.now()}`, accountId: currentUser.accountId, name, funnelId, stageId, active: true, createdAt: new Date().toISOString() }; setWebhooks(prev => [...prev, nw]); await api.post('/webhooks', nw); };
+  const updateWebhook = async (id: string, updates: Partial<Webhook>) => { setWebhooks(prev => prev.map(w => w.id === id ? { ...w, ...updates } : w)); await api.patch(`/webhooks/${id}`, updates); };
+  const deleteWebhook = async (id: string) => { setWebhooks(prev => prev.filter(w => w.id !== id)); await api.delete(`/webhooks/${id}`); };
+
+  // --- AIFLUX / RAG ---
+  const addKnowledgeSource = async (source: Partial<KnowledgeSource>) => {
+      if (!currentUser?.accountId) return;
+      const ns = { id: `kl-${Date.now()}`, accountId: currentUser.accountId, created_at: new Date().toISOString(), ...source } as KnowledgeSource;
+      setKnowledgeSources(prev => [ns, ...prev]);
+      await api.post('/knowledge', ns);
+  };
+  const deleteKnowledgeSource = async (id: string) => { setKnowledgeSources(prev => prev.filter(s => s.id !== id)); await api.delete(`/knowledge/${id}`); };
+  const updateBotInstance = async (updates: Partial<BotInstance>) => {
+      if (!currentUser?.accountId) return;
+      setBotInstance(prev => prev ? { ...prev, ...updates } : null);
+      await api.patch(`/bot/${currentUser.accountId}`, updates);
+  };
+  const trainAI = async () => {
+      if (!currentUser?.accountId) return;
+      const lastTrained = new Date().toISOString();
+      await updateBotInstance({ last_trained_at: lastTrained });
   };
 
-  const updateFunnel = async (id: string, updates: Partial<Funnel>) => { 
-    setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); 
-    await api.patch(`/funnels/${id}`, updates); 
-  };
-
-  const deleteFunnel = async (id: string) => { 
-    setFunnels(prev => prev.filter(f => f.id !== id)); 
-    await api.delete(`/funnels/${id}`); 
-  };
-
-  const addStage = async (funnelId: string, name: string) => {
-    const funnel = funnels.find(f => f.id === funnelId);
-    if (!funnel) return;
-    const newStage: Stage = { id: `s-${Date.now()}`, name, color: 'bg-gray-500', order: funnel.stages.length };
-    updateFunnel(funnelId, { stages: [...funnel.stages, newStage] });
-  };
-
-  const updateStage = async (funnelId: string, stageId: string, updates: Partial<Stage>) => {
-    const funnel = funnels.find(f => f.id === funnelId);
-    if (!funnel) return;
-    updateFunnel(funnelId, { stages: funnel.stages.map(s => s.id === stageId ? { ...s, ...updates } : s) });
-  };
-
-  const deleteStage = async (funnelId: string, stageId: string) => {
-    const funnel = funnels.find(f => f.id === funnelId);
-    if (!funnel) return;
-    updateFunnel(funnelId, { stages: funnel.stages.filter(s => s.id !== stageId) });
-  };
-
-  const reorderStages = async (funnelId: string, newStages: Stage[]) => { 
-    updateFunnel(funnelId, { stages: newStages }); 
-  };
-
-  const addCustomField = async (f: CustomFieldDefinition) => { 
-    setCustomFields(prev => [...prev, f]); 
-    await api.post('/custom-fields', f); 
-  };
-
-  const updateCustomField = async (id: string, updates: Partial<CustomFieldDefinition>) => { 
-    setCustomFields(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); 
-    await api.patch(`/custom-fields/${id}`, updates); 
-  };
-
-  const deleteCustomField = async (id: string) => { 
-    setCustomFields(prev => prev.filter(f => f.id !== id)); 
-    await api.delete(`/custom-fields/${id}`); 
-  };
-
-  const addWebhook = async (name: string, funnelId: string, stageId: string) => {
-    if (!currentUser?.accountId) return;
-    const nw: Webhook = {
-        id: `wh-${Date.now()}`,
-        accountId: currentUser.accountId,
-        name,
-        funnelId,
-        stageId,
-        active: true,
-        createdAt: new Date().toISOString()
-    };
-    setWebhooks(prev => [...prev, nw]);
-    await api.post('/webhooks', nw);
-  };
-
-  const updateWebhook = async (id: string, updates: Partial<Webhook>) => {
-    setWebhooks(prev => prev.map(w => w.id === id ? { ...w, ...updates } : w));
-    await api.patch(`/webhooks/${id}`, updates);
-  };
-
-  const deleteWebhook = async (id: string) => {
-    setWebhooks(prev => prev.filter(w => w.id !== id));
-    await api.delete(`/webhooks/${id}`);
-  };
-
-  const addUser = async (user: User) => { 
-    await api.post('/users', user); 
-    refreshData(); 
-  };
-
-  const updateUser = async (id: string, updates: Partial<User>) => { 
-    await api.patch(`/users/${id}`, updates); 
-    refreshData(); 
-  };
-
-  const deleteUser = async (id: string) => { 
-    await api.delete(`/users/${id}`); 
-    refreshData(); 
-  };
-
-  const addTeam = async (team: Team) => { 
-    await api.post('/teams', team); 
-    refreshData(); 
-  };
-
-  const updateTeam = async (id: string, updates: Partial<Team>) => { 
-    await api.patch(`/teams/${id}`, updates); 
-    refreshData(); 
-  };
-
-  const deleteTeam = async (id: string) => { 
-    await api.delete(`/teams/${id}`); 
-    refreshData(); 
-  };
-
-  const createAccount = async (a: Account, u: User) => { 
-    await api.post('/admin/accounts', { 
-      companyName: a.companyName, 
-      ownerName: u.name, 
-      email: u.email, 
-      password: u.password, 
-      plan: a.plan 
-    }); 
-    refreshData(); 
-  };
-
-  const updateAccountStatus = async (id: string, s: any) => { 
-    await api.patch(`/admin/accounts/${id}`, { status: s }); 
-    refreshData(); 
-  };
-
-  const extendAccountSubscription = async (id: string, m: number) => { 
-    console.log(`Extending subscription for ${id} by ${m} months`);
-    refreshData();
-  };
-
-  const updateVisibilitySettings = async (level: VisibilityLevel, allowExport: boolean, showGoals: boolean) => {
-    if (!currentUser?.accountId) return;
-    await api.patch(`/admin/accounts/${currentUser.accountId}`, { 
-      visibilityConfig: { level, allowUserExport: allowExport, showTeamGoals: showGoals } 
-    });
-    refreshData();
-  };
+  // --- ADMIN ---
+  const addUser = async (user: User) => { await api.post('/users', user); refreshData(); };
+  const updateUser = async (id: string, updates: Partial<User>) => { await api.patch(`/users/${id}`, updates); refreshData(); };
+  const deleteUser = async (id: string) => { await api.delete(`/users/${id}`); refreshData(); };
+  const addTeam = async (team: Team) => { await api.post('/teams', team); refreshData(); };
+  const updateTeam = async (id: string, updates: Partial<Team>) => { await api.patch(`/teams/${id}`, updates); refreshData(); };
+  const deleteTeam = async (id: string) => { await api.delete(`/teams/${id}`); refreshData(); };
+  const createAccount = async (a: Account, u: User) => { await api.post('/admin/accounts', { companyName: a.companyName, ownerName: u.name, email: u.email, password: u.password, plan: a.plan }); refreshData(); };
+  const updateAccountStatus = async (id: string, s: any) => { await api.patch(`/admin/accounts/${id}`, { status: s }); refreshData(); };
+  const extendAccountSubscription = async (id: string, m: number) => { refreshData(); };
+  const updateVisibilitySettings = async (level: VisibilityLevel, allowExport: boolean, showGoals: boolean) => { if (!currentUser?.accountId) return; await api.patch(`/admin/accounts/${currentUser.accountId}`, { visibilityConfig: { level, allowUserExport: allowExport, showTeamGoals: showGoals } }); refreshData(); };
 
   return (
     <CRMContext.Provider value={{
-      funnels, leads, users, teams, customFields, webhooks, allAccounts: accounts,
-      activeFunnelId, currentUser, isLoading, isOnline, notifications,
+      funnels, leads, users, teams, customFields, webhooks, knowledgeSources, botInstance, allAccounts: accounts,
+      activeFunnelId, currentUser, isLoading, isOnline,
       visibleLeads, visibleUsers, currentAccount,
-      setActiveFunnelId, login, registerAccount, logout, refreshData, removeNotification,
+      setActiveFunnelId, login, registerAccount, logout, refreshData,
       addLead, updateLead, moveLead, duplicateLead, deleteLead,
       addTask, toggleTask, deleteTask,
       addFunnel, updateFunnel, deleteFunnel, addStage, updateStage, reorderStages, deleteStage,
       addCustomField, updateCustomField, deleteCustomField,
       addWebhook, updateWebhook, deleteWebhook,
+      addKnowledgeSource, deleteKnowledgeSource, updateBotInstance, trainAI,
       addUser, updateUser, deleteUser,
       addTeam, updateTeam, deleteTeam, createAccount, updateAccountStatus, extendAccountSubscription, updateVisibilitySettings
     }}>
