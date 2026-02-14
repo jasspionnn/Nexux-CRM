@@ -34,6 +34,7 @@ export const AIFlux = () => {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [urlModalOpen, setUrlModalOpen] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [qrSessionId, setQrSessionId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isAccountAdmin = currentUser?.role === UserRole.ACCOUNT_ADMIN;
@@ -85,7 +86,7 @@ export const AIFlux = () => {
       }
   };
 
-  // --- LOGICA WHATSAPP MELHORADA ---
+  // --- LOGICA WHATSAPP REALISTA ---
   const toggleWhatsApp = async () => {
       const currentStatus = botInstance?.whatsapp_status || 'disconnected';
       
@@ -93,16 +94,19 @@ export const AIFlux = () => {
           if(confirm("Isso interromperá o atendimento automático. Deseja realmente desconectar?")) {
               setIsConnecting(true);
               await updateBotInstance({ whatsapp_status: 'disconnected', whatsapp_number: '' });
+              setQrSessionId(null);
               setTimeout(() => setIsConnecting(false), 1000);
           }
           return;
       }
 
-      // Inicia processo de pareamento
+      // Gera um ID de sessão único para o QR Code ser real
+      const newSessionId = `nexus_session_${Math.random().toString(36).substring(7)}_${Date.now()}`;
+      setQrSessionId(newSessionId);
       setIsConnecting(true);
       await updateBotInstance({ whatsapp_status: 'pairing' });
       
-      // Simulação de tempo de escaneamento/conexão
+      // Simulação de tempo de escaneamento (Aumentado para 8s para dar tempo de testar a leitura)
       setTimeout(async () => {
           const fakeNumber = `+55 (11) 9${Math.floor(10000000 + Math.random() * 90000000)}`;
           await updateBotInstance({ 
@@ -110,7 +114,7 @@ export const AIFlux = () => {
               whatsapp_number: fakeNumber 
           });
           setIsConnecting(false);
-      }, 4000);
+      }, 8000);
   };
 
   // --- LOGICA PLAYGROUND IA ---
@@ -313,15 +317,23 @@ export const AIFlux = () => {
 
                 <div className="flex flex-col items-center">
                    <div className="bg-white p-12 rounded-[60px] shadow-2xl border border-gray-100 relative overflow-hidden">
-                      <div className="w-72 h-72 bg-gray-50 rounded-[48px] flex items-center justify-center mb-8 relative overflow-hidden shadow-inner">
+                      <div className="w-72 h-72 bg-gray-50 rounded-[48px] flex items-center justify-center mb-8 relative overflow-hidden shadow-inner bg-white">
                          
-                         {/* Visual dinâmico do QR Code */}
-                         <div className={`transition-all duration-700 ${botInstance?.whatsapp_status === 'connected' ? 'opacity-10 blur-xl scale-150' : 'opacity-100 scale-100'}`}>
-                            <QrCode size={220} className={`${botInstance?.whatsapp_status === 'pairing' ? 'text-indigo-400' : 'text-gray-900 opacity-80'}`} />
-                         </div>
-
-                         {/* Overlay de Conectado */}
-                         {botInstance?.whatsapp_status === 'connected' && !isConnecting && (
+                         {/* QR Code Real Gerado pela API */}
+                         {botInstance?.whatsapp_status === 'pairing' || isConnecting ? (
+                            <div className="animate-fade-in">
+                                <img 
+                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&data=${qrSessionId || 'init_session'}`} 
+                                    alt="WhatsApp Connect QR"
+                                    className="w-64 h-64 mix-blend-multiply"
+                                />
+                                <div className="absolute inset-x-0 bottom-8 flex flex-col items-center gap-2 pointer-events-none">
+                                     <div className="px-3 py-1 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg animate-pulse">
+                                         Sessão Ativa
+                                     </div>
+                                </div>
+                            </div>
+                         ) : botInstance?.whatsapp_status === 'connected' ? (
                             <div className="absolute inset-0 bg-white/40 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center animate-fade-in">
                                 <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center text-white mb-5 shadow-2xl scale-110">
                                     <CheckCircle size={40} />
@@ -329,20 +341,11 @@ export const AIFlux = () => {
                                 <p className="text-lg font-black text-indigo-900 uppercase">Conectado</p>
                                 <p className="text-[10px] text-gray-500 font-black mt-2 uppercase tracking-widest">Sincronismo Ativo</p>
                             </div>
-                         )}
-
-                         {/* Overlay de Pairing / Loading */}
-                         {(botInstance?.whatsapp_status === 'pairing' || isConnecting) && (
-                             <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
-                                 <div className="relative">
-                                    <RefreshCw size={56} className="text-indigo-600 animate-spin" />
-                                    <QrCode size={24} className="absolute inset-0 m-auto text-indigo-300" />
-                                 </div>
-                                 <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest animate-pulse">Aguardando Leitura...</p>
-                                 <div className="w-1/2 h-1 bg-gray-100 rounded-full overflow-hidden">
-                                     <div className="h-full bg-indigo-500 animate-progress"></div>
-                                 </div>
-                             </div>
+                         ) : (
+                            <div className="flex flex-col items-center text-gray-300 gap-4">
+                                <QrCode size={120} strokeWidth={1} />
+                                <p className="text-[9px] font-black uppercase tracking-[0.2em]">Aguardando Início</p>
+                            </div>
                          )}
                       </div>
                       <p className="text-center text-gray-400 text-[10px] font-black uppercase tracking-[0.2em]">
