@@ -6,7 +6,7 @@ import {
   AlertCircle, Smartphone, Database, BarChart3, 
   Settings2, Plus, Trash2, QrCode,
   Zap, FileText, Cpu, Eye, Loader2, Send, X, Sparkles,
-  RefreshCw, Check
+  RefreshCw, Check, Shield, User
 } from 'lucide-react';
 
 type AIFluxTab = 'overview' | 'whatsapp' | 'knowledge' | 'analytics';
@@ -18,13 +18,12 @@ export const AIFlux = () => {
   } = useCRM();
 
   const [activeTab, setActiveTab] = useState<AIFluxTab>('overview');
-  const [isSyncing, setIsSyncing] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [trainingStatus, setTrainingStatus] = useState<'idle' | 'training' | 'success'>('idle');
 
   const handleSimulateConnection = async () => {
     setShowQR(true);
-    // Simula tempo de escaneamento
+    // Simula tempo de escaneamento e autenticação
     setTimeout(async () => {
         await updateBotInstance({ whatsapp_status: 'connected', whatsapp_number: '+55 11 99999-8888' });
         setShowQR(false);
@@ -154,16 +153,21 @@ export const AIFlux = () => {
                               </>
                           ) : showQR ? (
                               <div className="animate-fade-in flex flex-col items-center">
-                                  <div className="p-6 bg-white border-4 border-gray-100 rounded-3xl shadow-inner relative group">
-                                      <div className="absolute inset-0 bg-white/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-4">
-                                          <Loader2 className="animate-spin text-indigo-600 mb-2" size={32} />
-                                          <p className="text-[10px] font-black uppercase text-indigo-600">Autenticando...</p>
-                                      </div>
-                                      <QrCode size={200} className="text-gray-900" />
+                                  {/* Container do QR Code - Overlay removido para não interferir no escaneamento */}
+                                  <div className="p-8 bg-white border-4 border-gray-50 rounded-[2.5rem] shadow-2xl relative">
+                                      <QrCode size={220} className="text-gray-900" />
                                   </div>
-                                  <h4 className="mt-8 text-xl font-black text-gray-900">Escaneie o QR Code</h4>
-                                  <p className="text-sm text-gray-500 mt-2 font-medium">Abra o WhatsApp > Dispositivos Conectados > Conectar</p>
-                                  <button onClick={() => setShowQR(false)} className="mt-8 text-gray-400 text-[10px] font-black uppercase hover:text-gray-600">Cancelar Conexão</button>
+                                  
+                                  <div className="mt-8 flex flex-col items-center">
+                                      <div className="flex items-center gap-3 text-indigo-600 mb-2">
+                                          <Loader2 className="animate-spin" size={20} />
+                                          <span className="text-sm font-black uppercase tracking-widest">Aguardando Escaneamento...</span>
+                                      </div>
+                                      <h4 className="text-xl font-black text-gray-900">Abra o WhatsApp no seu celular</h4>
+                                      <p className="text-sm text-gray-500 mt-1 font-medium">Menu > Dispositivos Conectados > Conectar um dispositivo</p>
+                                  </div>
+
+                                  <button onClick={() => setShowQR(false)} className="mt-10 text-gray-400 text-[10px] font-black uppercase tracking-widest hover:text-red-500 transition-colors">Cancelar Operação</button>
                               </div>
                           ) : (
                               <>
@@ -180,10 +184,10 @@ export const AIFlux = () => {
                       </div>
                       <div className="bg-gray-50 p-6 border-t border-gray-100 flex items-center justify-center gap-8">
                           <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                              <Shield size={14} /> Criptografia Ponta a Ponta
+                              <Shield size={14} /> Criptografia de Ponta a Ponta
                           </div>
                           <div className="flex items-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                              <Cpu size={14} /> Processamento Gemini
+                              <Cpu size={14} /> Processamento Gemini 1.5 Pro
                           </div>
                       </div>
                   </div>
@@ -275,6 +279,3 @@ const StatCard = ({ title, value, change, icon: Icon, color }: any) => {
         </div>
     );
 };
-
-const User = ({ size }: { size: number }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>;
-const Shield = ({ size }: { size: number }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>;
