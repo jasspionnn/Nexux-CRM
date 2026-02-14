@@ -4,9 +4,9 @@ import { useCRM } from '../context/CRMContext';
 import { 
   Plus, Layers, SlidersHorizontal, Trash2, 
   ShieldCheck, CreditCard, ChevronRight, GripVertical, X, Zap, Copy, Check, ExternalLink,
-  ChevronDown
+  ChevronDown, Edit2
 } from 'lucide-react';
-import { UserRole, CustomFieldDefinition, CustomFieldType, CustomFieldContext } from '../types';
+import { UserRole, CustomFieldDefinition, CustomFieldType, CustomFieldContext, Webhook } from '../types';
 
 type SettingsTab = 'pipeline' | 'fields' | 'access' | 'billing' | 'webhooks';
 
@@ -16,7 +16,7 @@ export const Settings = () => {
     updateUser, teams, 
     addFunnel, updateFunnel, deleteFunnel, addStage, updateStage, deleteStage,
     customFields, addCustomField, updateCustomField, deleteCustomField,
-    webhooks, addWebhook, deleteWebhook
+    webhooks, addWebhook, updateWebhook, deleteWebhook
   } = useCRM();
   
   const [activeTab, setActiveTab] = useState<SettingsTab>('access');
@@ -24,6 +24,7 @@ export const Settings = () => {
   const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
   const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
   const [editingField, setEditingField] = useState<CustomFieldDefinition | null>(null);
+  const [editingWebhook, setEditingWebhook] = useState<Webhook | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const selectedFunnel = useMemo(() => funnels.find(f => f.id === (selectedFunnelId || funnels[0]?.id)), [funnels, selectedFunnelId]);
@@ -46,15 +47,27 @@ export const Settings = () => {
       stageId: funnels[0]?.stages[0]?.id || ''
   });
 
+  // Efeito para carregar dados ao editar webhook
   useEffect(() => {
-    if (funnels.length > 0 && !webhookForm.funnelId) {
-        setWebhookForm(prev => ({ 
-            ...prev, 
-            funnelId: funnels[0].id, 
-            stageId: funnels[0].stages[0]?.id || '' 
-        }));
+    if (editingWebhook) {
+        setWebhookForm({
+            name: editingWebhook.name,
+            funnelId: editingWebhook.funnelId,
+            stageId: editingWebhook.stageId
+        });
+    } else {
+        setWebhookForm({
+            name: '',
+            funnelId: funnels[0]?.id || '',
+            stageId: funnels[0]?.stages[0]?.id || ''
+        });
     }
-  }, [funnels]);
+  }, [editingWebhook, funnels]);
+
+  const handleOpenWebhookModal = (webhook: Webhook | null = null) => {
+      setEditingWebhook(webhook);
+      setIsWebhookModalOpen(true);
+  };
 
   return (
     <div className="p-8 h-full flex flex-col bg-white animate-fade-in relative overflow-hidden pt-20">
@@ -180,7 +193,7 @@ export const Settings = () => {
                         <h3 className="text-xl font-black text-gray-900">Webhooks e Automações</h3>
                         <p className="text-sm text-gray-500">Encaminhe leads de formulários externos direto para as etapas do seu funil.</p>
                     </div>
-                    <button onClick={() => setIsWebhookModalOpen(true)} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm">
+                    <button onClick={() => handleOpenWebhookModal(null)} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm">
                         <Plus size={18} /> Novo Webhook
                     </button>
                 </div>
@@ -218,9 +231,14 @@ export const Settings = () => {
                                         </button>
                                     </div>
                                 </div>
-                                <button onClick={() => deleteWebhook(wb.id)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
-                                    <Trash2 size={20} />
-                                </button>
+                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                                    <button onClick={() => handleOpenWebhookModal(wb)} className="p-2 text-gray-400 hover:text-blue-600 rounded-lg">
+                                        <Edit2 size={20} />
+                                    </button>
+                                    <button onClick={() => deleteWebhook(wb.id)} className="p-2 text-gray-400 hover:text-red-500 rounded-lg">
+                                        <Trash2 size={20} />
+                                    </button>
+                                </div>
                             </div>
                         );
                     }) : (
@@ -245,19 +263,29 @@ export const Settings = () => {
         )}
       </div>
 
-      {/* MODAL: NOVO WEBHOOK */}
+      {/* MODAL: NOVO/EDITAR WEBHOOK */}
       {isWebhookModalOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
                 <div className="px-8 py-6 border-b bg-gray-50 flex justify-between items-center">
-                    <h3 className="font-black text-gray-800 uppercase text-sm tracking-widest">Configurar Nova Automação</h3>
-                    <button onClick={() => setIsWebhookModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
+                    <h3 className="font-black text-gray-800 uppercase text-sm tracking-widest">
+                        {editingWebhook ? 'Editar Automação' : 'Configurar Nova Automação'}
+                    </h3>
+                    <button onClick={() => { setIsWebhookModalOpen(false); setEditingWebhook(null); }} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
                 </div>
                 <form onSubmit={(e) => {
                     e.preventDefault();
-                    addWebhook(webhookForm.name, webhookForm.funnelId, webhookForm.stageId);
+                    if (editingWebhook) {
+                        updateWebhook(editingWebhook.id, { 
+                            name: webhookForm.name, 
+                            funnelId: webhookForm.funnelId, 
+                            stageId: webhookForm.stageId 
+                        });
+                    } else {
+                        addWebhook(webhookForm.name, webhookForm.funnelId, webhookForm.stageId);
+                    }
                     setIsWebhookModalOpen(false);
-                    setWebhookForm({ name: '', funnelId: funnels[0]?.id || '', stageId: funnels[0]?.stages[0]?.id || '' });
+                    setEditingWebhook(null);
                 }} className="p-8 space-y-6">
                     <div>
                         <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Identificação</label>
@@ -296,7 +324,7 @@ export const Settings = () => {
                         </div>
                     </div>
                     <button type="submit" className="w-full bg-[#00455B] text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-black transition-all flex items-center justify-center gap-2">
-                        <Zap size={16} /> Ativar Integração
+                        <Zap size={16} /> {editingWebhook ? 'Salvar Alterações' : 'Ativar Integração'}
                     </button>
                 </form>
             </div>
