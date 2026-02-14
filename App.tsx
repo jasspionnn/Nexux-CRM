@@ -10,6 +10,7 @@ import { LeadDetailPage } from './components/LeadDetailPage';
 import { TasksView } from './components/TasksView';
 import { LoginPage } from './components/LoginPage';
 import { NexusAdminDashboard } from './components/NexusAdminDashboard';
+import { AIFlux } from './components/AIFlux';
 import { UserRole } from './types';
 import { Loader2 } from 'lucide-react';
 
@@ -56,6 +57,7 @@ const AppContent = () => {
       case 'kanban': return <KanbanBoard onNavigate={handleNavigate} />;
       case 'leads-db': return <LeadsDatabase onNavigate={handleNavigate} />;
       case 'tasks': return <TasksView onNavigate={handleNavigate} />;
+      case 'aiflux': return <AIFlux />;
       case 'settings': 
         return currentUser.role === UserRole.ACCOUNT_ADMIN ? <Settings /> : <div className="p-12 font-black">ACESSO RESTRITO</div>;
       case 'lead-detail': 

@@ -3,7 +3,7 @@ import React from 'react';
 import { useCRM } from '../context/CRMContext';
 import { 
   LayoutDashboard, Kanban, Users, Settings, LogOut, Hexagon, 
-  Database, CheckSquare, Shield, ShieldCheck, Search, Bell, Menu 
+  Database, CheckSquare, Shield, ShieldCheck, Search, Bell, Menu, Sparkles 
 } from 'lucide-react';
 import { UserRole } from '../types';
 
@@ -22,6 +22,7 @@ export const Sidebar: React.FC<NavbarProps> = ({ currentView, onChangeView }) =>
     { id: 'kanban', label: 'Negociações', icon: Kanban },
     { id: 'leads-db', label: 'Contatos', icon: Database },
     { id: 'tasks', label: 'Tarefas', icon: CheckSquare },
+    { id: 'aiflux', label: 'AIFlux', icon: Sparkles, highlight: true },
   ];
 
   return (
@@ -37,17 +38,17 @@ export const Sidebar: React.FC<NavbarProps> = ({ currentView, onChangeView }) =>
             <button
               key={item.id}
               onClick={() => onChangeView(item.id)}
-              className={`px-4 py-5 text-sm font-semibold transition-all border-b-2 ${
+              className={`px-4 py-5 text-sm font-semibold transition-all border-b-2 flex items-center gap-2 ${
                 currentView === item.id 
                   ? 'border-brand-navy text-gray-900' 
                   : 'border-transparent text-gray-500 hover:text-gray-900'
-              }`}
+              } ${item.highlight && currentView !== item.id ? 'text-indigo-600' : ''}`}
             >
+              <item.icon size={16} className={item.highlight ? 'text-indigo-500' : ''} />
               {item.label}
+              {item.highlight && <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></span>}
             </button>
           ))}
-          <button className="px-4 py-5 text-sm font-semibold text-gray-500 hover:text-gray-900 border-b-2 border-transparent">Análises</button>
-          <button className="px-4 py-5 text-sm font-semibold text-gray-500 hover:text-gray-900 border-b-2 border-transparent">Marketing</button>
         </div>
       </div>
 
@@ -67,7 +68,6 @@ export const Sidebar: React.FC<NavbarProps> = ({ currentView, onChangeView }) =>
           </div>
           <img src={currentUser?.avatar} className="w-9 h-9 rounded-full border border-gray-100 shadow-sm" alt="profile" />
           
-          {/* Dropdown Simples */}
           <div className="absolute top-full right-0 mt-2 w-48 bg-white border border-gray-200 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all p-2">
             <button onClick={logout} className="w-full flex items-center gap-2 p-2 text-sm text-red-600 font-bold hover:bg-red-50 rounded-lg">
               <LogOut size={16} /> Sair
