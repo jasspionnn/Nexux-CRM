@@ -38,7 +38,6 @@ export const AIFlux = () => {
 
   // --- LOGICA DO BOT (ATIVAR/DESATIVAR) ---
   const handleToggleBotStatus = async () => {
-      // Se botInstance for null, assumimos que ele deve ser ativado
       const currentActive = botInstance?.active ?? false;
       await updateBotInstance({ active: !currentActive });
   };
@@ -68,7 +67,7 @@ export const AIFlux = () => {
           await addKnowledgeSource({
               name: file.name,
               type: 'PDF',
-              content: content.slice(0, 100000) // Salvando os primeiros 100k caracteres para contexto
+              content: content.slice(0, 100000)
           });
       };
       reader.readAsText(file);
@@ -98,7 +97,6 @@ export const AIFlux = () => {
 
       await updateBotInstance({ whatsapp_status: 'pairing' });
       
-      // Simulação de pareamento bem sucedido após 3 segundos
       setTimeout(async () => {
           const fakeNumber = `+55 (11) 9${Math.floor(10000000 + Math.random() * 90000000)}`;
           await updateBotInstance({ 
@@ -119,8 +117,6 @@ export const AIFlux = () => {
 
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          
-          // Construindo o contexto dinâmico baseado nas fontes carregadas
           const contextStrings = knowledgeSources.map(s => 
               `FONTE: ${s.name}\nCONTEÚDO: ${s.content || 'URL sync ativa: ' + s.url}`
           ).join('\n\n');
@@ -133,7 +129,7 @@ export const AIFlux = () => {
           
           REGRAS:
           1. Seja cordial e profissional.
-          2. Se não encontrar a informação na base de conhecimento, responda que ainda está aprendendo sobre esse assunto específico, mas tente ajudar com o que souber sobre vendas e CRM de forma geral.
+          2. Se não encontrar a informação na base de conhecimento, responda que ainda está aprendendo sobre esse assunto específico.
           3. Não invente dados de contato ou preços que não estejam nos documentos.`;
 
           const response = await ai.models.generateContent({
@@ -145,7 +141,7 @@ export const AIFlux = () => {
 
           setChatMessages(prev => [...prev, { role: 'bot', text: response.text || "Não consegui processar essa informação agora." }]);
       } catch (err) {
-          setChatMessages(prev => [...prev, { role: 'bot', text: "Erro na conexão com o motor de IA. Verifique sua chave API." }]);
+          setChatMessages(prev => [...prev, { role: 'bot', text: "Erro na conexão com o motor de IA." }]);
       } finally {
           setIsChatLoading(false);
       }
@@ -154,7 +150,7 @@ export const AIFlux = () => {
   const aiLeadsCount = leads.filter(l => l.tags?.includes('AIFlux') || JSON.stringify(l.notes).includes('IA')).length;
 
   return (
-    <div className="h-full flex flex-col bg-white overflow-hidden animate-fade-in relative pt-16">
+    <div className="h-full flex flex-col bg-white overflow-hidden animate-fade-in relative">
       
       {/* PlayGround de Teste (Side Panel) */}
       {isChatOpen && (
@@ -480,7 +476,7 @@ export const AIFlux = () => {
 
       {/* Modal de URL */}
       {urlModalOpen && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[200] flex items-center justify-center p-4 animate-fade-in">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in">
               <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
                   <div className="p-8 border-b bg-gray-50 flex justify-between items-center">
                       <h3 className="font-black text-gray-800 uppercase text-xs tracking-widest">Sincronizar Website</h3>
