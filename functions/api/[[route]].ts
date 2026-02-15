@@ -11,30 +11,26 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
-// --- MIDDLEWARE UTILITÁRIO ---
+// --- HELPER ID ---
 const generateId = (prefix: string) => `${prefix}_${crypto.randomUUID().split('-')[0]}`;
-
-// --- PUBLIC / SETTINGS ---
-app.get('/public/settings', async (c) => {
-    const { results } = await c.env.DB.prepare('SELECT key, value FROM system_settings').all();
-    const settings = results.reduce((acc: any, cur: any) => ({ ...acc, [cur.key]: cur.value }), {});
-    return c.json(settings);
-});
 
 // --- AUTH ---
 app.post('/auth/login', async (c) => {
-    const { email, password } = await c.req.json() as any;
-    const user = await c.env.DB.prepare(
-        'SELECT * FROM users WHERE email = ? AND password = ? AND status = "active"'
-    ).bind(email, password).first();
+    try {
+        const { email, password } = await c.req.json() as any;
+        const user = await c.env.DB.prepare(
+            'SELECT * FROM users WHERE email = ? AND password = ? AND status = "active"'
+        ).bind(email, password).first();
 
-    if (!user) return c.json({ error: "Credenciais inválidas ou conta inativa" }, 401);
-    
-    // Atualizar last login
-    await c.env.DB.prepare('UPDATE users SET last_login = ? WHERE id = ?')
-        .bind(new Date().toISOString(), (user as any).id).run();
+        if (!user) return c.json({ error: "Credenciais inválidas ou conta inativa" }, 401);
+        
+        await c.env.DB.prepare('UPDATE users SET last_login = ? WHERE id = ?')
+            .bind(new Date().toISOString(), (user as any).id).run();
 
-    return c.json({ user });
+        return c.json({ user });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
 });
 
 app.post('/auth/register', async (c) => {
@@ -55,10 +51,9 @@ app.post('/auth/register', async (c) => {
     }
 });
 
-// --- SYNC (O CORAÇÃO DO CRM) ---
+// --- SYNC (RECUPERA DADOS DO CRM) ---
 app.get('/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
-    
     try {
         const [funnels, leads, users, teams, fields] = await Promise.all([
             c.env.DB.prepare('SELECT * FROM funnels WHERE account_id = ?').bind(accountId).all(),
@@ -68,10 +63,9 @@ app.get('/sync/:accountId', async (c) => {
             c.env.DB.prepare('SELECT * FROM custom_fields WHERE account_id = ?').bind(accountId).all()
         ]);
 
-        // Parse JSON fields
         const formattedFunnels = funnels.results.map((f: any) => ({
             ...f,
-            stages: typeof f.stages === 'string' ? JSON.parse(f.stages) : f.stages
+            stages: typeof f.stages === 'string' ? JSON.parse(f.stages) : (f.stages || [])
         }));
 
         const formattedLeads = leads.results.map((l: any) => ({
@@ -114,8 +108,6 @@ app.post('/leads', async (c) => {
 app.patch('/leads/:id', async (c) => {
     const id = c.req.param('id');
     const updates = await c.req.json() as any;
-    
-    // Construção dinâmica de SET para evitar sobrescrever campos não enviados
     const keys = Object.keys(updates);
     if (keys.length === 0) return c.json({ success: true });
 
@@ -136,54 +128,50 @@ app.patch('/leads/:id', async (c) => {
     } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
-app.delete('/leads/:id', async (c) => {
-    await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(c.req.param('id')).run();
-    return c.json({ success: true });
+// --- SETTINGS PUBLICAS ---
+app.get('/public/settings', async (c) => {
+    try {
+        const { results } = await c.env.DB.prepare('SELECT key, value FROM system_settings').all();
+        const settings = results.reduce((acc: any, cur: any) => ({ ...acc, [cur.key]: cur.value }), {});
+        return c.json(settings);
+    } catch {
+        return c.json({});
+    }
 });
 
-// --- ADMIN NEXUS ---
+// --- ADMIN ---
 app.get('/admin/accounts', async (c) => {
     const { results } = await c.env.DB.prepare('SELECT * FROM accounts ORDER BY created_at DESC').all();
     return c.json({ accounts: results });
 });
 
-app.patch('/admin/settings', async (c) => {
-    const settings = await c.req.json() as any;
-    const queries = Object.entries(settings).map(([key, value]) => 
-        c.env.DB.prepare('INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-        .bind(key, value)
-    );
-    await c.env.DB.batch(queries);
-    return c.json({ success: true });
-});
-
-// --- IA & PLAYGROUND ---
+// --- IA & BOT ---
 app.post('/bot/chat-test', async (c) => {
     try {
         const { message, accountId } = await c.req.json() as any;
         const apiKey = process.env.API_KEY;
-        if (!apiKey) throw new Error("API_KEY não configurada");
+        if (!apiKey) throw new Error("Chave Gemini não configurada");
 
-        // RAG
-        let context = "";
-        try {
-            const emb = await c.env.AI.run('@cf/baai/bge-small-en-v1.5', { text: [message] });
-            const matches = await c.env.VECTORIZE.query(emb.data[0], { topK: 3, filter: { account_id: accountId } });
-            if (matches.matches?.length > 0) {
-                const ids = matches.matches.map((m: any) => m.id);
-                const { results } = await c.env.DB.prepare(`SELECT content FROM knowledge_chunks WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all();
-                context = results.map((r: any) => r.content).join('\n');
-            }
-        } catch (e) {}
+        let context = "Nenhum contexto encontrado.";
+        if (c.env.VECTORIZE && c.env.AI) {
+            try {
+                const emb = await c.env.AI.run('@cf/baai/bge-small-en-v1.5', { text: [message] });
+                const matches = await c.env.VECTORIZE.query(emb.data[0], { topK: 3, filter: { account_id: accountId } });
+                if (matches.matches?.length > 0) {
+                    const ids = matches.matches.map((m: any) => m.id);
+                    const { results } = await c.env.DB.prepare(`SELECT content FROM knowledge_chunks WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all();
+                    context = results.map((r: any) => r.content).join('\n');
+                }
+            } catch (e) { console.error("Falha RAG:", e); }
+        }
 
         const ai = new GoogleGenAI({ apiKey });
         const result = await ai.models.generateContent({
-            model: 'gemini-1.5-flash',
-            config: { systemInstruction: `Apoio ao CRM. Contexto: ${context}`, temperature: 0.7 },
+            model: 'gemini-2.0-flash-exp',
+            config: { systemInstruction: `Você é um assistente de vendas. Use este contexto: ${context}`, temperature: 0.7 },
             contents: [{ role: 'user', parts: [{ text: message }] }]
         });
 
-        // Gravar no histórico
         const aiText = result.text;
         const historyId = generateId('his');
         await c.env.DB.prepare('INSERT INTO bot_chat_history (id, account_id, lead_phone, role, content) VALUES (?, ?, ?, ?, ?)')
@@ -195,32 +183,12 @@ app.post('/bot/chat-test', async (c) => {
     }
 });
 
-// --- KNOWLEDGE ---
-app.get('/knowledge/:accountId', async (c) => {
-    const { results } = await c.env.DB.prepare('SELECT * FROM knowledge_sources WHERE account_id = ?').bind(c.req.param('accountId')).all();
+// Placeholder para rotas não implementadas mas chamadas no sync do front
+app.get('/webhooks/:id', (c) => c.json([]));
+app.get('/knowledge/:id', async (c) => {
+    const { results } = await c.env.DB.prepare('SELECT * FROM knowledge_sources WHERE account_id = ?').bind(c.req.param('id')).all();
     return c.json(results);
 });
-
-app.post('/knowledge', async (c) => {
-    const s = await c.req.json() as any;
-    await c.env.DB.prepare('INSERT INTO knowledge_sources (id, account_id, name, type, created_at) VALUES (?, ?, ?, ?, ?)')
-        .bind(s.id, s.accountId, s.name, s.type, s.created_at).run();
-    return c.json({ success: true });
-});
-
-app.post('/knowledge/process', async (c) => {
-    const { accountId, sourceId, content } = await c.req.json() as any;
-    const chunks = content.match(/.{1,1000}/g) || [];
-    for (const text of chunks) {
-        const id = generateId('chk');
-        const emb = await c.env.AI.run('@cf/baai/bge-small-en-v1.5', { text: [text] });
-        await Promise.all([
-            c.env.VECTORIZE.upsert([{ id, values: emb.data[0], metadata: { account_id: accountId } }]),
-            c.env.DB.prepare('INSERT INTO knowledge_chunks (id, account_id, source_id, content) VALUES (?, ?, ?, ?)')
-                .bind(id, accountId, sourceId, text).run()
-        ]);
-    }
-    return c.json({ success: true });
-});
+app.get('/bot/:id', (c) => c.json(null));
 
 export const onRequest = handle(app);
