@@ -3,7 +3,6 @@ import React, { createContext, useContext, useState, ReactNode, useEffect, useCa
 import { Funnel, Lead, Team, User, Stage, CustomFieldDefinition, Task, Account, UserRole, VisibilityLevel, Webhook, KnowledgeSource, BotInstance } from '../types';
 import { api } from '../services/api';
 
-// Fix: Expanding CRMContextType with missing properties/methods found in components
 interface CRMContextType {
   funnels: Funnel[];
   leads: Lead[];
@@ -81,7 +80,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   }, []);
 
-  // Carregamento inicial da sessão
   useEffect(() => {
     const savedUser = localStorage.getItem('nexus_user_session');
     if (savedUser) { 
@@ -111,10 +109,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                  setUsers(data.users || []);
                  setTeams(data.teams || []);
                  setCustomFields(data.customFields || []);
-                 // Fix: Load additional sync data for webhooks, knowledge and bot if available
-                 setWebhooks(data.webhooks || []);
-                 setKnowledgeSources(data.knowledgeSources || []);
-                 setBotInstance(data.botInstance || null);
                  
                  if (data.funnels && data.funnels.length > 0) {
                     const savedId = localStorage.getItem('nexus_active_funnel');
@@ -170,20 +164,44 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // CRUD Leads
-  const addLead = async (lead: Lead) => { setLeads(prev => [...prev, lead]); await api.post('/leads', lead); };
-  const updateLead = async (id: string, updates: Partial<Lead>) => { setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l)); await api.patch(`/leads/${id}`, updates); };
-  const moveLead = async (leadId: string, targetStageId: string) => { setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stageId: targetStageId } : l)); await api.patch(`/leads/${leadId}`, { stageId: targetStageId }); };
-  const deleteLead = async (id: string) => { setLeads(prev => prev.filter(l => l.id !== id)); await api.delete(`/leads/${id}`); };
+  const addLead = async (lead: Lead) => { 
+    setLeads(prev => [...prev, lead]); 
+    await api.post('/leads', lead); 
+  };
+  
+  const updateLead = async (id: string, updates: Partial<Lead>) => { 
+    setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l)); 
+    await api.patch(`/leads/${id}`, updates); 
+  };
+
+  const moveLead = async (leadId: string, targetStageId: string) => { 
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stageId: targetStageId } : l)); 
+    await api.patch(`/leads/${leadId}`, { stageId: targetStageId }); 
+  };
+
+  const deleteLead = async (id: string) => { 
+    setLeads(prev => prev.filter(l => l.id !== id)); 
+    await api.delete(`/leads/${id}`); 
+  };
 
   // CRUD Funnels
   const addFunnel = async (name: string) => { 
     if (!currentUser?.accountId) return;
     const nf: Funnel = { id: `f-${Date.now()}`, accountId: currentUser.accountId, name, stages: [{ id: `s1-${Date.now()}`, name: 'Lead', color: 'bg-blue-500', order: 0 }, { id: `s2-${Date.now()}`, name: 'Fechado', color: 'bg-green-500', order: 1 }] };
-    setFunnels(prev => [...prev, nf]); await api.post('/funnels', nf); 
+    setFunnels(prev => [...prev, nf]); 
+    await api.post('/funnels', nf); 
     if (!activeFunnelId) setActiveFunnelId(nf.id);
   };
-  const updateFunnel = async (id: string, updates: Partial<Funnel>) => { setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); await api.patch(`/funnels/${id}`, updates); };
-  const deleteFunnel = async (id: string) => { setFunnels(prev => prev.filter(f => f.id !== id)); await api.delete(`/funnels/${id}`); };
+  
+  const updateFunnel = async (id: string, updates: Partial<Funnel>) => { 
+    setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); 
+    await api.patch(`/funnels/${id}`, updates); 
+  };
+
+  const deleteFunnel = async (id: string) => { 
+    setFunnels(prev => prev.filter(f => f.id !== id)); 
+    await api.delete(`/funnels/${id}`); 
+  };
 
   const addStage = async (funnelId: string, name: string) => { 
     const funnel = funnels.find(f => f.id === funnelId); 
@@ -192,12 +210,14 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updatedStages = [...funnel.stages, newStage];
     updateFunnel(funnelId, { stages: updatedStages });
   };
+  
   const updateStage = async (funnelId: string, stageId: string, updates: Partial<Stage>) => {
     const funnel = funnels.find(f => f.id === funnelId);
     if (!funnel) return;
     const updatedStages = funnel.stages.map(s => s.id === stageId ? { ...s, ...updates } : s);
     updateFunnel(funnelId, { stages: updatedStages });
   };
+
   const deleteStage = async (funnelId: string, stageId: string) => {
     const funnel = funnels.find(f => f.id === funnelId);
     if (!funnel) return;
@@ -205,33 +225,43 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     updateFunnel(funnelId, { stages: updatedStages });
   };
 
-  const addTask = async (leadId: string, task: Task) => { setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: [...(l.tasks || []), task] } : l)); await api.post(`/leads/${leadId}/tasks`, task); };
-  const toggleTask = async (leadId: string, taskId: string) => { setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: (l.tasks || []).map(t => t.id === taskId ? { ...t, completed: !t.completed } : t) } : l)); };
-  const deleteTask = async (leadId: string, taskId: string) => { setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: (l.tasks || []).filter(t => t.id !== taskId) } : l)); };
+  // CRUD Tarefas (Persistidas no Lead)
+  const addTask = async (leadId: string, task: Task) => { 
+      const lead = leads.find(l => l.id === leadId);
+      if (!lead) return;
+      const updatedTasks = [...(lead.tasks || []), task];
+      await updateLead(leadId, { tasks: updatedTasks });
+  };
   
-  // Fix: Implementing missing Custom Field update and delete methods
+  const toggleTask = async (leadId: string, taskId: string) => { 
+      const lead = leads.find(l => l.id === leadId);
+      if (!lead) return;
+      const updatedTasks = (lead.tasks || []).map(t => t.id === taskId ? { ...t, completed: !t.completed } : t);
+      await updateLead(leadId, { tasks: updatedTasks });
+  };
+  
+  const deleteTask = async (leadId: string, taskId: string) => { 
+      const lead = leads.find(l => l.id === leadId);
+      if (!lead) return;
+      const updatedTasks = (lead.tasks || []).filter(t => t.id !== taskId);
+      await updateLead(leadId, { tasks: updatedTasks });
+  };
+  
+  // CRUD Campos
   const addCustomField = async (f: CustomFieldDefinition) => { setCustomFields(prev => [...prev, f]); await api.post('/custom-fields', f); };
   const updateCustomField = async (id: string, updates: Partial<CustomFieldDefinition>) => { setCustomFields(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); await api.patch(`/custom-fields/${id}`, updates); };
   const deleteCustomField = async (id: string) => { setCustomFields(prev => prev.filter(f => f.id !== id)); await api.delete(`/custom-fields/${id}`); };
 
-  // Fix: Implementing missing updateUser method
   const updateUser = async (id: string, updates: Partial<User>) => { setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updates } : u)); await api.patch(`/users/${id}`, updates); };
-
   const updateAccountStatus = async (accountId: string, status: string) => { await api.patch(`/admin/accounts/${accountId}`, { status }); refreshData(); };
-  
-  // Fix: Implementing missing extendAccountSubscription method
   const extendAccountSubscription = async (accountId: string, months: number) => { await api.post(`/admin/accounts/${accountId}/extend`, { months }); refreshData(); };
 
-  // Fix: Implementing missing Webhook methods
-  const addWebhook = async (webhook: Partial<Webhook>) => { const res = await api.post<Webhook>('/webhooks', webhook); setWebhooks(prev => [...prev, res]); };
-  const updateWebhook = async (id: string, updates: Partial<Webhook>) => { await api.patch(`/webhooks/${id}`, updates); setWebhooks(prev => prev.map(w => w.id === id ? { ...w, ...updates } : w)); };
-  const deleteWebhook = async (id: string) => { await api.delete(`/webhooks/${id}`); setWebhooks(prev => prev.filter(w => w.id !== id)); };
-
-  // Fix: Implementing missing Knowledge Source methods
+  // Webhooks/Bots (Placeholders funcionais)
+  const addWebhook = async (webhook: Partial<Webhook>) => { setWebhooks(prev => [...prev, { ...webhook, id: `wh-${Date.now()}` } as Webhook]); };
+  const updateWebhook = async (id: string, updates: Partial<Webhook>) => { setWebhooks(prev => prev.map(w => w.id === id ? { ...w, ...updates } : w)); };
+  const deleteWebhook = async (id: string) => { setWebhooks(prev => prev.filter(w => w.id !== id)); };
   const addKnowledgeSource = async (source: KnowledgeSource) => { setKnowledgeSources(prev => [...prev, source]); };
   const deleteKnowledgeSource = async (id: string) => { setKnowledgeSources(prev => prev.filter(k => k.id !== id)); };
-
-  // Fix: Implementing missing Bot Instance update method
   const updateBotInstance = async (updates: Partial<BotInstance>) => { if (botInstance) setBotInstance({ ...botInstance, ...updates }); };
 
   return (
