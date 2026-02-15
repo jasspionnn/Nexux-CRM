@@ -120,11 +120,13 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         localStorage.removeItem('nexus_user_session');
       } 
     }
-    setIsLoading(false);
   }, []);
 
   const refreshData = useCallback(async () => {
-      if (!currentUser) return;
+      if (!currentUser) {
+          setIsLoading(false);
+          return;
+      }
       setIsLoading(true);
       try {
           if (currentUser.role === UserRole.NEXUS_ADMIN) {
@@ -139,7 +141,15 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                  setTeams(data.teams || []);
                  setCustomFields(data.customFields || []);
                  
-                 // Busca paralela de outros módulos (ignora erros silenciosamente para não quebrar o CRM principal)
+                 // Fallback para funil ativo se não houver um ou se o salvo não existir mais
+                 if (data.funnels && data.funnels.length > 0) {
+                    const savedId = localStorage.getItem('nexus_active_funnel');
+                    const exists = data.funnels.find((f: any) => f.id === savedId);
+                    if (!savedId || !exists) {
+                        setActiveFunnelId(data.funnels[0].id);
+                    }
+                 }
+
                  try {
                      const [whs, kls, bot] = await Promise.all([
                         api.get<Webhook[]>(`/webhooks/${currentUser.accountId}`).catch(() => []),
@@ -150,13 +160,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                      setKnowledgeSources(kls || []);
                      setBotInstance(bot || null);
                  } catch {}
-
-                 if (data.funnels?.length > 0) {
-                     const exists = data.funnels.find((f: any) => f.id === activeFunnelId);
-                     if (!activeFunnelId || !exists) {
-                         setActiveFunnelId(data.funnels[0].id);
-                     }
-                 }
                }
           }
       } catch (error) { 
@@ -164,10 +167,11 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       } finally { 
           setIsLoading(false); 
       }
-  }, [currentUser, activeFunnelId]);
+  }, [currentUser]);
 
   useEffect(() => { 
     if (currentUser) refreshData(); 
+    else setIsLoading(false);
   }, [currentUser, refreshData]);
 
   const currentAccount = useMemo(() => {

@@ -11,7 +11,6 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
-// --- HELPER ID ---
 const generateId = (prefix: string) => `${prefix}_${crypto.randomUUID().split('-')[0]}`;
 
 // --- AUTH ---
@@ -51,7 +50,7 @@ app.post('/auth/register', async (c) => {
     }
 });
 
-// --- SYNC (RECUPERA DADOS DO CRM) ---
+// --- SYNC ---
 app.get('/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
     try {
@@ -63,25 +62,34 @@ app.get('/sync/:accountId', async (c) => {
             c.env.DB.prepare('SELECT * FROM custom_fields WHERE account_id = ?').bind(accountId).all()
         ]);
 
-        const formattedFunnels = funnels.results.map((f: any) => ({
-            ...f,
-            stages: typeof f.stages === 'string' ? JSON.parse(f.stages) : (f.stages || [])
-        }));
+        const formattedFunnels = (funnels.results || []).map((f: any) => {
+            let stages = [];
+            try {
+                stages = typeof f.stages === 'string' ? JSON.parse(f.stages) : (f.stages || []);
+            } catch (e) { stages = []; }
+            return { ...f, stages };
+        });
 
-        const formattedLeads = leads.results.map((l: any) => ({
-            ...l,
-            notes: typeof l.notes === 'string' ? JSON.parse(l.notes) : (l.notes || []),
-            tasks: typeof l.tasks === 'string' ? JSON.parse(l.tasks) : (l.tasks || []),
-            tags: typeof l.tags === 'string' ? JSON.parse(l.tags) : (l.tags || []),
-            customValues: typeof l.custom_values === 'string' ? JSON.parse(l.custom_values) : (l.custom_values || {})
-        }));
+        const formattedLeads = (leads.results || []).map((l: any) => {
+            const parse = (val: any) => {
+                try { return typeof val === 'string' ? JSON.parse(val) : (val || []); }
+                catch(e) { return []; }
+            };
+            return {
+                ...l,
+                notes: parse(l.notes),
+                tasks: parse(l.tasks),
+                tags: parse(l.tags),
+                customValues: parse(l.custom_values)
+            };
+        });
 
         return c.json({
             funnels: formattedFunnels,
             leads: formattedLeads,
-            users: users.results,
-            teams: teams.results,
-            customFields: fields.results
+            users: users.results || [],
+            teams: teams.results || [],
+            customFields: fields.results || []
         });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
@@ -118,7 +126,7 @@ app.patch('/leads/:id', async (c) => {
 
     const values = keys.map(k => {
         const val = updates[k];
-        return (typeof val === 'object') ? JSON.stringify(val) : val;
+        return (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val;
     });
 
     try {
@@ -128,21 +136,34 @@ app.patch('/leads/:id', async (c) => {
     } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
-// --- SETTINGS PUBLICAS ---
+app.delete('/leads/:id', async (c) => {
+    await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(c.req.param('id')).run();
+    return c.json({ success: true });
+});
+
+// --- SETTINGS ---
 app.get('/public/settings', async (c) => {
     try {
         const { results } = await c.env.DB.prepare('SELECT key, value FROM system_settings').all();
         const settings = results.reduce((acc: any, cur: any) => ({ ...acc, [cur.key]: cur.value }), {});
         return c.json(settings);
-    } catch {
-        return c.json({});
-    }
+    } catch { return c.json({}); }
+});
+
+app.patch('/admin/settings', async (c) => {
+    const settings = await c.req.json() as any;
+    const queries = Object.entries(settings).map(([key, value]) => 
+        c.env.DB.prepare('INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+        .bind(key, value)
+    );
+    await c.env.DB.batch(queries);
+    return c.json({ success: true });
 });
 
 // --- ADMIN ---
 app.get('/admin/accounts', async (c) => {
     const { results } = await c.env.DB.prepare('SELECT * FROM accounts ORDER BY created_at DESC').all();
-    return c.json({ accounts: results });
+    return c.json({ accounts: results || [] });
 });
 
 // --- IA & BOT ---
@@ -160,7 +181,7 @@ app.post('/bot/chat-test', async (c) => {
                 if (matches.matches?.length > 0) {
                     const ids = matches.matches.map((m: any) => m.id);
                     const { results } = await c.env.DB.prepare(`SELECT content FROM knowledge_chunks WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all();
-                    context = results.map((r: any) => r.content).join('\n');
+                    context = (results || []).map((r: any) => r.content).join('\n');
                 }
             } catch (e) { console.error("Falha RAG:", e); }
         }
@@ -183,11 +204,11 @@ app.post('/bot/chat-test', async (c) => {
     }
 });
 
-// Placeholder para rotas não implementadas mas chamadas no sync do front
+// Placeholder para rotas não implementadas
 app.get('/webhooks/:id', (c) => c.json([]));
 app.get('/knowledge/:id', async (c) => {
     const { results } = await c.env.DB.prepare('SELECT * FROM knowledge_sources WHERE account_id = ?').bind(c.req.param('id')).all();
-    return c.json(results);
+    return c.json(results || []);
 });
 app.get('/bot/:id', (c) => c.json(null));
 

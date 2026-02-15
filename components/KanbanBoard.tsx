@@ -30,7 +30,7 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
 
   if (isLoading && funnels.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
+      <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4 bg-white">
         <Loader2 className="animate-spin text-blue-500" size={48} />
         <p className="font-bold">Sincronizando seus funis...</p>
       </div>
@@ -39,7 +39,7 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
 
   if (!activeFunnel) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-8 text-center animate-fade-in">
+      <div className="h-full flex flex-col items-center justify-center p-8 text-center animate-fade-in bg-white">
         <div className="bg-white p-12 rounded-3xl border-2 border-dashed border-gray-200 shadow-sm max-w-md">
            <Layers className="mx-auto text-gray-200 mb-6" size={80} />
            <h3 className="text-xl font-bold text-gray-800 mb-2">Nenhum funil ativo encontrado</h3>
@@ -73,7 +73,7 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
     );
   }
 
-  const leadsToDisplay = visibleLeads.filter(l => {
+  const leadsToDisplay = (visibleLeads || []).filter(l => {
     if (l.funnelId !== activeFunnelId) return false;
     if (userFilter !== 'all' && l.assignedUserId !== userFilter) return false;
     return true;
@@ -81,6 +81,7 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
 
   return (
     <div className="h-full flex flex-col bg-gray-50/50">
+      {/* Header Toolbar */}
       <div className="h-16 bg-white border-b px-6 flex items-center justify-between shadow-sm z-10 shrink-0">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2 text-gray-700">
@@ -106,7 +107,7 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
               className="text-sm bg-gray-50 border-none focus:ring-0 text-gray-600 font-medium py-1 px-2 rounded cursor-pointer hover:bg-gray-100"
             >
               <option value="all">Vendedores: Todos</option>
-              {visibleUsers.map(u => (
+              {(visibleUsers || []).map(u => (
                 <option key={u.id} value={u.id}>{u.name === currentUser?.name ? 'Meus Leads' : u.name}</option>
               ))}
             </select>
@@ -127,11 +128,13 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
         </div>
       </div>
 
+      {/* Kanban Stages */}
       <div className="flex-1 overflow-x-auto overflow-y-hidden p-6 kanban-scroll">
         <div className="flex h-full gap-5 min-w-max">
-          {activeFunnel.stages.map((stage) => {
+          {(activeFunnel.stages || []).map((stage) => {
             const stageLeads = leadsToDisplay.filter(l => l.stageId === stage.id);
-            const totalValue = stageLeads.reduce((acc, curr) => acc + curr.value, 0);
+            const totalValue = stageLeads.reduce((acc, curr) => acc + (curr.value || 0), 0);
+            const stageColor = stage.color || 'bg-gray-500';
 
             return (
               <div 
@@ -140,7 +143,7 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
                 onDrop={(e) => handleDrop(e, stage.id)}
                 onDragOver={handleDragOver}
               >
-                <div className={`p-4 border-b border-gray-200/50 rounded-t-2xl bg-white sticky top-0 z-10 border-t-4 ${stage.color.replace('bg-', 'border-t-').split(' ')[0]}`}>
+                <div className={`p-4 border-b border-gray-200/50 rounded-t-2xl bg-white sticky top-0 z-10 border-t-4 ${stageColor.replace('bg-', 'border-t-').split(' ')[0]}`}>
                   <div className="flex justify-between items-center mb-1">
                     <h3 className="font-bold text-gray-700 truncate text-sm">{stage.name}</h3>
                     <span className="bg-gray-100 text-gray-500 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">{stageLeads.length}</span>
@@ -156,7 +159,7 @@ export const KanbanBoard: React.FC<Props> = ({ onNavigate }) => {
                     <LeadCard 
                       key={lead.id} 
                       lead={lead} 
-                      user={visibleUsers.find(u => u.id === lead.assignedUserId)}
+                      user={(visibleUsers || []).find(u => u.id === lead.assignedUserId)}
                       onClick={() => onNavigate('lead-detail', lead.id)}
                       funnelName={activeFunnel.name}
                       stageName={stage.name}
