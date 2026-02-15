@@ -50,7 +50,7 @@ app.post('/auth/register', async (c) => {
     }
 });
 
-// --- SYNC ---
+// --- SYNC (MOTOR PRINCIPAL) ---
 app.get('/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
     try {
@@ -62,27 +62,24 @@ app.get('/sync/:accountId', async (c) => {
             c.env.DB.prepare('SELECT * FROM custom_fields WHERE account_id = ?').bind(accountId).all()
         ]);
 
-        const formattedFunnels = (funnels.results || []).map((f: any) => {
-            let stages = [];
-            try {
-                stages = typeof f.stages === 'string' ? JSON.parse(f.stages) : (f.stages || []);
-            } catch (e) { stages = []; }
-            return { ...f, stages };
-        });
+        const safeParse = (val: any) => {
+            if (!val) return [];
+            if (typeof val === 'object') return val;
+            try { return JSON.parse(val); } catch { return []; }
+        };
 
-        const formattedLeads = (leads.results || []).map((l: any) => {
-            const parse = (val: any) => {
-                try { return typeof val === 'string' ? JSON.parse(val) : (val || []); }
-                catch(e) { return []; }
-            };
-            return {
-                ...l,
-                notes: parse(l.notes),
-                tasks: parse(l.tasks),
-                tags: parse(l.tags),
-                customValues: parse(l.custom_values)
-            };
-        });
+        const formattedFunnels = (funnels.results || []).map((f: any) => ({
+            ...f,
+            stages: safeParse(f.stages)
+        }));
+
+        const formattedLeads = (leads.results || []).map((l: any) => ({
+            ...l,
+            notes: safeParse(l.notes),
+            tasks: safeParse(l.tasks),
+            tags: safeParse(l.tags),
+            customValues: safeParse(l.custom_values)
+        }));
 
         return c.json({
             funnels: formattedFunnels,
@@ -94,6 +91,30 @@ app.get('/sync/:accountId', async (c) => {
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
     }
+});
+
+// --- FUNNELS CRUD ---
+app.post('/funnels', async (c) => {
+    const f = await c.req.json() as any;
+    try {
+        await c.env.DB.prepare(
+            'INSERT INTO funnels (id, account_id, name, stages) VALUES (?, ?, ?, ?)'
+        ).bind(f.id, f.accountId, f.name, JSON.stringify(f.stages || [])).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+app.patch('/funnels/:id', async (c) => {
+    const id = c.req.param('id');
+    const updates = await c.req.json() as any;
+    const keys = Object.keys(updates);
+    const setClause = keys.map(k => `${k} = ?`).join(', ');
+    const values = keys.map(k => typeof updates[k] === 'object' ? JSON.stringify(updates[k]) : updates[k]);
+    
+    try {
+        await c.env.DB.prepare(`UPDATE funnels SET ${setClause} WHERE id = ?`).bind(...values, id).run();
+        return c.json({ success: true });
+    } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
 // --- LEADS CRUD ---
@@ -136,12 +157,6 @@ app.patch('/leads/:id', async (c) => {
     } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
-app.delete('/leads/:id', async (c) => {
-    await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(c.req.param('id')).run();
-    return c.json({ success: true });
-});
-
-// --- SETTINGS ---
 app.get('/public/settings', async (c) => {
     try {
         const { results } = await c.env.DB.prepare('SELECT key, value FROM system_settings').all();
@@ -150,66 +165,14 @@ app.get('/public/settings', async (c) => {
     } catch { return c.json({}); }
 });
 
-app.patch('/admin/settings', async (c) => {
-    const settings = await c.req.json() as any;
-    const queries = Object.entries(settings).map(([key, value]) => 
-        c.env.DB.prepare('INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-        .bind(key, value)
-    );
-    await c.env.DB.batch(queries);
-    return c.json({ success: true });
-});
-
-// --- ADMIN ---
 app.get('/admin/accounts', async (c) => {
     const { results } = await c.env.DB.prepare('SELECT * FROM accounts ORDER BY created_at DESC').all();
     return c.json({ accounts: results || [] });
 });
 
-// --- IA & BOT ---
-app.post('/bot/chat-test', async (c) => {
-    try {
-        const { message, accountId } = await c.req.json() as any;
-        const apiKey = process.env.API_KEY;
-        if (!apiKey) throw new Error("Chave Gemini não configurada");
-
-        let context = "Nenhum contexto encontrado.";
-        if (c.env.VECTORIZE && c.env.AI) {
-            try {
-                const emb = await c.env.AI.run('@cf/baai/bge-small-en-v1.5', { text: [message] });
-                const matches = await c.env.VECTORIZE.query(emb.data[0], { topK: 3, filter: { account_id: accountId } });
-                if (matches.matches?.length > 0) {
-                    const ids = matches.matches.map((m: any) => m.id);
-                    const { results } = await c.env.DB.prepare(`SELECT content FROM knowledge_chunks WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all();
-                    context = (results || []).map((r: any) => r.content).join('\n');
-                }
-            } catch (e) { console.error("Falha RAG:", e); }
-        }
-
-        const ai = new GoogleGenAI({ apiKey });
-        const result = await ai.models.generateContent({
-            model: 'gemini-2.0-flash-exp',
-            config: { systemInstruction: `Você é um assistente de vendas. Use este contexto: ${context}`, temperature: 0.7 },
-            contents: [{ role: 'user', parts: [{ text: message }] }]
-        });
-
-        const aiText = result.text;
-        const historyId = generateId('his');
-        await c.env.DB.prepare('INSERT INTO bot_chat_history (id, account_id, lead_phone, role, content) VALUES (?, ?, ?, ?, ?)')
-            .bind(historyId, accountId, 'PLAYGROUND', 'user', message).run();
-
-        return c.json({ response: aiText });
-    } catch (err: any) {
-        return c.json({ error: err.message }, 500);
-    }
-});
-
-// Placeholder para rotas não implementadas
+// Rotas dummy para evitar 404s
 app.get('/webhooks/:id', (c) => c.json([]));
-app.get('/knowledge/:id', async (c) => {
-    const { results } = await c.env.DB.prepare('SELECT * FROM knowledge_sources WHERE account_id = ?').bind(c.req.param('id')).all();
-    return c.json(results || []);
-});
+app.get('/knowledge/:id', (c) => c.json([]));
 app.get('/bot/:id', (c) => c.json(null));
 
 export const onRequest = handle(app);

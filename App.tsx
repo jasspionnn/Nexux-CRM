@@ -27,11 +27,12 @@ const AppContent = () => {
     }
   }, [currentUser]);
 
-  if (isLoading && !currentUser) {
+  if (isLoading) {
       return (
-          <div className="h-screen w-screen flex flex-col items-center justify-center bg-gray-50">
+          <div className="h-screen w-screen flex flex-col items-center justify-center bg-white">
               <Loader2 className="animate-spin text-blue-600 mb-4" size={48} />
-              <p className="text-gray-600 font-bold text-lg">Nexus CRM carregando...</p>
+              <p className="text-gray-800 font-black text-lg tracking-tighter">Nexus CRM</p>
+              <p className="text-gray-400 text-sm font-bold uppercase tracking-widest">Sincronizando seus dados...</p>
           </div>
       );
   }
@@ -59,7 +60,7 @@ const AppContent = () => {
       case 'tasks': return <TasksView onNavigate={handleNavigate} />;
       case 'aiflux': return <AIFlux />;
       case 'settings': 
-        return currentUser.role === UserRole.ACCOUNT_ADMIN ? <Settings /> : <div className="p-12 font-black">ACESSO RESTRITO</div>;
+        return currentUser.role === UserRole.ACCOUNT_ADMIN ? <Settings /> : <div className="p-12 font-black text-center text-gray-400 uppercase tracking-widest">ACESSO RESTRITO</div>;
       case 'lead-detail': 
         return <LeadDetailPage 
             leadId={viewData} 

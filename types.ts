@@ -123,3 +123,16 @@ export interface Lead {
   probability: number;
   customValues?: Record<string, any>;
 }
+
+// Fix: Adding missing interfaces for KnowledgeSource and BotInstance used in AIFlux
+export interface KnowledgeSource {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface BotInstance {
+  id: string;
+  name: string;
+  status: string;
+}
