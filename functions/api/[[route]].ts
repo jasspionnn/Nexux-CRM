@@ -7,7 +7,8 @@ type Bindings = {
   DB: D1Database;
 };
 
-const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
+// REMOVIDO: .basePath('/api') pois o diretório functions/api já define o prefixo
+const app = new Hono<{ Bindings: Bindings }>();
 
 app.use('*', cors());
 
@@ -19,10 +20,14 @@ app.onError((err, c) => {
 const safeParse = (val: any) => {
     if (!val) return [];
     if (typeof val === 'object') return val;
-    try { return JSON.parse(val); } catch { return []; }
+    try { 
+        return JSON.parse(val); 
+    } catch { 
+        return []; 
+    }
 };
 
-// --- SETTINGS PÚBLICAS (Login Background etc) ---
+// --- SETTINGS PÚBLICAS ---
 app.get('/public/settings', async (c) => {
     try {
         const settings = await c.env.DB.prepare('SELECT key, value FROM system_settings').all();
@@ -34,17 +39,6 @@ app.get('/public/settings', async (c) => {
     } catch {
         return c.json({});
     }
-});
-
-// --- ADMIN: GERENCIAR CONFIGURAÇÕES ---
-app.patch('/admin/settings', async (c) => {
-    const body = await c.req.json() as Record<string, string>;
-    const queries = Object.entries(body).map(([key, value]) => 
-        c.env.DB.prepare('INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-        .bind(key, value)
-    );
-    await c.env.DB.batch(queries);
-    return c.json({ success: true });
 });
 
 // --- ADMIN: LISTAR CONTAS ---
@@ -69,15 +63,17 @@ app.get('/admin/accounts', async (c) => {
 });
 
 // --- SYNC ENGINE: O CORAÇÃO DOS DADOS ---
+// Esta rota agora é acessível em /api/sync/:accountId
 app.get('/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
+    console.log(`[SYNC] Iniciando sincronização para conta: ${accountId}`);
     
     try {
         const [funnelsRes, stagesRes, leadsRes, usersRes, teamsRes, fieldsRes, webhooksRes] = await Promise.all([
             c.env.DB.prepare('SELECT * FROM funnels WHERE account_id = ?').bind(accountId).all(),
             c.env.DB.prepare('SELECT * FROM stages WHERE funnel_id IN (SELECT id FROM funnels WHERE account_id = ?) ORDER BY "order" ASC').bind(accountId).all(),
             c.env.DB.prepare('SELECT * FROM leads WHERE account_id = ? ORDER BY created_at DESC').bind(accountId).all(),
-            c.env.DB.prepare('SELECT id, name, email, role, avatar, team_id, status, last_login FROM users WHERE account_id = ?').bind(accountId).all(),
+            c.env.DB.prepare('SELECT id, account_id, name, email, role, avatar, team_id, status, last_login FROM users WHERE account_id = ?').bind(accountId).all(),
             c.env.DB.prepare('SELECT * FROM teams WHERE account_id = ?').bind(accountId).all(),
             c.env.DB.prepare('SELECT * FROM custom_fields WHERE account_id = ?').bind(accountId).all(),
             c.env.DB.prepare('SELECT * FROM webhooks WHERE account_id = ?').bind(accountId).all()
@@ -85,6 +81,7 @@ app.get('/sync/:accountId', async (c) => {
 
         const allStages = stagesRes.results || [];
         
+        // Mapeamento de Funis com Estágios aninhados
         const funnels = (funnelsRes.results || []).map((f: any) => ({
             id: f.id,
             accountId: f.account_id,
@@ -99,6 +96,7 @@ app.get('/sync/:accountId', async (c) => {
             defaultLostStageId: f.default_lost_stage_id
         }));
 
+        // Mapeamento de Leads com parse de JSON
         const leads = (leadsRes.results || []).map((l: any) => ({
             id: l.id,
             accountId: l.account_id,
@@ -119,20 +117,32 @@ app.get('/sync/:accountId', async (c) => {
             customValues: safeParse(l.custom_values)
         }));
 
+        // Mapeamento de Usuários
         const users = (usersRes.results || []).map((u: any) => ({
-            ...u,
+            id: u.id,
             accountId: u.account_id,
+            name: u.name,
+            email: u.email,
+            role: u.role,
+            avatar: u.avatar,
             teamId: u.team_id,
+            status: u.status,
             lastLogin: u.last_login
         }));
 
+        // Mapeamento de Campos Personalizados
         const customFields = (fieldsRes.results || []).map((cf: any) => ({
-            ...cf,
+            id: cf.id,
             accountId: cf.account_id,
+            name: cf.name,
+            type: cf.type,
+            context: cf.context,
             funnelId: cf.funnel_id,
             options: safeParse(cf.options),
             visibleStageIds: safeParse(cf.visible_stage_ids)
         }));
+
+        console.log(`[SYNC] Sucesso. Funis: ${funnels.length}, Leads: ${leads.length}`);
 
         return c.json({
             funnels,
@@ -140,11 +150,10 @@ app.get('/sync/:accountId', async (c) => {
             users,
             teams: teamsRes.results || [],
             customFields,
-            webhooks: webhooksRes.results || [],
-            knowledgeSources: [], // Placeholder até implementar RAG
-            botInstance: null     // Placeholder
+            webhooks: webhooksRes.results || []
         });
     } catch (e: any) {
+        console.error(`[SYNC ERROR]: ${e.message}`);
         return c.json({ error: e.message }, 500);
     }
 });
@@ -156,7 +165,9 @@ app.post('/auth/login', async (c) => {
         'SELECT * FROM users WHERE email = ? AND password = ? AND status = "active"'
     ).bind(email, password).first();
 
-    if (!user) return c.json({ error: "E-mail ou senha incorretos." }, 401);
+    if (!user) {
+        return c.json({ error: "E-mail ou senha incorretos." }, 401);
+    }
     
     await c.env.DB.prepare('UPDATE users SET last_login = ? WHERE id = ?')
         .bind(new Date().toISOString(), user.id).run();
@@ -172,41 +183,6 @@ app.post('/auth/login', async (c) => {
             status: user.status
         } 
     });
-});
-
-// --- MUTATIONS: LEADS ---
-app.post('/leads', async (c) => {
-    const lead = await c.req.json() as any;
-    await c.env.DB.prepare(
-        'INSERT INTO leads (id, account_id, title, company, value, contact_name, contact_email, contact_phone, funnel_id, stage_id, assigned_user_id, probability, tags, notes, tasks, custom_values) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).bind(
-        lead.id, lead.accountId, lead.title, lead.company, lead.value, 
-        lead.contactName, lead.contactEmail, lead.contactPhone,
-        lead.funnelId, lead.stageId, lead.assignedUserId, lead.probability,
-        JSON.stringify(lead.tags || []), JSON.stringify(lead.notes || []), 
-        JSON.stringify(lead.tasks || []), JSON.stringify(lead.customValues || {})
-    ).run();
-    return c.json({ success: true });
-});
-
-app.patch('/leads/:id', async (c) => {
-    const id = c.req.param('id');
-    const updates = await c.req.json() as any;
-    const keys = Object.keys(updates);
-    if (keys.length === 0) return c.json({ success: true });
-
-    const setClause = keys.map(k => {
-        const dbKey = k.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-        return `${dbKey} = ?`;
-    }).join(', ');
-
-    const values = keys.map(k => {
-        const val = updates[k];
-        return (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val;
-    });
-
-    await c.env.DB.prepare(`UPDATE leads SET ${setClause} WHERE id = ?`).bind(...values, id).run();
-    return c.json({ success: true });
 });
 
 export const onRequest = handle(app);

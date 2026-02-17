@@ -39,6 +39,17 @@ export interface User {
   lastLogin?: string; // Adicionado para a nova UI
 }
 
+// Added Webhook interface
+export interface Webhook {
+  id: string;
+  accountId: string;
+  name: string;
+  funnelId: string;
+  stageId: string;
+  active: boolean;
+  createdAt: string;
+}
+
 export interface Team {
   id: string;
   accountId: string;
@@ -114,6 +125,20 @@ export interface Lead {
   tags: string[];
   probability: number;
   customValues?: Record<string, any>;
+}
+
+// Added KnowledgeSource interface
+export interface KnowledgeSource {
+  id: string;
+  name: string;
+  type: string;
+}
+
+// Added BotInstance interface
+export interface BotInstance {
+  id: string;
+  name: string;
+  status: string;
 }
 
 export interface DashboardStats {
