@@ -89,17 +89,20 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         localStorage.removeItem('nexus_user_session');
       } 
     }
-    // Garantir que saia do loading inicial após checar storage
-    if (!savedUser) setIsLoading(false);
   }, []);
 
   const refreshData = useCallback(async () => {
-      if (!currentUser) return;
+      if (!currentUser) {
+          setIsLoading(false);
+          return;
+      }
       setIsLoading(true);
       try {
           if (currentUser.role === UserRole.NEXUS_ADMIN) {
                const data = await api.get<any>('/admin/accounts');
-               if (data && data.accounts) setAccounts(data.accounts);
+               if (data && data.accounts) {
+                   setAccounts(data.accounts);
+               }
           } else if (currentUser.accountId) {
                const data = await api.get<any>(`/sync/${currentUser.accountId}`);
                if (data) {
@@ -112,20 +115,18 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                  setKnowledgeSources(data.knowledgeSources || []);
                  setBotInstance(data.botInstance || null);
                  
-                 if (data.funnels && data.funnels.length > 0) {
+                 if (data.funnels?.length > 0) {
                     const savedId = localStorage.getItem('nexus_active_funnel');
                     const exists = data.funnels.find((f: any) => f.id === savedId);
                     if (!savedId || !exists) {
                         const firstId = data.funnels[0].id;
                         setActiveFunnelId(firstId);
-                        localStorage.setItem('nexus_active_funnel', firstId);
                     }
                  }
                }
           }
       } catch (error) { 
-          console.error("Erro fatal na sincronização:", error); 
-          // Opcional: Mostrar toast de erro aqui
+          console.error("Erro na sincronização:", error); 
       } finally { 
           setIsLoading(false); 
       }
