@@ -19,15 +19,6 @@ const safeParse = (val: any) => {
 
 const safeStringify = (val: any) => JSON.stringify(val || []);
 
-// --- AUTH & ADMIN ---
-app.post('/auth/login', async (c) => {
-    const { email, password } = await c.req.json() as any;
-    const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ? AND password = ?').bind(email, password).first() as any;
-    if (!user) return c.json({ error: 'Credenciais inválidas' }, 401);
-    return c.json({ user });
-});
-
-// --- SYNC ENGINE ---
 app.get('/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
     try {
@@ -43,6 +34,7 @@ app.get('/sync/:accountId', async (c) => {
         const allStages = stagesRes.results || [];
         const funnels = (funnelsRes.results || []).map((f: any) => ({
             ...f,
+            accountId: f.account_id,
             stages: allStages.filter((s: any) => s.funnel_id === f.id)
         }));
 
@@ -63,12 +55,9 @@ app.get('/sync/:accountId', async (c) => {
         }));
 
         return c.json({ funnels, leads, customFields: fieldsRes.results, teams: teamsRes.results, users: usersRes.results });
-    } catch (e: any) {
-        return c.json({ error: e.message }, 500);
-    }
+    } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
-// --- LEADS ---
 app.post('/leads', async (c) => {
     const l = await c.req.json() as any;
     try {
@@ -89,12 +78,11 @@ app.patch('/leads/:id', async (c) => {
     const id = c.req.param('id');
     const updates = await c.req.json() as any;
     const mapping: any = {
-        title: 'title', company: 'company', value: 'value',
-        contactName: 'contact_name', contactEmail: 'contact_email', contactPhone: 'contact_phone',
-        funnelId: 'funnel_id', stageId: 'stage_id', assignedUserId: 'assigned_user_id',
-        probability: 'probability', tags: 'tags', notes: 'notes', tasks: 'tasks', customValues: 'custom_values'
+        title: 'title', company: 'company', value: 'value', contactName: 'contact_name', 
+        contactEmail: 'contact_email', contactPhone: 'contact_phone', funnelId: 'funnel_id', 
+        stageId: 'stage_id', assignedUserId: 'assigned_user_id', probability: 'probability', 
+        tags: 'tags', notes: 'notes', tasks: 'tasks', customValues: 'custom_values'
     };
-
     try {
         for (const [key, val] of Object.entries(updates)) {
             const dbKey = mapping[key];
@@ -107,32 +95,11 @@ app.patch('/leads/:id', async (c) => {
     } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
-app.delete('/leads/:id', async (c) => {
-    await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(c.req.param('id')).run();
-    return c.json({ success: true });
-});
-
-// --- FUNNELS ---
-app.post('/funnels', async (c) => {
-    const f = await c.req.json() as any;
-    await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)').bind(f.id, f.accountId, f.name).run();
-    for (const s of f.stages) {
-        await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(s.id, f.id, s.name, s.color, s.order).run();
-    }
-    return c.json({ success: true });
-});
-
-app.patch('/funnels/:id', async (c) => {
-    const id = c.req.param('id');
-    const { name, stages } = await c.req.json() as any;
-    if (name) await c.env.DB.prepare('UPDATE funnels SET name = ? WHERE id = ?').bind(name, id).run();
-    if (stages) {
-        await c.env.DB.prepare('DELETE FROM stages WHERE funnel_id = ?').bind(id).run();
-        for (const s of stages) {
-            await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(s.id, id, s.name, s.color, s.order).run();
-        }
-    }
-    return c.json({ success: true });
+app.post('/auth/login', async (c) => {
+    const { email, password } = await c.req.json() as any;
+    const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ? AND password = ?').bind(email, password).first() as any;
+    if (!user) return c.json({ error: 'Incorreto' }, 401);
+    return c.json({ user: { ...user, accountId: user.account_id } });
 });
 
 export const onRequest = handle(app);
