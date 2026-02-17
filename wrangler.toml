@@ -10,7 +10,3 @@ database_id = "5d087172-7960-4d47-9606-16c395e21923"
 
 [observability]
 enabled = true
-
-[[vectorize]]
-binding = "VECTORIZE"
-index_name = "tutorial-index"
