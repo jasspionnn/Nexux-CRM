@@ -3,18 +3,12 @@ import React, { useMemo, useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell, Legend,
-  BarChart, Bar
+  ResponsiveContainer, BarChart, Bar
 } from 'recharts';
 import {
-  DollarSign, Target, TrendingUp, Briefcase,
-  Users, Calendar, Filter, Activity, AlertCircle,
-  Trophy, Medal, Star, ArrowUpRight
+  DollarSign, TrendingUp, Briefcase, Activity, Trophy, ArrowUpRight
 } from 'lucide-react';
-
-/* ===========================
-   HELPERS
-=========================== */
+import { Lead, User } from '../types';
 
 const currency = (v?: number) =>
   new Intl.NumberFormat('pt-BR', {
@@ -28,100 +22,47 @@ const percent = (v?: number) => `${(v ?? 0).toFixed(1)}%`;
 const daysBetween = (a: Date, b: Date) =>
   Math.floor((a.getTime() - b.getTime()) / (1000 * 60 * 60 * 24));
 
-/* ===========================
-   COMPONENT
-=========================== */
-
 export const Dashboard = () => {
-  const { leads, users, funnels, teams } = useCRM();
-
-  /* ===========================
-     FILTER STATE
-  =========================== */
-
-  const [filters, setFilters] = useState({
-    period: '30d',
-    status: 'all',
-    userId: 'all',
-    funnelId: 'all'
-  });
-
-  /* ===========================
-     FILTERED DATA (CORE)
-  =========================== */
+  const { leads, users } = useCRM();
+  const [filters, setFilters] = useState({ period: '30d' });
 
   const filteredLeads = useMemo(() => {
-    return leads.filter(l => {
-      // STATUS
-      if (filters.status === 'won' && l.probability !== 100) return false;
-      if (filters.status === 'lost' && l.probability !== 0) return false;
-      if (filters.status === 'open' && (l.probability === 0 || l.probability === 100)) return false;
-
-      // USER
-      if (filters.userId !== 'all' && l.assignedUserId !== filters.userId) return false;
-
-      // FUNNEL
-      if (filters.funnelId !== 'all' && l.funnelId !== filters.funnelId) return false;
-
-      // PERIOD
+    return leads.filter((l: Lead) => {
       if (filters.period !== 'all') {
         const diff = daysBetween(new Date(), new Date(l.createdAt));
         if (filters.period === '7d' && diff > 7) return false;
         if (filters.period === '30d' && diff > 30) return false;
-        if (filters.period === '90d' && diff > 90) return false;
       }
-
       return true;
     });
   }, [leads, filters]);
 
-  /* ===========================
-     CORE METRICS
-  =========================== */
+  const won = filteredLeads.filter((l: Lead) => l.probability === 100);
+  const open = filteredLeads.filter((l: Lead) => l.probability > 0 && l.probability < 100);
+  const lost = filteredLeads.filter((l: Lead) => l.probability === 0);
 
-  const won = filteredLeads.filter(l => l.probability === 100);
-  const open = filteredLeads.filter(l => l.probability > 0 && l.probability < 100);
-  const lost = filteredLeads.filter(l => l.probability === 0);
-
-  const revenue = won.reduce((a, b) => a + b.value, 0);
-  const pipeline = open.reduce((a, b) => a + b.value, 0);
+  const revenue = won.reduce((a: number, b: Lead) => a + b.value, 0);
+  const pipeline = open.reduce((a: number, b: Lead) => a + b.value, 0);
   const conversion = won.length + lost.length > 0 ? (won.length / (won.length + lost.length)) * 100 : 0;
   const avgTicket = won.length > 0 ? revenue / won.length : 0;
 
-  /* ===========================
-     SALESPERSON RANKING
-  =========================== */
-
   const salesByPerson = useMemo(() => {
     return users
-      .filter(u => u.role !== 'NEXUS_ADMIN')
-      .map(user => {
-        const userLeads = leads.filter(l => l.assignedUserId === user.id);
-        const userWon = userLeads.filter(l => l.probability === 100);
-        const userLost = userLeads.filter(l => l.probability === 0);
-        const userRevenue = userWon.reduce((acc, l) => acc + l.value, 0);
-        const userConversion = (userWon.length + userLost.length) > 0 
-          ? (userWon.length / (userWon.length + userLost.length)) * 100 
-          : 0;
-
+      .filter((u: User) => u.role !== 'NEXUS_ADMIN')
+      .map((user: User) => {
+        const userLeads = leads.filter((l: Lead) => l.assignedUserId === user.id);
+        const userWon = userLeads.filter((l: Lead) => l.probability === 100);
+        const userRevenue = userWon.reduce((acc: number, l: Lead) => acc + l.value, 0);
         return {
           id: user.id,
           name: user.name,
           avatar: user.avatar,
           revenue: userRevenue,
-          salesCount: userWon.length,
-          leadsCount: userLeads.length,
-          conversion: userConversion
+          salesCount: userWon.length
         };
       })
       .sort((a, b) => b.revenue - a.revenue);
   }, [users, leads]);
-
-  const topThree = salesByPerson.slice(0, 3);
-
-  /* ===========================
-     CHARTS DATA
-  =========================== */
 
   const evolution = useMemo(() => {
     const map: Record<string, number> = {};
@@ -130,225 +71,109 @@ export const Dashboard = () => {
       d.setDate(d.getDate() - i);
       map[d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })] = 0;
     }
-    won.forEach(l => {
+    won.forEach((l: Lead) => {
       const d = new Date(l.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
       if (map[d] !== undefined) map[d] += l.value;
     });
     return Object.entries(map).map(([date, value]) => ({ date, value }));
   }, [won]);
 
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
-
-  /* ===========================
-     RENDER
-  =========================== */
-
   return (
-    <div className="p-8 bg-gray-50 space-y-8 h-full overflow-y-auto">
-      
-      {/* HEADER */}
+    <div className="p-8 bg-gray-50 space-y-8 h-full overflow-y-auto animate-fade-in">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard de Vendas</h1>
-          <p className="text-gray-500 text-sm">Visão consolidada de performance e resultados.</p>
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight uppercase">Performance Nexus</h1>
+          <p className="text-gray-500 text-sm font-medium">Resultados reais sincronizados com a base D1.</p>
         </div>
-
-        <div className="flex bg-white rounded-lg p-1 shadow-sm border border-gray-200">
+        <div className="flex bg-white rounded-xl p-1 shadow-sm border border-gray-200">
           {(['7d', '30d', 'all']).map((p) => (
             <button
               key={p}
-              onClick={() => setFilters(f => ({ ...f, period: p }))}
-              className={`px-4 py-1.5 rounded-md text-xs font-bold uppercase transition-all ${
-                filters.period === p ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-50'
+              onClick={() => setFilters({ period: p })}
+              className={`px-5 py-2 rounded-lg text-xs font-black uppercase transition-all ${
+                filters.period === p ? 'bg-indigo-600 text-white shadow-lg' : 'text-gray-500 hover:bg-gray-50'
               }`}
             >
-              {p === '7d' ? '7 Dias' : p === '30d' ? '30 Dias' : 'Tudo'}
+              {p === '7d' ? '7 Dias' : p === '30d' ? '30 Dias' : 'Geral'}
             </button>
           ))}
         </div>
       </div>
 
-      {/* KPI GRID */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <Kpi icon={DollarSign} label="Receita" value={currency(revenue)} color="text-green-600" bg="bg-green-50" />
-        <Kpi icon={Briefcase} label="Pipeline" value={currency(pipeline)} color="text-blue-600" bg="bg-blue-50" />
+        <Kpi icon={Briefcase} label="Pipeline" value={currency(pipeline)} color="text-indigo-600" bg="bg-indigo-50" />
         <Kpi icon={TrendingUp} label="Conversão" value={percent(conversion)} color="text-purple-600" bg="bg-purple-50" />
         <Kpi icon={Activity} label="Ticket Médio" value={currency(avgTicket)} color="text-orange-600" bg="bg-orange-50" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        
-        {/* LEADERBOARD (RANKING) */}
-        <div className="xl:col-span-1 space-y-6">
-          <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex flex-col h-full">
-            <div className="flex items-center justify-between mb-8">
-               <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                 <Trophy className="text-yellow-500" size={20} />
-                 Ranking de Vendas
-               </h3>
-               <button className="text-blue-600 text-xs font-bold hover:underline">Ver Todos</button>
-            </div>
-
-            {/* Podium Visual */}
-            <div className="flex items-end justify-center gap-4 mb-10 pt-4">
-              {/* 2nd Place */}
-              {topThree[1] && (
-                <div className="flex flex-col items-center gap-2">
-                  <div className="relative">
-                    <img src={topThree[1].avatar} className="w-12 h-12 rounded-full border-2 border-gray-200" alt="" />
-                    <div className="absolute -top-2 -right-2 bg-gray-100 text-gray-500 w-6 h-6 rounded-full border border-gray-200 flex items-center justify-center text-[10px] font-bold">2</div>
-                  </div>
-                  <div className="bg-gray-50 w-20 h-16 rounded-t-lg flex flex-col items-center justify-center border-x border-t border-gray-100 shadow-sm">
-                     <span className="text-[10px] font-bold text-gray-400">Prata</span>
-                  </div>
-                </div>
-              )}
-
-              {/* 1st Place */}
-              {topThree[0] && (
-                <div className="flex flex-col items-center gap-2">
-                  <div className="relative">
-                    <img src={topThree[0].avatar} className="w-16 h-16 rounded-full border-4 border-yellow-400 shadow-lg" alt="" />
-                    <div className="absolute -top-3 -right-2 bg-yellow-400 text-white w-8 h-8 rounded-full border-2 border-white flex items-center justify-center shadow-md">
-                       <Trophy size={14} />
-                    </div>
-                  </div>
-                  <div className="bg-yellow-50 w-24 h-24 rounded-t-lg flex flex-col items-center justify-center border-x border-t border-yellow-100 shadow-md">
-                     <span className="text-xs font-bold text-yellow-700">Ouro</span>
-                  </div>
-                </div>
-              )}
-
-              {/* 3rd Place */}
-              {topThree[2] && (
-                <div className="flex flex-col items-center gap-2">
-                  <div className="relative">
-                    <img src={topThree[2].avatar} className="w-12 h-12 rounded-full border-2 border-orange-200" alt="" />
-                    <div className="absolute -top-2 -right-2 bg-orange-100 text-orange-600 w-6 h-6 rounded-full border border-orange-200 flex items-center justify-center text-[10px] font-bold">3</div>
-                  </div>
-                  <div className="bg-orange-50 w-20 h-12 rounded-t-lg flex flex-col items-center justify-center border-x border-t border-orange-100 shadow-sm">
-                     <span className="text-[10px] font-bold text-orange-400">Bronze</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Ranking List */}
-            <div className="space-y-4 flex-1">
+        <div className="xl:col-span-1">
+          <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm h-full">
+            <h3 className="font-black text-gray-900 mb-6 flex items-center gap-2 uppercase text-xs tracking-widest">
+              <Trophy className="text-yellow-500" size={16} />
+              Elite de Vendas
+            </h3>
+            <div className="space-y-4">
               {salesByPerson.slice(0, 5).map((person, idx) => (
-                <div key={person.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors">
+                <div key={person.id} className="flex items-center justify-between p-4 rounded-2xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-gray-400 w-4">#{idx + 1}</span>
-                    <img src={person.avatar} className="w-8 h-8 rounded-full" alt="" />
+                    <span className="text-xs font-black text-gray-300 w-4">#{idx + 1}</span>
+                    <img src={person.avatar} className="w-10 h-10 rounded-full border-2 border-white shadow-sm" alt="" />
                     <div>
                       <div className="text-sm font-bold text-gray-800">{person.name}</div>
-                      <div className="text-[10px] text-gray-500 uppercase">{person.salesCount} vendas concluídas</div>
+                      <div className="text-[10px] font-black text-indigo-500 uppercase">{person.salesCount} vendas</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm font-bold text-gray-900">{currency(person.revenue)}</div>
-                    <div className="text-[10px] font-bold text-green-600 flex items-center justify-end gap-1">
-                      {person.conversion.toFixed(1)}% <ArrowUpRight size={10} />
-                    </div>
-                  </div>
+                  <div className="text-right font-black text-gray-900 text-xs">{currency(person.revenue)}</div>
                 </div>
               ))}
+              {salesByPerson.length === 0 && <p className="text-center py-10 text-gray-400 font-bold uppercase text-[10px] tracking-widest">Aguardando primeira venda...</p>}
             </div>
           </div>
         </div>
 
-        {/* CHARTS */}
-        <div className="xl:col-span-2 space-y-8">
-          
-          {/* Revenue Evolution */}
-          <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-            <h3 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <TrendingUp size={18} className="text-blue-600" />
-              Evolução de Faturamento
+        <div className="xl:col-span-2">
+          <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-sm">
+            <h3 className="font-black text-gray-900 mb-8 flex items-center gap-2 uppercase text-xs tracking-widest">
+              <TrendingUp size={16} className="text-indigo-600" />
+              ROI & Crescimento
             </h3>
-            <div className="h-[280px]">
+            <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={evolution}>
                   <defs>
-                    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} tickFormatter={(v) => `R$${v/1000}k`} />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} />
                   <Tooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                    formatter={(v?: number) => [currency(v), 'Faturamento']}
+                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                    formatter={(v: number) => [currency(v), 'Receita']} 
                   />
-                  <Area type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={3} fill="url(#g)" />
+                  <Area type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={4} fill="url(#colorVal)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
-
-          {/* Detailed Performance Table */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-              <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                <Activity className="text-indigo-600" size={18} />
-                Performance Detalhada
-              </h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 text-gray-500 border-b border-gray-100 uppercase text-[10px] font-bold">
-                  <tr>
-                    <th className="px-6 py-4">Vendedor</th>
-                    <th className="px-6 py-4 text-center">Leads</th>
-                    <th className="px-6 py-4 text-center">Vendas</th>
-                    <th className="px-6 py-4 text-center">Conversão</th>
-                    <th className="px-6 py-4 text-right">Faturamento</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {salesByPerson.map((person) => (
-                    <tr key={person.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <img src={person.avatar} className="w-8 h-8 rounded-full border border-gray-200" alt="" />
-                          <div className="font-bold text-gray-800">{person.name}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center text-gray-600">{person.leadsCount}</td>
-                      <td className="px-6 py-4 text-center font-bold text-gray-900">{person.salesCount}</td>
-                      <td className="px-6 py-4 text-center">
-                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${person.conversion > 20 ? 'bg-green-100 text-green-700' : person.conversion > 10 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
-                          {person.conversion.toFixed(1)}%
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right font-bold text-gray-900">{currency(person.revenue)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
         </div>
       </div>
     </div>
   );
 };
 
-/* ===========================
-   KPI COMPONENT
-=========================== */
-
 const Kpi = ({ icon: Icon, label, value, color, bg }: any) => (
-  <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex items-center gap-5 hover:shadow-md transition-shadow">
-    <div className={`p-3 rounded-xl ${bg}`}>
+  <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm flex items-center gap-5 hover:shadow-md transition-shadow group">
+    <div className={`p-4 rounded-2xl transition-transform group-hover:scale-110 ${bg}`}>
       <Icon size={24} className={color} />
     </div>
     <div>
-      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{label}</p>
-      <p className="text-2xl font-black text-gray-900">{value}</p>
+      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">{label}</p>
+      <p className="text-xl font-black text-gray-900 tracking-tight">{value}</p>
     </div>
   </div>
 );

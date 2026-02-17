@@ -94,7 +94,11 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setUsers(data.users || []);
           setTeams(data.teams || []);
           setCustomFields(data.customFields || []);
-          if (data.funnels?.length > 0 && !activeFunnelId) setActiveFunnelId(data.funnels[0].id);
+          if (data.funnels?.length > 0 && !activeFunnelId) {
+             const firstFid = data.funnels[0].id;
+             setActiveFunnelId(firstFid);
+             localStorage.setItem('nexus_active_funnel', firstFid);
+          }
         }
       }
     } catch (e) { console.error("Sync Error:", e); }
@@ -126,6 +130,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.removeItem('nexus_user_session');
     localStorage.removeItem('nexus_active_funnel');
     setLeads([]);
+    setFunnels([]);
   };
 
   const addLead = async (l: Lead) => {
@@ -146,45 +151,48 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const addTask = async (lid: string, t: Task) => {
     const lead = leads.find(x => x.id === lid);
     if (!lead) return;
-    const newTasks = [...lead.tasks, t];
+    const newTasks = [...(lead.tasks || []), t];
     await updateLead(lid, { tasks: newTasks });
   };
 
   const toggleTask = async (lid: string, tid: string) => {
     const lead = leads.find(x => x.id === lid);
     if (!lead) return;
-    const newTasks = lead.tasks.map(x => x.id === tid ? {...x, completed: !x.completed} : x);
+    const newTasks = (lead.tasks || []).map(x => x.id === tid ? {...x, completed: !x.completed} : x);
     await updateLead(lid, { tasks: newTasks });
   };
 
   const addFunnel = async (name: string) => {
     if (!currentUser?.accountId) return;
-    const nf: Funnel = { id: `f-${Date.now()}`, accountId: currentUser.accountId, name, stages: [{id:`s-${Date.now()}`, name:'Novo', color:'bg-blue-500', order:0}] };
+    const fid = `f-${Date.now()}`;
+    const nf: Funnel = { id: fid, accountId: currentUser.accountId, name, stages: [{id:`s-${Date.now()}`, name:'Novo', color:'bg-blue-500', order:0}] };
     await api.post('/funnels', nf);
     setFunnels(prev => [...prev, nf]);
+    setActiveFunnelId(fid);
   };
 
   const addUser = async (u: User) => { await api.post('/users', u); setUsers(p => [...p, u]); };
   const addTeam = async (t: Team) => { await api.post('/teams', t); setTeams(p => [...p, t]); };
-  const addCustomField = async (f: CustomFieldDefinition) => { await api.post('/custom-fields', f); setCustomFields(p => [...p, f]); };
 
   return (
     <CRMContext.Provider value={{
       funnels, leads, users, teams, customFields, allAccounts: accounts,
       webhooks, knowledgeSources, botInstance, activeFunnelId, currentUser, isLoading, isOnline,
       visibleLeads: leads, visibleUsers: users, currentAccount: accounts.find(a => a.id === currentUser?.accountId) || null,
-      setActiveFunnelId, login, registerAccount: async (u,e,p,c) => { await api.post('/auth/register', {userName:u,email:e,password:p,companyName:c}); return login(e,p); },
+      setActiveFunnelId: (id) => { setActiveFunnelId(id); localStorage.setItem('nexus_active_funnel', id); }, 
+      login, registerAccount: async (u,e,p,c) => { await api.post('/auth/register', {userName:u,email:e,password:p,companyName:c}); return login(e,p); },
       logout, refreshData, addLead, updateLead, moveLead, 
       duplicateLead: async (id, fid, sid) => { const l = leads.find(x => x.id === id); if(l) await addLead({...l, id: `l-${Date.now()}`, funnelId: fid, stageId: sid}); },
       deleteLead: async id => { await api.delete(`/leads/${id}`); setLeads(p => p.filter(x => x.id !== id)); },
       addFunnel, updateFunnel: async (id, ups) => { await api.patch(`/funnels/${id}`, ups); setFunnels(p => p.map(x => x.id === id ? {...x, ...ups} : x)); },
       deleteFunnel: async id => { await api.delete(`/funnels/${id}`); setFunnels(p => p.filter(x => x.id !== id)); },
-      addStage: async (fid, n) => { const f = funnels.find(x => x.id === fid); if(f) await api.patch(`/funnels/${fid}`, { stages: [...f.stages, {id:`s-${Date.now()}`, name:n, color:'bg-gray-500', order: f.stages.length}] }); refreshData(); },
-      updateStage: async (fid, sid, ups) => { const f = funnels.find(x => x.id === fid); if(f) await api.patch(`/funnels/${fid}`, { stages: f.stages.map(s => s.id === sid ? {...s, ...ups} : s) }); refreshData(); },
-      deleteStage: async (fid, sid) => { const f = funnels.find(x => x.id === fid); if(f) await api.patch(`/funnels/${fid}`, { stages: f.stages.filter(s => s.id !== sid) }); refreshData(); },
-      reorderStages: async (fid, ss) => { await api.patch(`/funnels/${fid}`, { stages: ss }); refreshData(); },
-      addTask, toggleTask, deleteTask: async (lid, tid) => { const l = leads.find(x => x.id === lid); if(l) await updateLead(lid, { tasks: l.tasks.filter(x => x.id !== tid) }); },
-      addCustomField, updateCustomField: async (id, ups) => { await api.patch(`/custom-fields/${id}`, ups); setCustomFields(p => p.map(x => x.id === id ? {...x, ...ups} : x)); },
+      addStage: async (fid, n) => { const f = funnels.find(x => x.id === fid); if(f) { const ns = {id:`s-${Date.now()}`, name:n, color:'bg-gray-500', order: f.stages.length}; await api.patch(`/funnels/${fid}`, { stages: [...f.stages, ns] }); setFunnels(p => p.map(x => x.id === fid ? {...x, stages: [...x.stages, ns]} : x)); } },
+      updateStage: async (fid, sid, ups) => { const f = funnels.find(x => x.id === fid); if(f) { const ss = f.stages.map(s => s.id === sid ? {...s, ...ups} : s); await api.patch(`/funnels/${fid}`, { stages: ss }); setFunnels(p => p.map(x => x.id === fid ? {...x, stages: ss} : x)); } },
+      deleteStage: async (fid, sid) => { const f = funnels.find(x => x.id === fid); if(f) { const ss = f.stages.filter(s => s.id !== sid); await api.patch(`/funnels/${fid}`, { stages: ss }); setFunnels(p => p.map(x => x.id === fid ? {...x, stages: ss} : x)); } },
+      reorderStages: async (fid, ss) => { await api.patch(`/funnels/${fid}`, { stages: ss }); setFunnels(p => p.map(x => x.id === fid ? {...x, stages: ss} : x)); },
+      addTask, toggleTask, deleteTask: async (lid, tid) => { const l = leads.find(x => x.id === lid); if(l) await updateLead(lid, { tasks: (l.tasks || []).filter(x => x.id !== tid) }); },
+      addCustomField: async f => { await api.post('/custom-fields', f); setCustomFields(p => [...p, f]); }, 
+      updateCustomField: async (id, ups) => { await api.patch(`/custom-fields/${id}`, ups); setCustomFields(p => p.map(x => x.id === id ? {...x, ...ups} : x)); },
       deleteCustomField: async id => { await api.delete(`/custom-fields/${id}`); setCustomFields(p => p.filter(x => x.id !== id)); },
       addUser, updateUser: async (id, ups) => { await api.patch(`/users/${id}`, ups); setUsers(p => p.map(x => x.id === id ? {...x, ...ups} : x)); },
       deleteUser: async id => { await api.delete(`/users/${id}`); setUsers(p => p.filter(x => x.id !== id)); },
