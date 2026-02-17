@@ -77,9 +77,8 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isLoading, setIsLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  const refreshData = useCallback(async () => {
-    const saved = localStorage.getItem('nexus_user_session');
-    const user = saved ? JSON.parse(saved) : currentUser;
+  const refreshData = useCallback(async (userOverride?: User) => {
+    const user = userOverride || currentUser;
     if (!user) { setIsLoading(false); return; }
 
     try {
@@ -94,6 +93,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setUsers(data.users || []);
           setTeams(data.teams || []);
           setCustomFields(data.customFields || []);
+          
           if (data.funnels?.length > 0 && !activeFunnelId) {
              const firstFid = data.funnels[0].id;
              setActiveFunnelId(firstFid);
@@ -107,8 +107,13 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   useEffect(() => {
     const saved = localStorage.getItem('nexus_user_session');
-    if (saved) setCurrentUser(JSON.parse(saved));
-    refreshData();
+    if (saved) {
+      const u = JSON.parse(saved);
+      setCurrentUser(u);
+      refreshData(u);
+    } else {
+      setIsLoading(false);
+    }
   }, []);
 
   const login = async (email: string, pass: string) => {
@@ -118,6 +123,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (res?.user) {
         setCurrentUser(res.user);
         localStorage.setItem('nexus_user_session', JSON.stringify(res.user));
+        await refreshData(res.user);
         return true;
       }
       return "Erro no login";
@@ -181,7 +187,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       visibleLeads: leads, visibleUsers: users, currentAccount: accounts.find(a => a.id === currentUser?.accountId) || null,
       setActiveFunnelId: (id) => { setActiveFunnelId(id); localStorage.setItem('nexus_active_funnel', id); }, 
       login, registerAccount: async (u,e,p,c) => { await api.post('/auth/register', {userName:u,email:e,password:p,companyName:c}); return login(e,p); },
-      logout, refreshData, addLead, updateLead, moveLead, 
+      logout, refreshData: () => refreshData(), addLead, updateLead, moveLead, 
       duplicateLead: async (id, fid, sid) => { const l = leads.find(x => x.id === id); if(l) await addLead({...l, id: `l-${Date.now()}`, funnelId: fid, stageId: sid}); },
       deleteLead: async id => { await api.delete(`/leads/${id}`); setLeads(p => p.filter(x => x.id !== id)); },
       addFunnel, updateFunnel: async (id, ups) => { await api.patch(`/funnels/${id}`, ups); setFunnels(p => p.map(x => x.id === id ? {...x, ...ups} : x)); },

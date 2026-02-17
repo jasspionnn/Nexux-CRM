@@ -3,10 +3,10 @@ import React, { useMemo, useState } from 'react';
 import { useCRM } from '../context/CRMContext';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, BarChart, Bar
+  ResponsiveContainer
 } from 'recharts';
 import {
-  DollarSign, TrendingUp, Briefcase, Activity, Trophy, ArrowUpRight
+  DollarSign, TrendingUp, Briefcase, Activity, Trophy
 } from 'lucide-react';
 import { Lead, User } from '../types';
 
@@ -83,7 +83,7 @@ export const Dashboard = () => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-gray-900 tracking-tight uppercase">Performance Nexus</h1>
-          <p className="text-gray-500 text-sm font-medium">Resultados reais sincronizados com a base D1.</p>
+          <p className="text-gray-500 text-sm font-medium">Resultados sincronizados com D1.</p>
         </div>
         <div className="flex bg-white rounded-xl p-1 shadow-sm border border-gray-200">
           {(['7d', '30d', 'all']).map((p) => (
@@ -109,14 +109,14 @@ export const Dashboard = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-1">
-          <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm h-full">
+          <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
             <h3 className="font-black text-gray-900 mb-6 flex items-center gap-2 uppercase text-xs tracking-widest">
               <Trophy className="text-yellow-500" size={16} />
-              Elite de Vendas
+              Top Performance
             </h3>
             <div className="space-y-4">
               {salesByPerson.slice(0, 5).map((person, idx) => (
-                <div key={person.id} className="flex items-center justify-between p-4 rounded-2xl hover:bg-gray-50 transition-colors border border-transparent hover:border-gray-100">
+                <div key={person.id} className="flex items-center justify-between p-4 rounded-2xl hover:bg-gray-50 transition-colors">
                   <div className="flex items-center gap-3">
                     <span className="text-xs font-black text-gray-300 w-4">#{idx + 1}</span>
                     <img src={person.avatar} className="w-10 h-10 rounded-full border-2 border-white shadow-sm" alt="" />
@@ -128,7 +128,7 @@ export const Dashboard = () => {
                   <div className="text-right font-black text-gray-900 text-xs">{currency(person.revenue)}</div>
                 </div>
               ))}
-              {salesByPerson.length === 0 && <p className="text-center py-10 text-gray-400 font-bold uppercase text-[10px] tracking-widest">Aguardando primeira venda...</p>}
+              {salesByPerson.length === 0 && <p className="text-center py-10 text-gray-400 font-bold uppercase text-[10px]">Sem dados...</p>}
             </div>
           </div>
         </div>
@@ -136,26 +136,19 @@ export const Dashboard = () => {
         <div className="xl:col-span-2">
           <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-sm">
             <h3 className="font-black text-gray-900 mb-8 flex items-center gap-2 uppercase text-xs tracking-widest">
-              <TrendingUp size={16} className="text-indigo-600" />
               ROI & Crescimento
             </h3>
             <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={evolution}>
-                  <defs>
-                    <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} />
-                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 700}} />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
                   <Tooltip 
-                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
-                    formatter={(v: number) => [currency(v), 'Receita']} 
+                    formatter={(v: any) => [currency(Number(v)), 'Receita']} 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                   />
-                  <Area type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={4} fill="url(#colorVal)" />
+                  <Area type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={4} fill="#6366f1" fillOpacity={0.1} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
