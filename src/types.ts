@@ -1,8 +1,8 @@
 
 export enum UserRole {
-  NEXUS_ADMIN = 'NEXUS_ADMIN',   // Super Admin (Gere as contas)
-  ACCOUNT_ADMIN = 'ACCOUNT_ADMIN', // Conta Mãe (Dono da empresa)
-  USER = 'USER',                 // Vendedor (Usuário final)
+  NEXUS_ADMIN = 'NEXUS_ADMIN',
+  ACCOUNT_ADMIN = 'ACCOUNT_ADMIN',
+  USER = 'USER',
 }
 
 export type VisibilityLevel = 'private' | 'team' | 'public';
@@ -21,8 +21,6 @@ export interface Account {
     allowUserExport: boolean;
     showTeamGoals: boolean;
   };
-  stripeCustomerId?: string;
-  subscriptionStatus?: 'active' | 'past_due' | 'canceled' | 'trialing';
 }
 
 export interface User {
@@ -36,10 +34,9 @@ export interface User {
   teamId?: string;
   status: 'active' | 'pending' | 'inactive';
   joinedAt?: string;
-  lastLogin?: string; // Adicionado para a nova UI
+  lastLogin?: string;
 }
 
-// Added Webhook interface
 export interface Webhook {
   id: string;
   accountId: string;
@@ -127,23 +124,14 @@ export interface Lead {
   customValues?: Record<string, any>;
 }
 
-// Added KnowledgeSource interface
 export interface KnowledgeSource {
   id: string;
   name: string;
   type: string;
 }
 
-// Added BotInstance interface
 export interface BotInstance {
   id: string;
   name: string;
   status: string;
-}
-
-export interface DashboardStats {
-  totalRevenue: number;
-  dealsWon: number;
-  conversionRate: number;
-  avgDealSize: number;
 }
