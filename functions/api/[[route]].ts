@@ -11,6 +11,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 app.use('*', cors());
 
+// Utilitários de Conversão
 const toDB = (val: any) => (val && typeof val === 'object') ? JSON.stringify(val) : val;
 const fromDB = (val: any) => {
     if (!val) return [];
@@ -18,6 +19,7 @@ const fromDB = (val: any) => {
     try { return JSON.parse(val); } catch { return []; }
 };
 
+// --- SYNC PRINCIPAL ---
 app.get('/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
     try {
@@ -30,11 +32,15 @@ app.get('/sync/:accountId', async (c) => {
             c.env.DB.prepare('SELECT * FROM users WHERE account_id = ?').bind(accountId).all()
         ]);
 
-        const allStages = stagesRes.results || [];
+        const allStages = (stagesRes.results || []).map((s: any) => ({
+            ...s,
+            funnelId: s.funnel_id
+        }));
+
         const funnels = (funnelsRes.results || []).map((f: any) => ({
             ...f,
             accountId: f.account_id,
-            stages: allStages.filter((s: any) => s.funnel_id === f.id)
+            stages: allStages.filter((s: any) => s.funnelId === f.id)
         }));
 
         const leads = (leadsRes.results || []).map((l: any) => ({
@@ -53,10 +59,29 @@ app.get('/sync/:accountId', async (c) => {
             customValues: fromDB(l.custom_values)
         }));
 
-        return c.json({ funnels, leads, customFields: fieldsRes.results, teams: teamsRes.results, users: usersRes.results });
-    } catch (e: any) { return c.json({ error: e.message }, 500); }
+        return c.json({ 
+            funnels, 
+            leads, 
+            customFields: (fieldsRes.results || []).map((cf: any) => ({
+                ...cf,
+                accountId: cf.account_id,
+                funnelId: cf.funnel_id,
+                visibleStageIds: fromDB(cf.visible_stage_ids),
+                options: fromDB(cf.options)
+            })),
+            teams: (teamsRes.results || []).map((t: any) => ({ ...t, accountId: t.account_id })),
+            users: (usersRes.results || []).map((u: any) => ({
+                ...u,
+                accountId: u.account_id,
+                teamId: u.team_id
+            }))
+        });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
 });
 
+// --- LEADS ---
 app.post('/leads', async (c) => {
     const l = await c.req.json() as any;
     try {
@@ -77,10 +102,10 @@ app.patch('/leads/:id', async (c) => {
     const id = c.req.param('id');
     const updates = await c.req.json() as any;
     const mapping: any = {
-        title: 'title', company: 'company', value: 'value', contactName: 'contact_name', 
-        contactEmail: 'contact_email', contactPhone: 'contact_phone', funnelId: 'funnel_id', 
-        stageId: 'stage_id', assignedUserId: 'assigned_user_id', probability: 'probability', 
-        tags: 'tags', notes: 'notes', tasks: 'tasks', customValues: 'custom_values'
+        title: 'title', company: 'company', value: 'value',
+        contactName: 'contact_name', contactEmail: 'contact_email', contactPhone: 'contact_phone',
+        funnelId: 'funnel_id', stageId: 'stage_id', assignedUserId: 'assigned_user_id',
+        probability: 'probability', tags: 'tags', notes: 'notes', tasks: 'tasks', customValues: 'custom_values'
     };
     try {
         for (const [key, val] of Object.entries(updates)) {
@@ -93,11 +118,18 @@ app.patch('/leads/:id', async (c) => {
     } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
+// --- AUTH ---
 app.post('/auth/login', async (c) => {
     const { email, password } = await c.req.json() as any;
-    const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ? AND password = ?').bind(email, password).first() as any;
-    if (!user) return c.json({ error: 'Incorreto' }, 401);
-    return c.json({ user: { ...user, accountId: user.account_id } });
+    try {
+        const user = await c.env.DB.prepare('SELECT * FROM users WHERE email = ? AND password = ?').bind(email, password).first() as any;
+        if (!user) return c.json({ error: 'Credenciais inválidas' }, 401);
+        return c.json({ user: { ...user, accountId: user.account_id } });
+    } catch (e: any) { return c.json({ error: e.message }, 500); }
+});
+
+app.get('/public/settings', async (c) => {
+    return c.json({ login_background: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=2000' });
 });
 
 export const onRequest = handle(app);

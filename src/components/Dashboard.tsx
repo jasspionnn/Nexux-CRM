@@ -23,11 +23,13 @@ const daysBetween = (a: Date, b: Date) =>
   Math.floor((a.getTime() - b.getTime()) / (1000 * 60 * 60 * 24));
 
 export const Dashboard = () => {
-  const { leads, users } = useCRM();
+  const { leads = [], users = [] } = useCRM();
   const [filters, setFilters] = useState({ period: '30d' });
 
   const filteredLeads = useMemo(() => {
-    return leads.filter((l: Lead) => {
+    const safeLeads = Array.isArray(leads) ? leads : [];
+    return safeLeads.filter((l: Lead) => {
+      if (!l.createdAt) return false;
       if (filters.period !== 'all') {
         const diff = daysBetween(new Date(), new Date(l.createdAt));
         if (filters.period === '7d' && diff > 7) return false;
@@ -41,18 +43,19 @@ export const Dashboard = () => {
   const open = filteredLeads.filter((l: Lead) => l.probability > 0 && l.probability < 100);
   const lost = filteredLeads.filter((l: Lead) => l.probability === 0);
 
-  const revenue = won.reduce((a: number, b: Lead) => a + b.value, 0);
-  const pipeline = open.reduce((a: number, b: Lead) => a + b.value, 0);
+  const revenue = won.reduce((a: number, b: Lead) => a + (b.value || 0), 0);
+  const pipeline = open.reduce((a: number, b: Lead) => a + (b.value || 0), 0);
   const conversion = won.length + lost.length > 0 ? (won.length / (won.length + lost.length)) * 100 : 0;
   const avgTicket = won.length > 0 ? revenue / won.length : 0;
 
   const salesByPerson = useMemo(() => {
-    return users
+    const safeUsers = Array.isArray(users) ? users : [];
+    return safeUsers
       .filter((u: User) => u.role !== 'NEXUS_ADMIN')
       .map((user: User) => {
-        const userLeads = leads.filter((l: Lead) => l.assignedUserId === user.id);
+        const userLeads = filteredLeads.filter((l: Lead) => l.assignedUserId === user.id);
         const userWon = userLeads.filter((l: Lead) => l.probability === 100);
-        const userRevenue = userWon.reduce((acc: number, l: Lead) => acc + l.value, 0);
+        const userRevenue = userWon.reduce((acc: number, l: Lead) => acc + (l.value || 0), 0);
         return {
           id: user.id,
           name: user.name,
@@ -62,7 +65,7 @@ export const Dashboard = () => {
         };
       })
       .sort((a, b) => b.revenue - a.revenue);
-  }, [users, leads]);
+  }, [users, filteredLeads]);
 
   const evolution = useMemo(() => {
     const map: Record<string, number> = {};
@@ -73,7 +76,7 @@ export const Dashboard = () => {
     }
     won.forEach((l: Lead) => {
       const d = new Date(l.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-      if (map[d] !== undefined) map[d] += l.value;
+      if (map[d] !== undefined) map[d] += (l.value || 0);
     });
     return Object.entries(map).map(([date, value]) => ({ date, value }));
   }, [won]);
@@ -83,7 +86,7 @@ export const Dashboard = () => {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-black text-gray-900 tracking-tight uppercase">Performance Nexus</h1>
-          <p className="text-gray-500 text-sm font-medium">Resultados sincronizados com D1.</p>
+          <p className="text-gray-500 text-sm font-medium">Dados reais sincronizados via Cloudflare D1.</p>
         </div>
         <div className="flex bg-white rounded-xl p-1 shadow-sm border border-gray-200">
           {(['7d', '30d', 'all']).map((p) => (
@@ -145,7 +148,7 @@ export const Dashboard = () => {
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
                   <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 10}} />
                   <Tooltip 
-                    formatter={(v: any) => [currency(Number(v)), 'Receita']} 
+                    formatter={(value: any) => [currency(Number(value || 0)), 'Receita']}
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
                   />
                   <Area type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={4} fill="#6366f1" fillOpacity={0.1} />
