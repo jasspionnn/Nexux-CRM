@@ -87,11 +87,10 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setCurrentUser(JSON.parse(savedUser)); 
       } catch (e) { 
         localStorage.removeItem('nexus_user_session');
-        setIsLoading(false);
       } 
-    } else {
-      setIsLoading(false);
     }
+    // Garantir que saia do loading inicial após checar storage
+    if (!savedUser) setIsLoading(false);
   }, []);
 
   const refreshData = useCallback(async () => {
@@ -109,6 +108,9 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                  setUsers(data.users || []);
                  setTeams(data.teams || []);
                  setCustomFields(data.customFields || []);
+                 setWebhooks(data.webhooks || []);
+                 setKnowledgeSources(data.knowledgeSources || []);
+                 setBotInstance(data.botInstance || null);
                  
                  if (data.funnels && data.funnels.length > 0) {
                     const savedId = localStorage.getItem('nexus_active_funnel');
@@ -122,7 +124,8 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                }
           }
       } catch (error) { 
-          console.error("Erro na sincronização:", error); 
+          console.error("Erro fatal na sincronização:", error); 
+          // Opcional: Mostrar toast de erro aqui
       } finally { 
           setIsLoading(false); 
       }
@@ -146,7 +149,11 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return true;
           }
           return "Resposta inválida.";
-      } catch (error: any) { return error.message || "Credenciais inválidas."; } finally { setIsLoading(false); }
+      } catch (error: any) { 
+          return error.message || "Credenciais inválidas."; 
+      } finally { 
+          setIsLoading(false); 
+      }
   };
 
   const logout = () => { 
@@ -163,45 +170,19 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return login(e, p); 
   };
 
-  // CRUD Leads
-  const addLead = async (lead: Lead) => { 
-    setLeads(prev => [...prev, lead]); 
-    await api.post('/leads', lead); 
-  };
-  
-  const updateLead = async (id: string, updates: Partial<Lead>) => { 
-    setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l)); 
-    await api.patch(`/leads/${id}`, updates); 
-  };
+  const addLead = async (lead: Lead) => { setLeads(prev => [...prev, lead]); await api.post('/leads', lead); };
+  const updateLead = async (id: string, updates: Partial<Lead>) => { setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l)); await api.patch(`/leads/${id}`, updates); };
+  const moveLead = async (leadId: string, targetStageId: string) => { setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stageId: targetStageId } : l)); await api.patch(`/leads/${leadId}`, { stageId: targetStageId }); };
+  const deleteLead = async (id: string) => { setLeads(prev => prev.filter(l => l.id !== id)); await api.delete(`/leads/${id}`); };
 
-  const moveLead = async (leadId: string, targetStageId: string) => { 
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, stageId: targetStageId } : l)); 
-    await api.patch(`/leads/${leadId}`, { stageId: targetStageId }); 
-  };
-
-  const deleteLead = async (id: string) => { 
-    setLeads(prev => prev.filter(l => l.id !== id)); 
-    await api.delete(`/leads/${id}`); 
-  };
-
-  // CRUD Funnels
   const addFunnel = async (name: string) => { 
     if (!currentUser?.accountId) return;
     const nf: Funnel = { id: `f-${Date.now()}`, accountId: currentUser.accountId, name, stages: [{ id: `s1-${Date.now()}`, name: 'Lead', color: 'bg-blue-500', order: 0 }, { id: `s2-${Date.now()}`, name: 'Fechado', color: 'bg-green-500', order: 1 }] };
-    setFunnels(prev => [...prev, nf]); 
-    await api.post('/funnels', nf); 
+    setFunnels(prev => [...prev, nf]); await api.post('/funnels', nf); 
     if (!activeFunnelId) setActiveFunnelId(nf.id);
   };
-  
-  const updateFunnel = async (id: string, updates: Partial<Funnel>) => { 
-    setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); 
-    await api.patch(`/funnels/${id}`, updates); 
-  };
-
-  const deleteFunnel = async (id: string) => { 
-    setFunnels(prev => prev.filter(f => f.id !== id)); 
-    await api.delete(`/funnels/${id}`); 
-  };
+  const updateFunnel = async (id: string, updates: Partial<Funnel>) => { setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); await api.patch(`/funnels/${id}`, updates); };
+  const deleteFunnel = async (id: string) => { setFunnels(prev => prev.filter(f => f.id !== id)); await api.delete(`/funnels/${id}`); };
 
   const addStage = async (funnelId: string, name: string) => { 
     const funnel = funnels.find(f => f.id === funnelId); 
@@ -210,14 +191,12 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updatedStages = [...funnel.stages, newStage];
     updateFunnel(funnelId, { stages: updatedStages });
   };
-  
   const updateStage = async (funnelId: string, stageId: string, updates: Partial<Stage>) => {
     const funnel = funnels.find(f => f.id === funnelId);
     if (!funnel) return;
     const updatedStages = funnel.stages.map(s => s.id === stageId ? { ...s, ...updates } : s);
     updateFunnel(funnelId, { stages: updatedStages });
   };
-
   const deleteStage = async (funnelId: string, stageId: string) => {
     const funnel = funnels.find(f => f.id === funnelId);
     if (!funnel) return;
@@ -225,21 +204,18 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     updateFunnel(funnelId, { stages: updatedStages });
   };
 
-  // CRUD Tarefas (Persistidas no Lead)
   const addTask = async (leadId: string, task: Task) => { 
       const lead = leads.find(l => l.id === leadId);
       if (!lead) return;
       const updatedTasks = [...(lead.tasks || []), task];
       await updateLead(leadId, { tasks: updatedTasks });
   };
-  
   const toggleTask = async (leadId: string, taskId: string) => { 
       const lead = leads.find(l => l.id === leadId);
       if (!lead) return;
       const updatedTasks = (lead.tasks || []).map(t => t.id === taskId ? { ...t, completed: !t.completed } : t);
       await updateLead(leadId, { tasks: updatedTasks });
   };
-  
   const deleteTask = async (leadId: string, taskId: string) => { 
       const lead = leads.find(l => l.id === leadId);
       if (!lead) return;
@@ -247,7 +223,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       await updateLead(leadId, { tasks: updatedTasks });
   };
   
-  // CRUD Campos
   const addCustomField = async (f: CustomFieldDefinition) => { setCustomFields(prev => [...prev, f]); await api.post('/custom-fields', f); };
   const updateCustomField = async (id: string, updates: Partial<CustomFieldDefinition>) => { setCustomFields(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f)); await api.patch(`/custom-fields/${id}`, updates); };
   const deleteCustomField = async (id: string) => { setCustomFields(prev => prev.filter(f => f.id !== id)); await api.delete(`/custom-fields/${id}`); };
@@ -256,7 +231,6 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const updateAccountStatus = async (accountId: string, status: string) => { await api.patch(`/admin/accounts/${accountId}`, { status }); refreshData(); };
   const extendAccountSubscription = async (accountId: string, months: number) => { await api.post(`/admin/accounts/${accountId}/extend`, { months }); refreshData(); };
 
-  // Webhooks/Bots (Placeholders funcionais)
   const addWebhook = async (webhook: Partial<Webhook>) => { setWebhooks(prev => [...prev, { ...webhook, id: `wh-${Date.now()}` } as Webhook]); };
   const updateWebhook = async (id: string, updates: Partial<Webhook>) => { setWebhooks(prev => prev.map(w => w.id === id ? { ...w, ...updates } : w)); };
   const deleteWebhook = async (id: string) => { setWebhooks(prev => prev.filter(w => w.id !== id)); };

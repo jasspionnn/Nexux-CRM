@@ -7,11 +7,11 @@ export const api = {
             const res = await fetch(url);
             if (!res.ok) {
                 const errBody = await res.json().catch(() => ({}));
-                throw new Error(errBody.error || `Erro API: ${res.status}`);
+                throw new Error(errBody.error || errBody.details || `Erro de rede: ${res.status}`);
             }
             return res.json();
         } catch (error: any) {
-            console.error(`[GET ERROR] ${url}:`, error.message);
+            console.error(`[FETCH GET ERROR] ${url}:`, error.message);
             throw error;
         }
     },
@@ -27,11 +27,11 @@ export const api = {
             });
             if (!res.ok) {
                 const errBody = await res.json().catch(() => ({}));
-                throw new Error(errBody.error || `Erro API: ${res.status}`);
+                throw new Error(errBody.error || errBody.details || `Erro de rede: ${res.status}`);
             }
             return res.json();
         } catch (error: any) {
-            console.error(`[POST ERROR] ${url}:`, error.message);
+            console.error(`[FETCH POST ERROR] ${url}:`, error.message);
             throw error;
         }
     },
@@ -47,11 +47,11 @@ export const api = {
             });
             if (!res.ok) {
                 const errBody = await res.json().catch(() => ({}));
-                throw new Error(errBody.error || `Erro API: ${res.status}`);
+                throw new Error(errBody.error || errBody.details || `Erro de rede: ${res.status}`);
             }
             return res.json();
         } catch (error: any) {
-            console.error(`[PATCH ERROR] ${url}:`, error.message);
+            console.error(`[FETCH PATCH ERROR] ${url}:`, error.message);
             throw error;
         }
     },
@@ -63,11 +63,11 @@ export const api = {
             const res = await fetch(url, { method: 'DELETE' });
             if (!res.ok) {
                 const errBody = await res.json().catch(() => ({}));
-                throw new Error(errBody.error || `Erro API: ${res.status}`);
+                throw new Error(errBody.error || errBody.details || `Erro de rede: ${res.status}`);
             }
             return res.json();
         } catch (error: any) {
-            console.error(`[DELETE ERROR] ${url}:`, error.message);
+            console.error(`[FETCH DELETE ERROR] ${url}:`, error.message);
             throw error;
         }
     }

@@ -1,7 +1,7 @@
 
 import { Hono } from 'hono';
 import { handle } from 'hono/cloudflare-pages';
-import { GoogleGenAI } from "@google/genai";
+import { cors } from 'hono/cors';
 
 type Bindings = {
   DB: D1Database;
@@ -11,9 +11,21 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
+// Habilitar CORS para desenvolvimento
+app.use('*', cors());
+
+// --- MIDDLEWARE DE ERRO GLOBAL ---
+app.onError((err, c) => {
+  console.error(`[API ERROR]: ${err.message}`);
+  return c.json({ 
+    error: "Erro de conexão com o banco de dados", 
+    details: err.message,
+    status: 500 
+  }, 500);
+});
+
 const generateId = (prefix: string) => `${prefix}_${crypto.randomUUID().split('-')[0]}`;
 
-// --- HELPERS ---
 const safeParse = (val: any) => {
     if (!val) return [];
     if (typeof val === 'object') return val;
@@ -22,21 +34,21 @@ const safeParse = (val: any) => {
 
 // --- AUTH ---
 app.post('/auth/login', async (c) => {
-    try {
-        const { email, password } = await c.req.json() as any;
-        const user = await c.env.DB.prepare(
-            'SELECT * FROM users WHERE email = ? AND password = ? AND status = "active"'
-        ).bind(email, password).first();
+    const { email, password } = await c.req.json() as any;
+    
+    // Verificação de segurança: Garantir que o DB está vinculado
+    if (!c.env.DB) throw new Error("Binding 'DB' não encontrado no ambiente.");
 
-        if (!user) return c.json({ error: "Credenciais inválidas ou conta inativa" }, 401);
-        
-        await c.env.DB.prepare('UPDATE users SET last_login = ? WHERE id = ?')
-            .bind(new Date().toISOString(), (user as any).id).run();
+    const user = await c.env.DB.prepare(
+        'SELECT * FROM users WHERE email = ? AND password = ? AND status = "active"'
+    ).bind(email, password).first();
 
-        return c.json({ user });
-    } catch (e: any) {
-        return c.json({ error: e.message }, 500);
-    }
+    if (!user) return c.json({ error: "Credenciais inválidas ou usuário inativo." }, 401);
+    
+    await c.env.DB.prepare('UPDATE users SET last_login = ? WHERE id = ?')
+        .bind(new Date().toISOString(), (user as any).id).run();
+
+    return c.json({ user });
 });
 
 app.post('/auth/register', async (c) => {
@@ -53,90 +65,56 @@ app.post('/auth/register', async (c) => {
         ]);
         return c.json({ success: true });
     } catch (e: any) {
-        return c.json({ error: "Erro ao criar conta: " + e.message }, 500);
+        return c.json({ error: "Falha ao registrar conta: " + e.message }, 500);
     }
 });
 
-// --- SYNC ---
+// --- SYNC (MOTOR DE DADOS) ---
 app.get('/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
-    try {
-        const [funnels, leads, users, teams, fields] = await Promise.all([
-            c.env.DB.prepare('SELECT * FROM funnels WHERE account_id = ?').bind(accountId).all(),
-            c.env.DB.prepare('SELECT * FROM leads WHERE account_id = ? ORDER BY created_at DESC').bind(accountId).all(),
-            c.env.DB.prepare('SELECT id, name, email, role, avatar, team_id, status FROM users WHERE account_id = ?').bind(accountId).all(),
-            c.env.DB.prepare('SELECT * FROM teams WHERE account_id = ?').bind(accountId).all(),
-            c.env.DB.prepare('SELECT * FROM custom_fields WHERE account_id = ?').bind(accountId).all()
-        ]);
+    
+    // Execução paralela para performance profissional
+    const [funnels, leads, users, teams, fields] = await Promise.all([
+        c.env.DB.prepare('SELECT * FROM funnels WHERE account_id = ?').bind(accountId).all(),
+        c.env.DB.prepare('SELECT * FROM leads WHERE account_id = ? ORDER BY created_at DESC').bind(accountId).all(),
+        c.env.DB.prepare('SELECT id, name, email, role, avatar, team_id, status FROM users WHERE account_id = ?').bind(accountId).all(),
+        c.env.DB.prepare('SELECT * FROM teams WHERE account_id = ?').bind(accountId).all(),
+        c.env.DB.prepare('SELECT * FROM custom_fields WHERE account_id = ?').bind(accountId).all()
+    ]);
 
-        const formattedFunnels = (funnels.results || []).map((f: any) => ({
-            ...f,
-            stages: safeParse(f.stages)
-        }));
+    const formattedFunnels = (funnels.results || []).map((f: any) => ({
+        ...f,
+        stages: safeParse(f.stages)
+    }));
 
-        const formattedLeads = (leads.results || []).map((l: any) => ({
-            ...l,
-            notes: safeParse(l.notes),
-            tasks: safeParse(l.tasks),
-            tags: safeParse(l.tags),
-            customValues: safeParse(l.custom_values)
-        }));
+    const formattedLeads = (leads.results || []).map((l: any) => ({
+        ...l,
+        notes: safeParse(l.notes),
+        tasks: safeParse(l.tasks),
+        tags: safeParse(l.tags),
+        customValues: safeParse(l.custom_values)
+    }));
 
-        return c.json({
-            funnels: formattedFunnels,
-            leads: formattedLeads,
-            users: users.results || [],
-            teams: teams.results || [],
-            customFields: (fields.results || []).map((cf: any) => ({ ...cf, options: safeParse(cf.options), visibleStageIds: safeParse(cf.visible_stage_ids) }))
-        });
-    } catch (e: any) {
-        return c.json({ error: e.message }, 500);
-    }
+    return c.json({
+        funnels: formattedFunnels,
+        leads: formattedLeads,
+        users: users.results || [],
+        teams: teams.results || [],
+        customFields: (fields.results || []).map((cf: any) => ({ 
+            ...cf, 
+            options: safeParse(cf.options), 
+            visibleStageIds: safeParse(cf.visible_stage_ids) 
+        }))
+    });
 });
 
-// --- FUNNELS ---
+// --- CRUD GENÉRICO (Funnels, Leads, etc) ---
 app.post('/funnels', async (c) => {
     const f = await c.req.json() as any;
-    try {
-        await c.env.DB.prepare(
-            'INSERT INTO funnels (id, account_id, name, stages) VALUES (?, ?, ?, ?)'
-        ).bind(f.id, f.accountId, f.name, JSON.stringify(f.stages || [])).run();
-        return c.json({ success: true });
-    } catch (e: any) { return c.json({ error: e.message }, 500); }
-});
-
-app.patch('/funnels/:id', async (c) => {
-    const id = c.req.param('id');
-    const updates = await c.req.json() as any;
-    const keys = Object.keys(updates);
-    const setClause = keys.map(k => `${k} = ?`).join(', ');
-    const values = keys.map(k => typeof updates[k] === 'object' ? JSON.stringify(updates[k]) : updates[k]);
-    try {
-        await c.env.DB.prepare(`UPDATE funnels SET ${setClause} WHERE id = ?`).bind(...values, id).run();
-        return c.json({ success: true });
-    } catch (e: any) { return c.json({ error: e.message }, 500); }
-});
-
-app.delete('/funnels/:id', async (c) => {
-    await c.env.DB.prepare('DELETE FROM funnels WHERE id = ?').bind(c.req.param('id')).run();
+    await c.env.DB.prepare(
+        'INSERT INTO funnels (id, account_id, name, stages) VALUES (?, ?, ?, ?)'
+    ).bind(f.id, f.accountId, f.name, JSON.stringify(f.stages || [])).run();
     return c.json({ success: true });
-});
-
-// --- LEADS ---
-app.post('/leads', async (c) => {
-    const lead = await c.req.json() as any;
-    try {
-        await c.env.DB.prepare(
-            'INSERT INTO leads (id, account_id, title, company, value, contact_name, contact_email, contact_phone, funnel_id, stage_id, assigned_user_id, probability, tags, notes, tasks, custom_values) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        ).bind(
-            lead.id, lead.accountId, lead.title, lead.company, lead.value, 
-            lead.contactName, lead.contactEmail, lead.contactPhone,
-            lead.funnelId, lead.stageId, lead.assignedUserId, lead.probability,
-            JSON.stringify(lead.tags || []), JSON.stringify(lead.notes || []), 
-            JSON.stringify(lead.tasks || []), JSON.stringify(lead.customValues || {})
-        ).run();
-        return c.json({ success: true });
-    } catch (e: any) { return c.json({ error: e.message }, 500); }
 });
 
 app.patch('/leads/:id', async (c) => {
@@ -155,56 +133,21 @@ app.patch('/leads/:id', async (c) => {
         return (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val;
     });
 
-    try {
-        await c.env.DB.prepare(`UPDATE leads SET ${setClause} WHERE id = ?`)
-            .bind(...values, id).run();
-        return c.json({ success: true });
-    } catch (e: any) { return c.json({ error: e.message }, 500); }
-});
-
-app.delete('/leads/:id', async (c) => {
-    await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(c.req.param('id')).run();
-    return c.json({ success: true });
-});
-
-// --- CUSTOM FIELDS ---
-app.post('/custom-fields', async (c) => {
-    const f = await c.req.json() as any;
-    try {
-        await c.env.DB.prepare(
-            'INSERT INTO custom_fields (id, account_id, name, type, context, funnel_id, options, visible_stage_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-        ).bind(f.id, f.accountId, f.name, f.type, f.context, f.funnelId, JSON.stringify(f.options || []), JSON.stringify(f.visibleStageIds || [])).run();
-        return c.json({ success: true });
-    } catch (e: any) { return c.json({ error: e.message }, 500); }
-});
-
-app.delete('/custom-fields/:id', async (c) => {
-    await c.env.DB.prepare('DELETE FROM custom_fields WHERE id = ?').bind(c.req.param('id')).run();
-    return c.json({ success: true });
-});
-
-// --- SETTINGS ---
-app.get('/public/settings', async (c) => {
-    try {
-        const { results } = await c.env.DB.prepare('SELECT key, value FROM system_settings').all();
-        const settings = results.reduce((acc: any, cur: any) => ({ ...acc, [cur.key]: cur.value }), {});
-        return c.json(settings);
-    } catch { return c.json({}); }
-});
-
-app.patch('/admin/settings', async (c) => {
-    const settings = await c.req.json() as any;
-    const queries = Object.entries(settings).map(([key, value]) => 
-        c.env.DB.prepare('INSERT INTO system_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-        .bind(key, value)
-    );
-    await c.env.DB.batch(queries);
+    await c.env.DB.prepare(`UPDATE leads SET ${setClause} WHERE id = ?`)
+        .bind(...values, id).run();
+    
     return c.json({ success: true });
 });
 
 app.get('/admin/accounts', async (c) => {
     const { results } = await c.env.DB.prepare('SELECT * FROM accounts ORDER BY created_at DESC').all();
     return c.json({ accounts: results || [] });
+});
+
+app.get('/public/settings', async (c) => {
+    const { results } = await c.env.DB.prepare('SELECT key, value FROM system_settings').all();
+    const settings = results.reduce((acc: any, cur: any) => ({ ...acc, [cur.key]: cur.value }), {});
+    return c.json(settings);
 });
 
 export const onRequest = handle(app);
