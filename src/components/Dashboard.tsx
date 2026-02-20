@@ -83,10 +83,10 @@ export const Dashboard = () => {
 
   return (
     <div className="p-8 bg-gray-50 space-y-8 h-full overflow-y-auto animate-fade-in">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight uppercase">Performance Nexus</h1>
-          <p className="text-gray-500 text-sm font-medium">Dados reais sincronizados via Cloudflare D1.</p>
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight uppercase">Nexus Intelligence</h1>
+          <p className="text-gray-500 text-sm font-medium">Performance em tempo real sincronizada via D1.</p>
         </div>
         <div className="flex bg-white rounded-xl p-1 shadow-sm border border-gray-200">
           {(['7d', '30d', 'all']).map((p) => (
@@ -114,8 +114,7 @@ export const Dashboard = () => {
         <div className="xl:col-span-1">
           <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
             <h3 className="font-black text-gray-900 mb-6 flex items-center gap-2 uppercase text-xs tracking-widest">
-              <Trophy className="text-yellow-500" size={16} />
-              Top Performance
+              <Trophy className="text-yellow-500" size={16} /> Elite de Vendas
             </h3>
             <div className="space-y-4">
               {salesByPerson.slice(0, 5).map((person, idx) => (
@@ -131,16 +130,14 @@ export const Dashboard = () => {
                   <div className="text-right font-black text-gray-900 text-xs">{currency(person.revenue)}</div>
                 </div>
               ))}
-              {salesByPerson.length === 0 && <p className="text-center py-10 text-gray-400 font-bold uppercase text-[10px]">Sem dados...</p>}
+              {salesByPerson.length === 0 && <p className="text-center py-10 text-gray-400 font-bold uppercase text-[10px]">Sem dados para exibir</p>}
             </div>
           </div>
         </div>
 
         <div className="xl:col-span-2">
           <div className="bg-white p-8 rounded-3xl border border-gray-200 shadow-sm">
-            <h3 className="font-black text-gray-900 mb-8 flex items-center gap-2 uppercase text-xs tracking-widest">
-              ROI & Crescimento
-            </h3>
+            <h3 className="font-black text-gray-900 mb-8 flex items-center gap-2 uppercase text-xs tracking-widest">Evolução de Crescimento</h3>
             <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={evolution}>
