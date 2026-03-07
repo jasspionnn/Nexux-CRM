@@ -36,15 +36,21 @@ export const Settings = () => {
   const [selectedFunnelId, setSelectedFunnelId] = useState<string>(funnels[0]?.id || '');
   const [confirmDelete, setConfirmDelete] = useState<{type: 'funnel' | 'webhook', id: string} | null>(null);
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
       if (!confirmDelete) return;
-      if (confirmDelete.type === 'funnel') {
-          deleteFunnel(confirmDelete.id);
-          if (selectedFunnelId === confirmDelete.id) {
-              setSelectedFunnelId(funnels[0]?.id || '');
+      console.log('Deleting:', confirmDelete);
+      try {
+          if (confirmDelete.type === 'funnel') {
+              await deleteFunnel(confirmDelete.id);
+              if (selectedFunnelId === confirmDelete.id) {
+                  const nextFunnel = funnels.find(f => f.id !== confirmDelete.id);
+                  setSelectedFunnelId(nextFunnel?.id || '');
+              }
+          } else if (confirmDelete.type === 'webhook') {
+              await deleteWebhook(confirmDelete.id);
           }
-      } else if (confirmDelete.type === 'webhook') {
-          deleteWebhook(confirmDelete.id);
+      } catch (e) {
+          console.error('Error deleting:', e);
       }
       setConfirmDelete(null);
   };

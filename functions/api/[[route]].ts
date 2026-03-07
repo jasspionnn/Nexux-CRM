@@ -226,8 +226,19 @@ app.patch('/funnels/:id', async (c) => {
 
 app.delete('/funnels/:id', async (c) => {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM funnels WHERE id = ?').bind(id).run();
-    return c.json({ success: true });
+    try {
+        await c.env.DB.batch([
+            c.env.DB.prepare('DELETE FROM tasks WHERE lead_id IN (SELECT id FROM leads WHERE funnel_id = ?)').bind(id),
+            c.env.DB.prepare('DELETE FROM notes WHERE lead_id IN (SELECT id FROM leads WHERE funnel_id = ?)').bind(id),
+            c.env.DB.prepare('DELETE FROM leads WHERE funnel_id = ?').bind(id),
+            c.env.DB.prepare('DELETE FROM stages WHERE funnel_id = ?').bind(id),
+            c.env.DB.prepare('DELETE FROM funnels WHERE id = ?').bind(id)
+        ]);
+        return c.json({ success: true });
+    } catch (e: any) {
+        console.error('Error deleting funnel:', e);
+        return c.json({ error: e.message }, 500);
+    }
 });
 
 app.post('/funnels/:id/reorder-stages', async (c) => {
@@ -393,8 +404,13 @@ app.patch('/webhooks/:id', async (c) => {
 
 app.delete('/webhooks/:id', async (c) => {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM webhooks WHERE id = ?').bind(id).run();
-    return c.json({ success: true });
+    try {
+        await c.env.DB.prepare('DELETE FROM webhooks WHERE id = ?').bind(id).run();
+        return c.json({ success: true });
+    } catch (e: any) {
+        console.error('Error deleting webhook:', e);
+        return c.json({ error: e.message }, 500);
+    }
 });
 
 app.post('/knowledge', async (c) => {
