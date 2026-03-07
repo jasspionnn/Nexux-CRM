@@ -101,6 +101,18 @@ CREATE TABLE IF NOT EXISTS custom_fields (
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS webhooks (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    events TEXT NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    funnel_id TEXT,
+    stage_id TEXT,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS knowledge_sources (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,

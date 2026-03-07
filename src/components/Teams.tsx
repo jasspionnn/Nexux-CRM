@@ -7,7 +7,7 @@ import { Briefcase, Plus, Trash2, Mail, DollarSign, UserPlus, Send, Check, X, Cl
 export const Teams = () => {
   const { users, teams, addUser, updateUser, deleteUser, addTeam, deleteTeam, currentUser } = useCRM();
   const [selectedTeamId, setSelectedTeamId] = useState<string | 'all'>('all');
-  const canEdit = currentUser?.role === UserRole.ACCOUNT_ADMIN;
+  const canEdit = currentUser?.role === UserRole.ACCOUNT_ADMIN || currentUser?.role === UserRole.NEXUS_ADMIN;
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [inviteStatus, setInviteStatus] = useState<'idle' | 'sending' | 'success'>('idle');

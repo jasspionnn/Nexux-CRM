@@ -319,9 +319,14 @@ app.delete('/custom-fields/:id', async (c) => {
 // --- USERS & TEAMS ---
 app.post('/users', async (c) => {
     const u = await c.req.json();
-    await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, status, team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(u.id, u.accountId, u.name, u.email, u.password || '123456', u.role, u.status || 'active', u.teamId || null).run();
-    return c.json({ success: true });
+    try {
+        await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, status, team_id, avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(u.id, u.accountId || null, u.name, u.email, u.password || '123456', u.role, u.status || 'active', u.teamId || null, u.avatar || null).run();
+        return c.json({ success: true });
+    } catch (e: any) {
+        console.error('Error adding user:', e);
+        return c.json({ error: e.message }, 500);
+    }
 });
 
 app.patch('/users/:id', async (c) => {
@@ -342,7 +347,7 @@ app.delete('/users/:id', async (c) => {
 
 app.post('/teams', async (c) => {
     const t = await c.req.json();
-    await c.env.DB.prepare('INSERT INTO teams (id, account_id, name, goal) VALUES (?, ?, ?, ?)').bind(t.id, t.accountId, t.name, t.goal || 0).run();
+    await c.env.DB.prepare('INSERT INTO teams (id, account_id, name, goal) VALUES (?, ?, ?, ?)').bind(t.id, t.accountId || null, t.name, t.goal || 0).run();
     return c.json({ success: true });
 });
 
@@ -362,8 +367,14 @@ app.delete('/teams/:id', async (c) => {
 
 // --- ADMIN ---
 app.get('/admin/accounts', async (c) => {
-    const res = await c.env.DB.prepare('SELECT id, company_name as companyName, email, status, plan, expires_at as expiresAt FROM accounts').all();
-    return c.json({ accounts: res.results || [] });
+    const [accountsRes, usersRes] = await c.env.DB.batch([
+        c.env.DB.prepare('SELECT id, company_name as companyName, email, status, plan, expires_at as expiresAt FROM accounts'),
+        c.env.DB.prepare('SELECT id, name, email, role, avatar, status, team_id FROM users WHERE account_id IS NULL')
+    ]);
+    return c.json({ 
+        accounts: accountsRes.results || [],
+        users: usersRes.results || []
+    });
 });
 
 app.patch('/admin/accounts/:id', async (c) => {
@@ -384,7 +395,7 @@ app.post('/admin/accounts/:id/extend', async (c) => {
 app.post('/webhooks', async (c) => {
     const w = await c.req.json();
     await c.env.DB.prepare('INSERT INTO webhooks (id, account_id, name, url, events, is_active) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(w.id, w.accountId, w.name, w.url, toDB(w.events), w.isActive ? 1 : 0).run();
+        .bind(w.id, w.accountId || null, w.name, w.url, toDB(w.events), w.isActive ? 1 : 0).run();
     return c.json({ success: true });
 });
 

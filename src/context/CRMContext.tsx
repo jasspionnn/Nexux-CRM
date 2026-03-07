@@ -93,6 +93,7 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (data) {
         if (user.role === UserRole.NEXUS_ADMIN) {
           setAccounts(data.accounts || []);
+          setUsers(data.users || []);
         } else {
           setFunnels(data.funnels || []);
           setLeads(data.leads || []);
@@ -228,8 +229,16 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setLeads(p => p.map(l => l.id === lid ? {...l, notes: [n, ...l.notes]} : l)); 
       },
       updateVisibilitySettings: async (s) => { console.log('Update visibility', s); },
-      addUser: async (u) => { await api.post('/users', u); setUsers(p => [...p, u as User]); },
-      addTeam: async (t) => { await api.post('/teams', t); setTeams(p => [...p, t as Team]); },
+      addUser: async (u) => { 
+        const userToAdd = { ...u, accountId: currentUser?.accountId || u.accountId };
+        await api.post('/users', userToAdd); 
+        setUsers(p => [...p, userToAdd as User]); 
+      },
+      addTeam: async (t) => { 
+        const teamToAdd = { ...t, accountId: currentUser?.accountId || t.accountId || null };
+        await api.post('/teams', teamToAdd); 
+        setTeams(p => [...p, teamToAdd as Team]); 
+      },
       updateTeam: async (id, ups) => { await api.patch(`/teams/${id}`, ups); setTeams(p => p.map(t => t.id === id ? {...t, ...ups} : t)); },
       deleteTeam: async id => { await api.delete(`/teams/${id}`); setTeams(p => p.filter(t => t.id !== id)); },
       deleteUser: async id => { await api.delete(`/users/${id}`); setUsers(p => p.filter(u => u.id !== id)); },
