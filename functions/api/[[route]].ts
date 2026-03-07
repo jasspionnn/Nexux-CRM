@@ -126,6 +126,209 @@ app.patch('/leads/:id', async (c) => {
     return c.json({ success: true });
 });
 
+// --- FUNNELS ---
+app.post('/funnels', async (c) => {
+    const f = await c.req.json();
+    await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)').bind(f.id, f.accountId, f.name).run();
+    return c.json({ success: true });
+});
+
+app.patch('/funnels/:id', async (c) => {
+    const id = c.req.param('id');
+    const updates = await c.req.json();
+    if (updates.name) {
+        await c.env.DB.prepare('UPDATE funnels SET name = ? WHERE id = ?').bind(updates.name, id).run();
+    }
+    return c.json({ success: true });
+});
+
+app.delete('/funnels/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM funnels WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+app.post('/funnels/:id/reorder-stages', async (c) => {
+    const { stages } = await c.req.json();
+    const stmts = stages.map((s: any, i: number) => c.env.DB.prepare('UPDATE stages SET "order" = ? WHERE id = ?').bind(i, s.id));
+    await c.env.DB.batch(stmts);
+    return c.json({ success: true });
+});
+
+// --- STAGES ---
+app.post('/stages', async (c) => {
+    const s = await c.req.json();
+    await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(s.id, s.funnelId, s.name, s.color, s.order).run();
+    return c.json({ success: true });
+});
+
+app.patch('/stages/:id', async (c) => {
+    const id = c.req.param('id');
+    const updates = await c.req.json();
+    if (updates.name) await c.env.DB.prepare('UPDATE stages SET name = ? WHERE id = ?').bind(updates.name, id).run();
+    if (updates.color) await c.env.DB.prepare('UPDATE stages SET color = ? WHERE id = ?').bind(updates.color, id).run();
+    return c.json({ success: true });
+});
+
+app.delete('/stages/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM stages WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+// --- TASKS ---
+app.post('/tasks', async (c) => {
+    const t = await c.req.json();
+    await c.env.DB.prepare('INSERT INTO tasks (id, lead_id, title, due_date, completed, type) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(t.id, t.leadId, t.title, t.dueDate, t.completed ? 1 : 0, t.type).run();
+    return c.json({ success: true });
+});
+
+app.patch('/tasks/:id/toggle', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('UPDATE tasks SET completed = CASE WHEN completed = 1 THEN 0 ELSE 1 END WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+app.delete('/tasks/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+// --- CUSTOM FIELDS ---
+app.post('/custom-fields', async (c) => {
+    const cf = await c.req.json();
+    await c.env.DB.prepare('INSERT INTO custom_fields (id, account_id, name, type, context, funnel_id, options, visible_stage_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(cf.id, cf.accountId, cf.name, cf.type, cf.context, cf.funnelId, toDB(cf.options), toDB(cf.visibleStageIds)).run();
+    return c.json({ success: true });
+});
+
+app.patch('/custom-fields/:id', async (c) => {
+    const id = c.req.param('id');
+    const updates = await c.req.json();
+    if (updates.name) await c.env.DB.prepare('UPDATE custom_fields SET name = ? WHERE id = ?').bind(updates.name, id).run();
+    if (updates.options) await c.env.DB.prepare('UPDATE custom_fields SET options = ? WHERE id = ?').bind(toDB(updates.options), id).run();
+    return c.json({ success: true });
+});
+
+app.delete('/custom-fields/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM custom_fields WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+// --- USERS & TEAMS ---
+app.post('/users', async (c) => {
+    const u = await c.req.json();
+    await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, status, team_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(u.id, u.accountId, u.name, u.email, u.password || '123456', u.role, u.status || 'active', u.teamId || null).run();
+    return c.json({ success: true });
+});
+
+app.patch('/users/:id', async (c) => {
+    const id = c.req.param('id');
+    const updates = await c.req.json();
+    const mapping: any = { name: 'name', role: 'role', status: 'status', teamId: 'team_id' };
+    for (const [key, val] of Object.entries(updates)) {
+        if (mapping[key]) await c.env.DB.prepare(`UPDATE users SET ${mapping[key]} = ? WHERE id = ?`).bind(val, id).run();
+    }
+    return c.json({ success: true });
+});
+
+app.delete('/users/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+app.post('/teams', async (c) => {
+    const t = await c.req.json();
+    await c.env.DB.prepare('INSERT INTO teams (id, account_id, name, goal) VALUES (?, ?, ?, ?)').bind(t.id, t.accountId, t.name, t.goal || 0).run();
+    return c.json({ success: true });
+});
+
+app.patch('/teams/:id', async (c) => {
+    const id = c.req.param('id');
+    const updates = await c.req.json();
+    if (updates.name) await c.env.DB.prepare('UPDATE teams SET name = ? WHERE id = ?').bind(updates.name, id).run();
+    if (updates.goal !== undefined) await c.env.DB.prepare('UPDATE teams SET goal = ? WHERE id = ?').bind(updates.goal, id).run();
+    return c.json({ success: true });
+});
+
+app.delete('/teams/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM teams WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+// --- ADMIN ---
+app.patch('/admin/accounts/:id', async (c) => {
+    const id = c.req.param('id');
+    const { status } = await c.req.json();
+    await c.env.DB.prepare('UPDATE accounts SET status = ? WHERE id = ?').bind(status, id).run();
+    return c.json({ success: true });
+});
+
+app.post('/admin/accounts/:id/extend', async (c) => {
+    const id = c.req.param('id');
+    const { months } = await c.req.json();
+    await c.env.DB.prepare('UPDATE accounts SET expires_at = date(expires_at, "+" || ? || " months") WHERE id = ?').bind(months, id).run();
+    return c.json({ success: true });
+});
+
+// --- WEBHOOKS & KNOWLEDGE ---
+app.post('/webhooks', async (c) => {
+    const w = await c.req.json();
+    await c.env.DB.prepare('INSERT INTO webhooks (id, account_id, name, url, events, is_active) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(w.id, w.accountId, w.name, w.url, toDB(w.events), w.isActive ? 1 : 0).run();
+    return c.json({ success: true });
+});
+
+app.patch('/webhooks/:id', async (c) => {
+    const id = c.req.param('id');
+    const updates = await c.req.json();
+    if (updates.isActive !== undefined) await c.env.DB.prepare('UPDATE webhooks SET is_active = ? WHERE id = ?').bind(updates.isActive ? 1 : 0, id).run();
+    return c.json({ success: true });
+});
+
+app.delete('/webhooks/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM webhooks WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+app.post('/knowledge', async (c) => {
+    const s = await c.req.json();
+    await c.env.DB.prepare('INSERT INTO knowledge_sources (id, account_id, name, type) VALUES (?, ?, ?, ?)')
+        .bind(s.id, s.accountId, s.name, s.type).run();
+    return c.json({ success: true });
+});
+
+app.delete('/knowledge/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM knowledge_sources WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+app.patch('/bot', async (c) => {
+    const updates = await c.req.json();
+    const accountId = updates.accountId;
+    if (!accountId) return c.json({ error: 'accountId required' }, 400);
+    
+    // Upsert bot settings
+    const existing = await c.env.DB.prepare('SELECT * FROM bot_settings WHERE account_id = ?').bind(accountId).first();
+    if (existing) {
+        if (updates.systemPrompt) await c.env.DB.prepare('UPDATE bot_settings SET system_prompt = ? WHERE account_id = ?').bind(updates.systemPrompt, accountId).run();
+        if (updates.temperature !== undefined) await c.env.DB.prepare('UPDATE bot_settings SET temperature = ? WHERE account_id = ?').bind(updates.temperature, accountId).run();
+        if (updates.autoReply !== undefined) await c.env.DB.prepare('UPDATE bot_settings SET auto_reply = ? WHERE account_id = ?').bind(updates.autoReply ? 1 : 0, accountId).run();
+    } else {
+        await c.env.DB.prepare('INSERT INTO bot_settings (account_id, system_prompt, temperature, auto_reply) VALUES (?, ?, ?, ?)')
+            .bind(accountId, updates.systemPrompt || '', updates.temperature || 0.7, updates.autoReply ? 1 : 0).run();
+    }
+    return c.json({ success: true });
+});
+
 app.get('/public/settings', async (c) => c.json({ login_background: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&q=80&w=2000' }));
 
 export const onRequest = handle(app);

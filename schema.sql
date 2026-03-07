@@ -1,5 +1,113 @@
 
--- ... (tabelas anteriores permanecem)
+CREATE TABLE IF NOT EXISTS accounts (
+    id TEXT PRIMARY KEY,
+    company_name TEXT NOT NULL,
+    owner_name TEXT,
+    email TEXT NOT NULL,
+    status TEXT DEFAULT 'active',
+    plan TEXT DEFAULT 'pro',
+    expires_at TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    account_id TEXT,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    role TEXT NOT NULL,
+    avatar TEXT,
+    status TEXT DEFAULT 'active',
+    team_id TEXT,
+    joined_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS teams (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    goal REAL,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS funnels (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    default_won_stage_id TEXT,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS stages (
+    id TEXT PRIMARY KEY,
+    funnel_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    color TEXT,
+    "order" INTEGER NOT NULL,
+    FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS leads (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    company TEXT,
+    value REAL DEFAULT 0,
+    contact_name TEXT,
+    contact_email TEXT,
+    contact_phone TEXT,
+    funnel_id TEXT NOT NULL,
+    stage_id TEXT NOT NULL,
+    assigned_user_id TEXT,
+    probability INTEGER DEFAULT 0,
+    tags TEXT,
+    custom_values TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE,
+    FOREIGN KEY (stage_id) REFERENCES stages(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS notes (
+    id TEXT PRIMARY KEY,
+    lead_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    author_name TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    lead_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    due_date TEXT,
+    completed INTEGER DEFAULT 0,
+    type TEXT,
+    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS custom_fields (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    context TEXT,
+    funnel_id TEXT,
+    options TEXT,
+    visible_stage_ids TEXT,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_sources (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
 
 -- Histórico de conversas do Bot para manter contexto (Short-term memory)
 CREATE TABLE IF NOT EXISTS bot_chat_history (
