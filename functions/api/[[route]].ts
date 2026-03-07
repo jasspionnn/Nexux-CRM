@@ -347,7 +347,7 @@ app.delete('/users/:id', async (c) => {
 
 app.post('/teams', async (c) => {
     const t = await c.req.json();
-    await c.env.DB.prepare('INSERT INTO teams (id, account_id, name, goal) VALUES (?, ?, ?, ?)').bind(t.id, t.accountId || null, t.name, t.goal || 0).run();
+    await c.env.DB.prepare('INSERT INTO teams (id, account_id, name, goal) VALUES (?, ?, ?, ?)').bind(t.id, t.accountId, t.name, t.goal || 0).run();
     return c.json({ success: true });
 });
 
@@ -395,7 +395,7 @@ app.post('/admin/accounts/:id/extend', async (c) => {
 app.post('/webhooks', async (c) => {
     const w = await c.req.json();
     await c.env.DB.prepare('INSERT INTO webhooks (id, account_id, name, url, events, is_active, funnel_id, stage_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(w.id, w.accountId || null, w.name, w.url, toDB(w.events), w.active ? 1 : 0, w.funnelId || null, w.stageId || null).run();
+        .bind(w.id, w.accountId, w.name, w.url, toDB(w.events || []), w.active ? 1 : 0, w.funnelId || null, w.stageId || null).run();
     return c.json({ success: true });
 });
 
@@ -405,7 +405,9 @@ app.patch('/webhooks/:id', async (c) => {
     const mapping: any = { name: 'name', url: 'url', funnelId: 'funnel_id', stageId: 'stage_id', events: 'events' };
     for (const [key, val] of Object.entries(updates)) {
         if (mapping[key]) {
-            const dbVal = key === 'events' ? toDB(val) : val;
+            let dbVal = val;
+            if (key === 'events') dbVal = toDB(val);
+            if ((key === 'funnelId' || key === 'stageId') && val === '') dbVal = null;
             await c.env.DB.prepare(`UPDATE webhooks SET ${mapping[key]} = ? WHERE id = ?`).bind(dbVal, id).run();
         }
     }

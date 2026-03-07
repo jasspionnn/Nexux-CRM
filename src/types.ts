@@ -45,7 +45,8 @@ export interface Webhook {
   stageId: string;
   active: boolean;
   url: string;
-  createdAt: string;
+  events?: string[];
+  createdAt?: string;
 }
 
 export interface Team {

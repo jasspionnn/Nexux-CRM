@@ -391,7 +391,7 @@ export const Settings = () => {
                     if (editingWebhook) {
                         updateWebhook(editingWebhook.id, webhookData);
                     } else {
-                        addWebhook({ id: `wh-${Date.now()}`, accountId: currentUser?.accountId || '', ...webhookData } as any);
+                        addWebhook({ id: `wh-${Date.now()}`, accountId: currentUser?.accountId || '', ...webhookData });
                     }
                     setIsWebhookModalOpen(false);
                 }} className="p-8 space-y-5">
