@@ -208,25 +208,105 @@ export const Settings = () => {
         )}
 
         {activeTab === 'billing' && (
-            <div className="space-y-8 animate-fade-in max-w-3xl">
-                <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-8 opacity-10"><Target size={120} /></div>
-                    <div className="relative z-10">
-                        <div className="flex items-center gap-3 mb-6"><div className="p-2 bg-white/20 rounded-lg"><Briefcase size={24} /></div><h3 className="text-xl font-black">Plano Atual</h3></div>
-                        <div className="flex items-end gap-4 mb-8">
-                            <div className="text-5xl font-black">{currentAccount?.plan === 'enterprise' ? 'Enterprise' : currentAccount?.plan === 'pro' ? 'Pro' : 'Starter'}</div>
-                            <div className="text-blue-200 font-medium mb-1">/ {currentAccount?.status === 'active' ? 'Ativo' : 'Inativo'}</div>
+            <div className="animate-fade-in bg-[#0B0A0F] rounded-3xl p-10 text-white max-w-6xl mx-auto">
+                <div className="mb-12 text-center">
+                    <h2 className="text-3xl font-black mb-4">Planos e Preços</h2>
+                    <p className="text-gray-400">Escolha o plano ideal para o momento da sua empresa.</p>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Starter */}
+                    <div className="bg-[#131218] border border-white/5 rounded-3xl p-8 flex flex-col">
+                        <h3 className="text-xl font-medium text-gray-300 mb-4">Starter</h3>
+                        <div className="flex items-baseline gap-1 mb-4">
+                            <span className="text-5xl font-bold">R$ 0</span>
+                            <span className="text-gray-500">/mês</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-black/20 rounded-xl p-4"><div className="text-blue-200 text-xs font-bold uppercase mb-1">Empresa</div><div className="font-bold">{currentAccount?.companyName}</div></div>
-                            <div className="bg-black/20 rounded-xl p-4"><div className="text-blue-200 text-xs font-bold uppercase mb-1">Vencimento</div><div className="font-bold">{currentAccount?.expiresAt ? new Date(currentAccount.expiresAt).toLocaleDateString() : 'N/A'}</div></div>
+                        <p className="text-sm text-gray-400 mb-8 h-10">Para equipes pequenas começando sua jornada.</p>
+                        <button className="w-full py-3 rounded-xl bg-[#1C1B22] hover:bg-[#2A2932] text-white font-medium transition-colors mb-8">
+                            Começar Grátis
+                        </button>
+                        <div className="space-y-4 flex-1">
+                            <div className="flex items-center gap-3 text-sm text-gray-300">
+                                <Check size={18} className="text-emerald-500" /> Até 2 usuários
+                            </div>
+                            <div className="flex items-center gap-3 text-sm text-gray-300">
+                                <Check size={18} className="text-emerald-500" /> 500 leads
+                            </div>
+                            <div className="flex items-center gap-3 text-sm text-gray-300">
+                                <Check size={18} className="text-emerald-500" /> Pipeline básico
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Pro */}
+                    <div className="bg-[#131218] border border-white/5 rounded-3xl p-8 flex flex-col relative">
+                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#7C3AED] text-white px-4 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase">
+                            Mais Popular
+                        </div>
+                        <h3 className="text-xl font-medium text-indigo-400 mb-4">Pro</h3>
+                        <div className="flex items-baseline gap-1 mb-4">
+                            <span className="text-5xl font-bold">R$ 149</span>
+                            <span className="text-gray-500">/mês</span>
+                        </div>
+                        <p className="text-sm text-gray-400 mb-8 h-10">O poder total da IA para times em hipercrescimento.</p>
+                        <button className="w-full py-3 rounded-xl bg-white hover:bg-gray-100 text-black font-bold transition-colors mb-8">
+                            Testar por 14 dias
+                        </button>
+                        <div className="space-y-4 flex-1">
+                            <div className="flex items-center gap-3 text-sm text-gray-300">
+                                <Check size={18} className="text-emerald-500" /> Usuários ilimitados
+                            </div>
+                            <div className="flex items-center gap-3 text-sm text-gray-300">
+                                <Check size={18} className="text-emerald-500" /> Contatos ilimitados
+                            </div>
+                            <div className="flex items-center gap-3 text-sm text-gray-300">
+                                <Check size={18} className="text-emerald-500" /> Automações avançadas
+                            </div>
+                            <div className="flex items-center gap-3 text-sm text-gray-300">
+                                <Check size={18} className="text-emerald-500" /> Insights de IA preditivos
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Enterprise */}
+                    <div className="bg-[#131218] border border-white/5 rounded-3xl p-8 flex flex-col">
+                        <h3 className="text-xl font-medium text-gray-300 mb-4">Enterprise</h3>
+                        <div className="flex items-baseline gap-1 mb-4">
+                            <span className="text-5xl font-bold">Custom</span>
+                        </div>
+                        <p className="text-sm text-gray-400 mb-8 h-10">Segurança e suporte dedicados para grandes operações.</p>
+                        <button className="w-full py-3 rounded-xl bg-[#1C1B22] hover:bg-[#2A2932] text-white font-medium transition-colors mb-8">
+                            Falar com Vendas
+                        </button>
+                        <div className="space-y-4 flex-1">
+                            <div className="flex items-center gap-3 text-sm text-gray-300">
+                                <Check size={18} className="text-emerald-500" /> Tudo do plano Pro
+                            </div>
+                            <div className="flex items-center gap-3 text-sm text-gray-300">
+                                <Check size={18} className="text-emerald-500" /> SSO & SAML
+                            </div>
+                            <div className="flex items-center gap-3 text-sm text-gray-300">
+                                <Check size={18} className="text-emerald-500" /> SLA de 99.99%
+                            </div>
+                            <div className="flex items-center gap-3 text-sm text-gray-300">
+                                <Check size={18} className="text-emerald-500" /> Gerente de conta dedicado
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div className="bg-white border border-gray-100 rounded-2xl p-8 text-center">
-                    <h4 className="text-lg font-black text-gray-900 mb-2">Precisa de mais recursos?</h4>
-                    <p className="text-gray-500 mb-6">Entre em contato com nosso suporte para fazer um upgrade no seu plano.</p>
-                    <button className="bg-gray-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-gray-800 transition-colors inline-flex items-center gap-2"><HelpCircle size={18} /> Falar com Suporte</button>
+                
+                <div className="mt-12 bg-[#131218] border border-white/5 rounded-2xl p-6 flex items-center justify-between">
+                    <div>
+                        <p className="text-sm text-gray-400">Plano Atual</p>
+                        <p className="text-xl font-bold text-white capitalize">{currentAccount?.plan || 'Starter'}</p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-sm text-gray-400">Status</p>
+                        <p className={`text-sm font-bold ${currentAccount?.status === 'active' ? 'text-emerald-500' : 'text-red-500'}`}>
+                            {currentAccount?.status === 'active' ? 'Ativo' : 'Inativo'}
+                        </p>
+                    </div>
                 </div>
             </div>
         )}
