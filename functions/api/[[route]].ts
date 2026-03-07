@@ -394,8 +394,8 @@ app.post('/admin/accounts/:id/extend', async (c) => {
 // --- WEBHOOKS & KNOWLEDGE ---
 app.post('/webhooks', async (c) => {
     const w = await c.req.json();
-    await c.env.DB.prepare('INSERT INTO webhooks (id, account_id, name, url, events, is_active) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(w.id, w.accountId || null, w.name, w.url, toDB(w.events), w.isActive ? 1 : 0).run();
+    await c.env.DB.prepare('INSERT INTO webhooks (id, account_id, name, url, events, is_active, funnel_id, stage_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(w.id, w.accountId || null, w.name, w.url, toDB(w.events), w.active ? 1 : 0, w.funnelId || null, w.stageId || null).run();
     return c.json({ success: true });
 });
 
