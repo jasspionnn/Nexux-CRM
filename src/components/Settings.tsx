@@ -34,6 +34,20 @@ export const Settings = () => {
   const [editingWebhook, setEditingWebhook] = useState<Webhook | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedFunnelId, setSelectedFunnelId] = useState<string>(funnels[0]?.id || '');
+  const [confirmDelete, setConfirmDelete] = useState<{type: 'funnel' | 'webhook', id: string} | null>(null);
+
+  const handleDeleteConfirm = () => {
+      if (!confirmDelete) return;
+      if (confirmDelete.type === 'funnel') {
+          deleteFunnel(confirmDelete.id);
+          if (selectedFunnelId === confirmDelete.id) {
+              setSelectedFunnelId(funnels[0]?.id || '');
+          }
+      } else if (confirmDelete.type === 'webhook') {
+          deleteWebhook(confirmDelete.id);
+      }
+      setConfirmDelete(null);
+  };
 
   const filteredUsers = useMemo(() => users.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()) || u.email.toLowerCase().includes(userSearch.toLowerCase())), [users, userSearch]);
   const selectedFunnel = useMemo(() => funnels.find(f => f.id === (selectedFunnelId || funnels[0]?.id)), [funnels, selectedFunnelId]);
@@ -118,7 +132,7 @@ export const Settings = () => {
                     <div className="flex-1 space-y-8 pb-12 overflow-y-auto">
                         <div className="flex justify-between items-start">
                             <div><label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Nome do Funil</label><input key={selectedFunnel.id} defaultValue={selectedFunnel.name} onBlur={(e) => updateFunnel(selectedFunnel.id, { name: e.target.value })} className="text-2xl font-black text-gray-900 bg-transparent border-b border-transparent hover:border-gray-200 focus:border-blue-500 outline-none w-full" /></div>
-                            <button onClick={() => {if(confirm('Excluir funil?')) deleteFunnel(selectedFunnel.id)}} className="text-red-400 hover:text-red-600 p-2 transition-colors"><Trash2 size={20} /></button>
+                            <button onClick={() => setConfirmDelete({type: 'funnel', id: selectedFunnel.id})} className="text-red-400 hover:text-red-600 p-2 transition-colors"><Trash2 size={20} /></button>
                         </div>
                         <div className="space-y-4">
                             <h5 className="text-[11px] font-black text-gray-900 uppercase flex items-center gap-2"><GripVertical size={14} className="text-gray-300" /> Estágios do Processo</h5>
@@ -197,7 +211,7 @@ export const Settings = () => {
                                             <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${webhook.active ? 'translate-x-5' : 'translate-x-1'}`} />
                                         </button>
                                     </td>
-                                    <td className="px-6 py-4"><button onClick={(e) => { e.stopPropagation(); deleteWebhook(webhook.id)}} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button></td>
+                                    <td className="px-6 py-4"><button onClick={(e) => { e.stopPropagation(); setConfirmDelete({type: 'webhook', id: webhook.id})}} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button></td>
                                 </tr>
                             ))}
                             {webhooks.length === 0 && <tr><td colSpan={5} className="px-6 py-20 text-center text-gray-300 font-bold uppercase text-[10px] tracking-widest">Nenhum webhook configurado</td></tr>}
@@ -393,6 +407,37 @@ export const Settings = () => {
                     </div>
                     <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold hover:bg-blue-700 shadow-md mt-4">{editingWebhook ? 'Salvar Alterações' : 'Criar Webhook'}</button>
                 </form>
+            </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in p-4">
+            <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-scale-in">
+                <div className="p-6 text-center">
+                    <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <AlertCircle size={32} />
+                    </div>
+                    <h3 className="text-xl font-black text-gray-900 mb-2">Confirmar Exclusão</h3>
+                    <p className="text-sm text-gray-500 mb-6">
+                        Tem certeza que deseja excluir este {confirmDelete.type === 'funnel' ? 'funil' : 'webhook'}? Esta ação não pode ser desfeita.
+                    </p>
+                    <div className="flex gap-3">
+                        <button 
+                            onClick={() => setConfirmDelete(null)}
+                            className="flex-1 py-3 rounded-xl font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+                        >
+                            Cancelar
+                        </button>
+                        <button 
+                            onClick={handleDeleteConfirm}
+                            className="flex-1 py-3 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 transition-colors shadow-sm"
+                        >
+                            Excluir
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
       )}
