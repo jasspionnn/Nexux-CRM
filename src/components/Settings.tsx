@@ -208,102 +208,102 @@ export const Settings = () => {
         )}
 
         {activeTab === 'billing' && (
-            <div className="animate-fade-in bg-[#0B0A0F] rounded-3xl p-10 text-white max-w-6xl mx-auto">
+            <div className="animate-fade-in bg-white rounded-3xl p-10 max-w-6xl mx-auto border border-gray-100 shadow-sm">
                 <div className="mb-12 text-center">
-                    <h2 className="text-3xl font-black mb-4">Planos e Preços</h2>
-                    <p className="text-gray-400">Escolha o plano ideal para o momento da sua empresa.</p>
+                    <h2 className="text-3xl font-black text-gray-900 mb-4">Planos e Preços</h2>
+                    <p className="text-gray-500">Escolha o plano ideal para o momento da sua empresa.</p>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {/* Starter */}
-                    <div className="bg-[#131218] border border-white/5 rounded-3xl p-8 flex flex-col">
-                        <h3 className="text-xl font-medium text-gray-300 mb-4">Starter</h3>
+                    <div className="bg-white border border-gray-200 rounded-3xl p-8 flex flex-col hover:border-blue-200 transition-colors shadow-sm hover:shadow-md">
+                        <h3 className="text-xl font-bold text-gray-800 mb-4">Starter</h3>
                         <div className="flex items-baseline gap-1 mb-4">
-                            <span className="text-5xl font-bold">R$ 0</span>
-                            <span className="text-gray-500">/mês</span>
+                            <span className="text-5xl font-black text-gray-900">R$ 0</span>
+                            <span className="text-gray-500 font-medium">/mês</span>
                         </div>
-                        <p className="text-sm text-gray-400 mb-8 h-10">Para equipes pequenas começando sua jornada.</p>
-                        <button className="w-full py-3 rounded-xl bg-[#1C1B22] hover:bg-[#2A2932] text-white font-medium transition-colors mb-8">
+                        <p className="text-sm text-gray-500 mb-8 h-10">Para equipes pequenas começando sua jornada.</p>
+                        <button className="w-full py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-900 font-bold transition-colors mb-8">
                             Começar Grátis
                         </button>
                         <div className="space-y-4 flex-1">
-                            <div className="flex items-center gap-3 text-sm text-gray-300">
-                                <Check size={18} className="text-emerald-500" /> Até 2 usuários
+                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                                <Check size={18} className="text-emerald-500 shrink-0" /> Até 2 usuários
                             </div>
-                            <div className="flex items-center gap-3 text-sm text-gray-300">
-                                <Check size={18} className="text-emerald-500" /> 500 leads
+                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                                <Check size={18} className="text-emerald-500 shrink-0" /> 500 leads
                             </div>
-                            <div className="flex items-center gap-3 text-sm text-gray-300">
-                                <Check size={18} className="text-emerald-500" /> Pipeline básico
+                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                                <Check size={18} className="text-emerald-500 shrink-0" /> Pipeline básico
                             </div>
                         </div>
                     </div>
 
                     {/* Pro */}
-                    <div className="bg-[#131218] border border-white/5 rounded-3xl p-8 flex flex-col relative">
-                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#7C3AED] text-white px-4 py-1 rounded-full text-[10px] font-bold tracking-wider uppercase">
+                    <div className="bg-white border-2 border-blue-600 rounded-3xl p-8 flex flex-col relative shadow-lg shadow-blue-900/5">
+                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-1 rounded-full text-[10px] font-black tracking-wider uppercase shadow-sm">
                             Mais Popular
                         </div>
-                        <h3 className="text-xl font-medium text-indigo-400 mb-4">Pro</h3>
+                        <h3 className="text-xl font-bold text-blue-600 mb-4">Pro</h3>
                         <div className="flex items-baseline gap-1 mb-4">
-                            <span className="text-5xl font-bold">R$ 149</span>
-                            <span className="text-gray-500">/mês</span>
+                            <span className="text-5xl font-black text-gray-900">R$ 149</span>
+                            <span className="text-gray-500 font-medium">/mês</span>
                         </div>
-                        <p className="text-sm text-gray-400 mb-8 h-10">O poder total da IA para times em hipercrescimento.</p>
-                        <button className="w-full py-3 rounded-xl bg-white hover:bg-gray-100 text-black font-bold transition-colors mb-8">
+                        <p className="text-sm text-gray-500 mb-8 h-10">O poder total da IA para times em hipercrescimento.</p>
+                        <button className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-colors mb-8 shadow-sm">
                             Testar por 14 dias
                         </button>
                         <div className="space-y-4 flex-1">
-                            <div className="flex items-center gap-3 text-sm text-gray-300">
-                                <Check size={18} className="text-emerald-500" /> Usuários ilimitados
+                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                                <Check size={18} className="text-emerald-500 shrink-0" /> Usuários ilimitados
                             </div>
-                            <div className="flex items-center gap-3 text-sm text-gray-300">
-                                <Check size={18} className="text-emerald-500" /> Contatos ilimitados
+                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                                <Check size={18} className="text-emerald-500 shrink-0" /> Contatos ilimitados
                             </div>
-                            <div className="flex items-center gap-3 text-sm text-gray-300">
-                                <Check size={18} className="text-emerald-500" /> Automações avançadas
+                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                                <Check size={18} className="text-emerald-500 shrink-0" /> Automações avançadas
                             </div>
-                            <div className="flex items-center gap-3 text-sm text-gray-300">
-                                <Check size={18} className="text-emerald-500" /> Insights de IA preditivos
+                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                                <Check size={18} className="text-emerald-500 shrink-0" /> Insights de IA preditivos
                             </div>
                         </div>
                     </div>
 
                     {/* Enterprise */}
-                    <div className="bg-[#131218] border border-white/5 rounded-3xl p-8 flex flex-col">
-                        <h3 className="text-xl font-medium text-gray-300 mb-4">Enterprise</h3>
+                    <div className="bg-white border border-gray-200 rounded-3xl p-8 flex flex-col hover:border-blue-200 transition-colors shadow-sm hover:shadow-md">
+                        <h3 className="text-xl font-bold text-gray-800 mb-4">Enterprise</h3>
                         <div className="flex items-baseline gap-1 mb-4">
-                            <span className="text-5xl font-bold">Custom</span>
+                            <span className="text-5xl font-black text-gray-900">Custom</span>
                         </div>
-                        <p className="text-sm text-gray-400 mb-8 h-10">Segurança e suporte dedicados para grandes operações.</p>
-                        <button className="w-full py-3 rounded-xl bg-[#1C1B22] hover:bg-[#2A2932] text-white font-medium transition-colors mb-8">
+                        <p className="text-sm text-gray-500 mb-8 h-10">Segurança e suporte dedicados para grandes operações.</p>
+                        <button className="w-full py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-900 font-bold transition-colors mb-8">
                             Falar com Vendas
                         </button>
                         <div className="space-y-4 flex-1">
-                            <div className="flex items-center gap-3 text-sm text-gray-300">
-                                <Check size={18} className="text-emerald-500" /> Tudo do plano Pro
+                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                                <Check size={18} className="text-emerald-500 shrink-0" /> Tudo do plano Pro
                             </div>
-                            <div className="flex items-center gap-3 text-sm text-gray-300">
-                                <Check size={18} className="text-emerald-500" /> SSO & SAML
+                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                                <Check size={18} className="text-emerald-500 shrink-0" /> SSO & SAML
                             </div>
-                            <div className="flex items-center gap-3 text-sm text-gray-300">
-                                <Check size={18} className="text-emerald-500" /> SLA de 99.99%
+                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                                <Check size={18} className="text-emerald-500 shrink-0" /> SLA de 99.99%
                             </div>
-                            <div className="flex items-center gap-3 text-sm text-gray-300">
-                                <Check size={18} className="text-emerald-500" /> Gerente de conta dedicado
+                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                                <Check size={18} className="text-emerald-500 shrink-0" /> Gerente de conta dedicado
                             </div>
                         </div>
                     </div>
                 </div>
                 
-                <div className="mt-12 bg-[#131218] border border-white/5 rounded-2xl p-6 flex items-center justify-between">
+                <div className="mt-12 bg-gray-50 border border-gray-200 rounded-2xl p-6 flex items-center justify-between">
                     <div>
-                        <p className="text-sm text-gray-400">Plano Atual</p>
-                        <p className="text-xl font-bold text-white capitalize">{currentAccount?.plan || 'Starter'}</p>
+                        <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-1">Plano Atual</p>
+                        <p className="text-xl font-black text-gray-900 capitalize">{currentAccount?.plan || 'Starter'}</p>
                     </div>
                     <div className="text-right">
-                        <p className="text-sm text-gray-400">Status</p>
-                        <p className={`text-sm font-bold ${currentAccount?.status === 'active' ? 'text-emerald-500' : 'text-red-500'}`}>
+                        <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-1">Status</p>
+                        <p className={`text-sm font-black uppercase tracking-wider ${currentAccount?.status === 'active' ? 'text-emerald-600' : 'text-red-600'}`}>
                             {currentAccount?.status === 'active' ? 'Ativo' : 'Inativo'}
                         </p>
                     </div>
