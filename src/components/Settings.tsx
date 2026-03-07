@@ -208,105 +208,52 @@ export const Settings = () => {
         )}
 
         {activeTab === 'billing' && (
-            <div className="animate-fade-in bg-white rounded-3xl p-10 max-w-6xl mx-auto border border-gray-100 shadow-sm">
-                <div className="mb-12 text-center">
-                    <h2 className="text-3xl font-black text-gray-900 mb-4">Planos e Preços</h2>
-                    <p className="text-gray-500">Escolha o plano ideal para o momento da sua empresa.</p>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Starter */}
-                    <div className="bg-white border border-gray-200 rounded-3xl p-8 flex flex-col hover:border-blue-200 transition-colors shadow-sm hover:shadow-md">
-                        <h3 className="text-xl font-bold text-gray-800 mb-4">Starter</h3>
-                        <div className="flex items-baseline gap-1 mb-4">
-                            <span className="text-5xl font-black text-gray-900">R$ 0</span>
-                            <span className="text-gray-500 font-medium">/mês</span>
-                        </div>
-                        <p className="text-sm text-gray-500 mb-8 h-10">Para equipes pequenas começando sua jornada.</p>
-                        <button className="w-full py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-900 font-bold transition-colors mb-8">
-                            Começar Grátis
-                        </button>
-                        <div className="space-y-4 flex-1">
-                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
-                                <Check size={18} className="text-emerald-500 shrink-0" /> Até 2 usuários
-                            </div>
-                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
-                                <Check size={18} className="text-emerald-500 shrink-0" /> 500 leads
-                            </div>
-                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
-                                <Check size={18} className="text-emerald-500 shrink-0" /> Pipeline básico
-                            </div>
-                        </div>
+            <div className="animate-fade-in max-w-4xl mx-auto mt-8">
+                {/* Current Plan Card */}
+                <div className="bg-[#1A1F2E] rounded-3xl p-10 text-white shadow-xl relative overflow-hidden">
+                    {/* Background Graphic */}
+                    <div className="absolute right-10 top-1/2 -translate-y-1/2 opacity-10">
+                        <CreditCard size={180} strokeWidth={1} />
                     </div>
+                    
+                    <div className="relative z-10">
+                        <div className="mb-12">
+                            <p className="text-[11px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">PLANO ATUAL</p>
+                            <div className="flex items-center gap-4">
+                                <h1 className="text-6xl font-black uppercase tracking-tighter">{currentAccount?.plan || 'TRIAL'}</h1>
+                                <span className="bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-[10px] font-black tracking-wider uppercase">
+                                    {currentAccount?.status === 'active' ? 'ATIVO' : 'INATIVO'}
+                                </span>
+                            </div>
+                        </div>
 
-                    {/* Pro */}
-                    <div className="bg-white border-2 border-blue-600 rounded-3xl p-8 flex flex-col relative shadow-lg shadow-blue-900/5">
-                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-1 rounded-full text-[10px] font-black tracking-wider uppercase shadow-sm">
-                            Mais Popular
-                        </div>
-                        <h3 className="text-xl font-bold text-blue-600 mb-4">Pro</h3>
-                        <div className="flex items-baseline gap-1 mb-4">
-                            <span className="text-5xl font-black text-gray-900">R$ 149</span>
-                            <span className="text-gray-500 font-medium">/mês</span>
-                        </div>
-                        <p className="text-sm text-gray-500 mb-8 h-10">O poder total da IA para times em hipercrescimento.</p>
-                        <button className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-colors mb-8 shadow-sm">
-                            Testar por 14 dias
-                        </button>
-                        <div className="space-y-4 flex-1">
-                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
-                                <Check size={18} className="text-emerald-500 shrink-0" /> Usuários ilimitados
-                            </div>
-                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
-                                <Check size={18} className="text-emerald-500 shrink-0" /> Contatos ilimitados
-                            </div>
-                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
-                                <Check size={18} className="text-emerald-500 shrink-0" /> Automações avançadas
-                            </div>
-                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
-                                <Check size={18} className="text-emerald-500 shrink-0" /> Insights de IA preditivos
-                            </div>
-                        </div>
-                    </div>
+                        <div className="w-full h-px bg-white/10 mb-8"></div>
 
-                    {/* Enterprise */}
-                    <div className="bg-white border border-gray-200 rounded-3xl p-8 flex flex-col hover:border-blue-200 transition-colors shadow-sm hover:shadow-md">
-                        <h3 className="text-xl font-bold text-gray-800 mb-4">Enterprise</h3>
-                        <div className="flex items-baseline gap-1 mb-4">
-                            <span className="text-5xl font-black text-gray-900">Custom</span>
-                        </div>
-                        <p className="text-sm text-gray-500 mb-8 h-10">Segurança e suporte dedicados para grandes operações.</p>
-                        <button className="w-full py-3 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-900 font-bold transition-colors mb-8">
-                            Falar com Vendas
-                        </button>
-                        <div className="space-y-4 flex-1">
-                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
-                                <Check size={18} className="text-emerald-500 shrink-0" /> Tudo do plano Pro
+                        <div className="grid grid-cols-2 gap-8">
+                            <div>
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">EMPRESA</p>
+                                <p className="text-xl font-bold">{currentAccount?.companyName || 'caue'}</p>
                             </div>
-                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
-                                <Check size={18} className="text-emerald-500 shrink-0" /> SSO & SAML
-                            </div>
-                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
-                                <Check size={18} className="text-emerald-500 shrink-0" /> SLA de 99.99%
-                            </div>
-                            <div className="flex items-center gap-3 text-sm font-medium text-gray-700">
-                                <Check size={18} className="text-emerald-500 shrink-0" /> Gerente de conta dedicado
+                            <div>
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">DIAS RESTANTES</p>
+                                <p className="text-2xl font-bold">
+                                    {currentAccount?.expiresAt ? 
+                                        Math.max(0, Math.ceil((new Date(currentAccount.expiresAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) 
+                                        : '69'} dias
+                                </p>
                             </div>
                         </div>
                     </div>
                 </div>
-                
-                <div className="mt-12 bg-gray-50 border border-gray-200 rounded-2xl p-6 flex items-center justify-between">
-                    <div>
-                        <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-1">Plano Atual</p>
-                        <p className="text-xl font-black text-gray-900 capitalize">{currentAccount?.plan || 'Starter'}</p>
-                    </div>
-                    <div className="text-right">
-                        <p className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-1">Status</p>
-                        <p className={`text-sm font-black uppercase tracking-wider ${currentAccount?.status === 'active' ? 'text-emerald-600' : 'text-red-600'}`}>
-                            {currentAccount?.status === 'active' ? 'Ativo' : 'Inativo'}
-                        </p>
-                    </div>
+
+                {/* Support Card */}
+                <div className="mt-6 bg-white border border-gray-200 rounded-3xl p-10 text-center shadow-sm">
+                    <p className="text-gray-600 font-medium text-lg mb-8 max-w-xl mx-auto">
+                        Para alterar seu plano ou estender sua assinatura, entre em contato com o suporte.
+                    </p>
+                    <button className="bg-[#0B0A0F] hover:bg-gray-800 text-white px-8 py-4 rounded-xl font-bold transition-colors shadow-md">
+                        Falar com Suporte
+                    </button>
                 </div>
             </div>
         )}
