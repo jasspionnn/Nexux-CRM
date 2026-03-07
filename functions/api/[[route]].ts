@@ -22,14 +22,18 @@ const fromDB = (val: any) => {
 app.get('/sync/:accountId', async (c) => {
     const accountId = c.req.param('accountId');
     try {
-        const [funnelsRes, stagesRes, leadsRes, notesRes, tasksRes, fieldsRes, usersRes] = await c.env.DB.batch([
+        const [funnelsRes, stagesRes, leadsRes, notesRes, tasksRes, fieldsRes, usersRes, teamsRes, webhooksRes, knowledgeRes, botRes] = await c.env.DB.batch([
             c.env.DB.prepare('SELECT * FROM funnels WHERE account_id = ?').bind(accountId),
             c.env.DB.prepare('SELECT s.* FROM stages s JOIN funnels f ON s.funnel_id = f.id WHERE f.account_id = ? ORDER BY s."order" ASC').bind(accountId),
             c.env.DB.prepare('SELECT * FROM leads WHERE account_id = ?').bind(accountId),
             c.env.DB.prepare('SELECT n.* FROM notes n JOIN leads l ON n.lead_id = l.id WHERE l.account_id = ?').bind(accountId),
             c.env.DB.prepare('SELECT t.* FROM tasks t JOIN leads l ON t.lead_id = l.id WHERE l.account_id = ?').bind(accountId),
             c.env.DB.prepare('SELECT * FROM custom_fields WHERE account_id = ?').bind(accountId),
-            c.env.DB.prepare('SELECT id, name, email, role, avatar, status, team_id FROM users WHERE account_id = ?').bind(accountId)
+            c.env.DB.prepare('SELECT id, name, email, role, avatar, status, team_id FROM users WHERE account_id = ?').bind(accountId),
+            c.env.DB.prepare('SELECT * FROM teams WHERE account_id = ?').bind(accountId),
+            c.env.DB.prepare('SELECT * FROM webhooks WHERE account_id = ?').bind(accountId),
+            c.env.DB.prepare('SELECT * FROM knowledge_sources WHERE account_id = ?').bind(accountId),
+            c.env.DB.prepare('SELECT * FROM bot_settings WHERE account_id = ?').bind(accountId)
         ]);
 
         const allNotes = notesRes.results || [];
@@ -76,7 +80,23 @@ app.get('/sync/:accountId', async (c) => {
                 id: cf.id, accountId: cf.account_id, name: cf.name, type: cf.type,
                 context: cf.context, funnelId: cf.funnel_id, 
                 options: fromDB(cf.options), visibleStageIds: fromDB(cf.visible_stage_ids)
-            }))
+            })),
+            teams: (teamsRes.results || []).map((t: any) => ({
+                id: t.id, accountId: t.account_id, name: t.name, goal: t.goal
+            })),
+            webhooks: (webhooksRes.results || []).map((w: any) => ({
+                id: w.id, accountId: w.account_id, name: w.name, url: w.url,
+                events: fromDB(w.events), active: !!w.is_active, funnelId: w.funnel_id, stageId: w.stage_id
+            })),
+            knowledgeSources: (knowledgeRes.results || []).map((k: any) => ({
+                id: k.id, accountId: k.account_id, name: k.name, type: k.type
+            })),
+            botInstance: botRes.results?.[0] ? {
+                accountId: (botRes.results[0] as any).account_id,
+                systemPrompt: (botRes.results[0] as any).system_prompt,
+                temperature: (botRes.results[0] as any).temperature,
+                autoReply: !!(botRes.results[0] as any).auto_reply
+            } : null
         });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
@@ -269,8 +289,13 @@ app.post('/custom-fields', async (c) => {
 app.patch('/custom-fields/:id', async (c) => {
     const id = c.req.param('id');
     const updates = await c.req.json();
-    if (updates.name) await c.env.DB.prepare('UPDATE custom_fields SET name = ? WHERE id = ?').bind(updates.name, id).run();
-    if (updates.options) await c.env.DB.prepare('UPDATE custom_fields SET options = ? WHERE id = ?').bind(toDB(updates.options), id).run();
+    const mapping: any = { name: 'name', type: 'type', context: 'context', funnelId: 'funnel_id', options: 'options', visibleStageIds: 'visible_stage_ids' };
+    for (const [key, val] of Object.entries(updates)) {
+        if (mapping[key]) {
+            const dbVal = (key === 'options' || key === 'visibleStageIds') ? toDB(val) : val;
+            await c.env.DB.prepare(`UPDATE custom_fields SET ${mapping[key]} = ? WHERE id = ?`).bind(dbVal, id).run();
+        }
+    }
     return c.json({ success: true });
 });
 
@@ -355,7 +380,14 @@ app.post('/webhooks', async (c) => {
 app.patch('/webhooks/:id', async (c) => {
     const id = c.req.param('id');
     const updates = await c.req.json();
-    if (updates.isActive !== undefined) await c.env.DB.prepare('UPDATE webhooks SET is_active = ? WHERE id = ?').bind(updates.isActive ? 1 : 0, id).run();
+    const mapping: any = { name: 'name', url: 'url', funnelId: 'funnel_id', stageId: 'stage_id', events: 'events' };
+    for (const [key, val] of Object.entries(updates)) {
+        if (mapping[key]) {
+            const dbVal = key === 'events' ? toDB(val) : val;
+            await c.env.DB.prepare(`UPDATE webhooks SET ${mapping[key]} = ? WHERE id = ?`).bind(dbVal, id).run();
+        }
+    }
+    if (updates.active !== undefined) await c.env.DB.prepare('UPDATE webhooks SET is_active = ? WHERE id = ?').bind(updates.active ? 1 : 0, id).run();
     return c.json({ success: true });
 });
 

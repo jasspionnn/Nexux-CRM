@@ -313,8 +313,9 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose, onLeadSelect
              <div className="flex-1">
                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Título da Oportunidade</label>
                  <input
-                     value={lead.title}
-                     onChange={(e) => updateLead(lead.id, { title: e.target.value })}
+                     key={`title-${lead.id}`}
+                     defaultValue={lead.title}
+                     onBlur={(e) => updateLead(lead.id, { title: e.target.value })}
                      className="text-lg font-bold text-gray-800 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none w-full placeholder-gray-400 transition-colors"
                      placeholder="Nome da Oportunidade"
                  />
@@ -353,8 +354,9 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose, onLeadSelect
                 <div className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:border-blue-300 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-500 transition-all shadow-sm">
                     <Building className="text-gray-400" size={20} />
                     <input
-                        value={lead.company}
-                        onChange={(e) => updateLead(lead.id, { company: e.target.value })}
+                        key={`company-${lead.id}`}
+                        defaultValue={lead.company}
+                        onBlur={(e) => updateLead(lead.id, { company: e.target.value })}
                         className="flex-1 bg-transparent font-medium text-lg text-gray-700 outline-none placeholder-gray-400"
                         placeholder="Nome da Empresa ou Cliente"
                     />
@@ -369,8 +371,9 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose, onLeadSelect
                         <span className="text-gray-400 mr-2 text-lg">R$</span>
                         <input 
                             type="number"
-                            value={lead.value}
-                            onChange={(e) => updateLead(lead.id, { value: Number(e.target.value) })}
+                            key={`value-${lead.id}`}
+                            defaultValue={lead.value}
+                            onBlur={(e) => updateLead(lead.id, { value: Number(e.target.value) })}
                             className="text-2xl font-bold text-gray-800 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none w-full"
                         />
                     </div>
@@ -386,8 +389,9 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose, onLeadSelect
                         type="range"
                         min="0" max="100"
                         disabled={isWon || isLost}
-                        value={lead.probability}
-                        onChange={(e) => updateLead(lead.id, { probability: Number(e.target.value) })}
+                        defaultValue={lead.probability}
+                        onMouseUp={(e) => updateLead(lead.id, { probability: Number((e.target as HTMLInputElement).value) })}
+                        onTouchEnd={(e) => updateLead(lead.id, { probability: Number((e.target as HTMLInputElement).value) })}
                         className={`w-full h-2 rounded-lg appearance-none cursor-pointer ${isWon ? 'bg-green-200 accent-green-600' : isLost ? 'bg-red-200 accent-red-600' : 'bg-gray-200 accent-blue-600'}`}
                      />
                 </div>
@@ -499,8 +503,9 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose, onLeadSelect
                                 {field.type === 'text' && (
                                     <input 
                                         type="text"
-                                        value={getCustomValue(field.id) || ''}
-                                        onChange={(e) => handleCustomFieldChange(field, e.target.value)}
+                                        key={`cf-${field.id}-${lead.id}`}
+                                        defaultValue={getCustomValue(field.id) || ''}
+                                        onBlur={(e) => handleCustomFieldChange(field, e.target.value)}
                                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                         placeholder={`Digite ${field.name.toLowerCase()}...`}
                                     />
@@ -550,8 +555,9 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose, onLeadSelect
                     <div className="flex items-center gap-3 group">
                         <User className="text-gray-400 group-focus-within:text-blue-500" size={18} />
                         <input 
-                            value={lead.contactName}
-                            onChange={(e) => updateLead(lead.id, { contactName: e.target.value })}
+                            key={`contactName-${lead.id}`}
+                            defaultValue={lead.contactName}
+                            onBlur={(e) => updateLead(lead.id, { contactName: e.target.value })}
                             className="flex-1 bg-transparent border-b border-gray-100 focus:border-blue-500 outline-none py-1 transition-colors"
                             placeholder="Nome do Contato"
                         />
@@ -559,8 +565,9 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose, onLeadSelect
                     <div className="flex items-center gap-3 group">
                         <Mail className="text-gray-400 group-focus-within:text-blue-500" size={18} />
                         <input 
-                            value={lead.contactEmail}
-                            onChange={(e) => updateLead(lead.id, { contactEmail: e.target.value })}
+                            key={`contactEmail-${lead.id}`}
+                            defaultValue={lead.contactEmail}
+                            onBlur={(e) => updateLead(lead.id, { contactEmail: e.target.value })}
                             className="flex-1 bg-transparent border-b border-gray-100 focus:border-blue-500 outline-none py-1 transition-colors"
                             placeholder="Email"
                         />
@@ -568,8 +575,9 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose, onLeadSelect
                     <div className="flex items-center gap-3 group">
                         <Phone className="text-gray-400 group-focus-within:text-blue-500" size={18} />
                         <input 
-                            value={lead.contactPhone}
-                            onChange={(e) => updateLead(lead.id, { contactPhone: e.target.value })}
+                            key={`contactPhone-${lead.id}`}
+                            defaultValue={lead.contactPhone}
+                            onBlur={(e) => updateLead(lead.id, { contactPhone: e.target.value })}
                             className="flex-1 bg-transparent border-b border-gray-100 focus:border-blue-500 outline-none py-1 transition-colors"
                             placeholder="Telefone"
                         />

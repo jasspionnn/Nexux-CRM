@@ -117,7 +117,7 @@ export const Settings = () => {
                 {selectedFunnel ? (
                     <div className="flex-1 space-y-8 pb-12 overflow-y-auto">
                         <div className="flex justify-between items-start">
-                            <div><label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Nome do Funil</label><input value={selectedFunnel.name} onChange={(e) => updateFunnel(selectedFunnel.id, { name: e.target.value })} className="text-2xl font-black text-gray-900 bg-transparent border-b border-transparent hover:border-gray-200 focus:border-blue-500 outline-none w-full" /></div>
+                            <div><label className="text-[10px] font-black text-gray-400 uppercase mb-1 block">Nome do Funil</label><input key={selectedFunnel.id} defaultValue={selectedFunnel.name} onBlur={(e) => updateFunnel(selectedFunnel.id, { name: e.target.value })} className="text-2xl font-black text-gray-900 bg-transparent border-b border-transparent hover:border-gray-200 focus:border-blue-500 outline-none w-full" /></div>
                             <button onClick={() => {if(confirm('Excluir funil?')) deleteFunnel(selectedFunnel.id)}} className="text-red-400 hover:text-red-600 p-2 transition-colors"><Trash2 size={20} /></button>
                         </div>
                         <div className="space-y-4">
@@ -126,7 +126,7 @@ export const Settings = () => {
                                 {selectedFunnel.stages.map((stage, idx) => (
                                     <div key={stage.id} className="bg-gray-50/50 rounded-xl p-4 border border-gray-100 flex items-center gap-4 hover:border-blue-200 transition-all group">
                                         <div className="text-[10px] font-black text-gray-300 w-4">#{idx + 1}</div>
-                                        <div className="flex-1"><input value={stage.name} onChange={(e) => updateStage(selectedFunnel.id, stage.id, { name: e.target.value })} className="bg-transparent text-sm font-bold text-gray-800 outline-none w-full focus:border-b border-blue-400" /></div>
+                                        <div className="flex-1"><input key={stage.id} defaultValue={stage.name} onBlur={(e) => updateStage(selectedFunnel.id, stage.id, { name: e.target.value })} className="bg-transparent text-sm font-bold text-gray-800 outline-none w-full focus:border-b border-blue-400" /></div>
                                         <div className="flex items-center gap-2">{STAGE_COLORS.map(color => (<button key={color} onClick={() => updateStage(selectedFunnel.id, stage.id, { color })} className={`w-4 h-4 rounded-full transition-transform hover:scale-125 ${color} ${stage.color === color ? 'ring-2 ring-offset-2 ring-gray-400' : ''}`} />))}</div>
                                         <button onClick={() => deleteStage(selectedFunnel.id, stage.id)} className="p-2 text-gray-200 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
                                     </div>

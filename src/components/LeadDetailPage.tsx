@@ -174,8 +174,9 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                 </button>
                 <div className="flex-1">
                     <input 
-                        value={lead.title}
-                        onChange={(e) => updateLead(lead.id, { title: e.target.value })}
+                        key={`title-${lead.id}`}
+                        defaultValue={lead.title}
+                        onBlur={(e) => updateLead(lead.id, { title: e.target.value })}
                         className="text-2xl font-black text-gray-900 w-full outline-none bg-transparent hover:bg-blue-50 focus:bg-white rounded-lg px-2 -ml-2 transition-all tracking-tight"
                     />
                     <div className="flex items-center gap-3 mt-1.5">
@@ -276,8 +277,9 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
                                     {field.type === 'text' && (
                                         <input 
                                             type="text"
-                                            value={lead.customValues?.[field.id] || ''}
-                                            onChange={(e) => handleCustomFieldChange(field, e.target.value)}
+                                            key={`cf-${field.id}-${lead.id}`}
+                                            defaultValue={lead.customValues?.[field.id] || ''}
+                                            onBlur={(e) => handleCustomFieldChange(field, e.target.value)}
                                             className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
                                             placeholder="..."
                                         />
