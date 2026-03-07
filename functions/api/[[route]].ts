@@ -90,10 +90,13 @@ app.post('/auth/register', async (c) => {
     const userId = `u-${Date.now()}`;
     
     try {
+        const funnelId = `f-${Date.now()}`;
         await c.env.DB.batch([
             c.env.DB.prepare('INSERT INTO accounts (id, company_name, email, status, plan) VALUES (?, ?, ?, "active", "pro")').bind(accountId, companyName, email),
             c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, status) VALUES (?, ?, ?, ?, ?, "ACCOUNT_ADMIN", "active")').bind(userId, accountId, userName, email, password),
-            c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)').bind(`f-${Date.now()}`, accountId, 'Vendas')
+            c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)').bind(funnelId, accountId, 'Vendas'),
+            c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(`s1-${Date.now()}`, funnelId, 'Lead', 'bg-blue-500', 0),
+            c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(`s2-${Date.now()}`, funnelId, 'Fechado', 'bg-green-500', 1)
         ]);
         return c.json({ success: true });
     } catch (e: any) { return c.json({ error: e.message }, 500); }
@@ -109,27 +112,86 @@ app.post('/auth/login', async (c) => {
 // --- WRITES ---
 app.post('/leads', async (c) => {
     const l = await c.req.json();
-    await c.env.DB.prepare(`
-        INSERT INTO leads (id, account_id, title, company, value, contact_name, contact_email, contact_phone, funnel_id, stage_id, assigned_user_id, probability, tags, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(l.id, l.accountId, l.title, l.company, l.value, l.contactName, l.contactEmail, l.contactPhone, l.funnelId, l.stageId, l.assignedUserId, l.probability, toDB(l.tags), l.createdAt).run();
+    const stmts = [
+        c.env.DB.prepare(`
+            INSERT INTO leads (id, account_id, title, company, value, contact_name, contact_email, contact_phone, funnel_id, stage_id, assigned_user_id, probability, tags, custom_values, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(l.id, l.accountId, l.title, l.company, l.value, l.contactName, l.contactEmail, l.contactPhone, l.funnelId, l.stageId, l.assignedUserId, l.probability, toDB(l.tags), toDB(l.customValues), l.createdAt)
+    ];
+
+    if (l.notes && Array.isArray(l.notes)) {
+        for (const n of l.notes) {
+            stmts.push(c.env.DB.prepare('INSERT INTO notes (id, lead_id, content, author_name, created_at) VALUES (?, ?, ?, ?, ?)')
+                .bind(n.id || `n-${Date.now()}-${Math.random()}`, l.id, n.content, n.authorName, n.createdAt));
+        }
+    }
+
+    if (l.tasks && Array.isArray(l.tasks)) {
+        for (const t of l.tasks) {
+            stmts.push(c.env.DB.prepare('INSERT INTO tasks (id, lead_id, title, due_date, completed, type) VALUES (?, ?, ?, ?, ?, ?)')
+                .bind(t.id || `t-${Date.now()}-${Math.random()}`, l.id, t.title, t.dueDate, t.completed ? 1 : 0, t.type));
+        }
+    }
+
+    await c.env.DB.batch(stmts);
     return c.json({ success: true });
 });
 
 app.patch('/leads/:id', async (c) => {
     const id = c.req.param('id');
     const updates = await c.req.json();
-    const mapping: any = { stageId: 'stage_id', funnelId: 'funnel_id', probability: 'probability', title: 'title' };
+    const mapping: any = { 
+        stageId: 'stage_id', 
+        funnelId: 'funnel_id', 
+        probability: 'probability', 
+        title: 'title',
+        company: 'company',
+        value: 'value',
+        contactName: 'contact_name',
+        contactEmail: 'contact_email',
+        contactPhone: 'contact_phone',
+        assignedUserId: 'assigned_user_id',
+        tags: 'tags',
+        customValues: 'custom_values'
+    };
+    
     for (const [key, val] of Object.entries(updates)) {
-        if (mapping[key]) await c.env.DB.prepare(`UPDATE leads SET ${mapping[key]} = ? WHERE id = ?`).bind(val, id).run();
+        if (mapping[key]) {
+            const dbVal = (key === 'tags' || key === 'customValues') ? toDB(val) : val;
+            await c.env.DB.prepare(`UPDATE leads SET ${mapping[key]} = ? WHERE id = ?`).bind(dbVal, id).run();
+        }
     }
+    return c.json({ success: true });
+});
+
+app.delete('/leads/:id', async (c) => {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+});
+
+app.post('/leads/:id/notes', async (c) => {
+    const leadId = c.req.param('id');
+    const n = await c.req.json();
+    await c.env.DB.prepare('INSERT INTO notes (id, lead_id, content, author_name, created_at) VALUES (?, ?, ?, ?, ?)')
+        .bind(n.id, leadId, n.content, n.authorName, n.createdAt).run();
     return c.json({ success: true });
 });
 
 // --- FUNNELS ---
 app.post('/funnels', async (c) => {
     const f = await c.req.json();
-    await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)').bind(f.id, f.accountId, f.name).run();
+    const stmts = [
+        c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)').bind(f.id, f.accountId, f.name)
+    ];
+    
+    if (f.stages && Array.isArray(f.stages)) {
+        for (const s of f.stages) {
+            stmts.push(c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(s.id, f.id, s.name, s.color, s.order));
+        }
+    }
+    
+    await c.env.DB.batch(stmts);
     return c.json({ success: true });
 });
 

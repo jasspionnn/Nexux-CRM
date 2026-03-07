@@ -86,7 +86,7 @@ interface Props {
 }
 
 export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) => {
-  const { leads, funnels, updateLead, duplicateLead, customFields, addTask, toggleTask, deleteTask } = useCRM();
+  const { leads, funnels, updateLead, duplicateLead, customFields, addTask, toggleTask, deleteTask, addNote } = useCRM();
   const lead = leads.find(l => l.id === leadId);
   
   const [activeTab, setActiveTab] = useState<'notes' | 'tasks'>('notes');
@@ -106,7 +106,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
   const handleSaveNote = () => {
     if (!noteText.trim()) return;
     const newNote = { id: `note-${Date.now()}`, content: noteText, createdAt: new Date().toISOString(), authorName: 'Eu' };
-    updateLead(lead.id, { notes: [newNote, ...lead.notes] });
+    addNote(lead.id, newNote);
     setNoteText('');
   };
 
@@ -122,7 +122,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
     if (!currentFunnel) return;
     const targetStageId = currentFunnel.defaultWonStageId || currentFunnel.stages[currentFunnel.stages.length - 1].id;
     updateLead(lead.id, { probability: 100, stageId: targetStageId });
-    updateLead(lead.id, { notes: [{ id: `sys-${Date.now()}`, content: "🎉 Negócio marcado como GANHO!", createdAt: new Date().toISOString(), authorName: 'Sistema' }, ...lead.notes] });
+    addNote(lead.id, { id: `sys-${Date.now()}`, content: "🎉 Negócio marcado como GANHO!", createdAt: new Date().toISOString(), authorName: 'Sistema' });
   };
 
   const handleTransferFunnel = (targetFunnelId: string) => {
@@ -133,16 +133,16 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
       
       const updateData = { 
         funnelId: targetFunnelId, 
-        stageId: targetStageId,
-        notes: [{ 
+        stageId: targetStageId
+      };
+      
+      updateLead(lead.id, updateData);
+      addNote(lead.id, { 
           id: `sys-mov-${Date.now()}`, 
           content: `🔄 Lead encaminhado do funil "${currentFunnel?.name}" para o funil "${targetFunnel.name}".`, 
           createdAt: new Date().toISOString(), 
           authorName: 'Sistema' 
-        }, ...lead.notes] 
-      };
-      
-      updateLead(lead.id, updateData);
+      });
   };
 
   const handleCustomFieldChange = (field: CustomFieldDefinition, value: any) => {

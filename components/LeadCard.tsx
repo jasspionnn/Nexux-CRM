@@ -16,7 +16,7 @@ interface LeadCardProps {
 export const LeadCard: React.FC<LeadCardProps> = ({ lead, onClick, user, funnelName, stageName }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
-  const { updateLead } = useCRM();
+  const { addNote } = useCRM();
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData('leadId', lead.id);
@@ -36,9 +36,7 @@ export const LeadCard: React.FC<LeadCardProps> = ({ lead, onClick, user, funnelN
         authorName: 'Nexus AI'
       };
       
-      updateLead(lead.id, { 
-        notes: [newNote, ...lead.notes] 
-      });
+      await addNote(lead.id, newNote);
     } catch (err) {
       console.error(err);
     } finally {

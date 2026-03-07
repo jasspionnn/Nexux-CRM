@@ -51,6 +51,7 @@ interface CRMContextType {
   addKnowledgeSource: (source: KnowledgeSource) => Promise<void>;
   deleteKnowledgeSource: (id: string) => Promise<void>;
   updateBotInstance: (updates: Partial<BotInstance>) => Promise<void>;
+  addNote: (leadId: string, note: any) => Promise<void>;
 }
 
 const CRMContext = createContext<CRMContextType | undefined>(undefined);
@@ -188,40 +189,42 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const addStage = async (funnelId: string, name: string) => { 
     const funnel = funnels.find(f => f.id === funnelId); 
     if (!funnel) return;
-    const newStage = { id: `s-${Date.now()}`, name, color: 'bg-gray-500', order: funnel.stages.length };
+    const newStage = { id: `s-${Date.now()}`, funnelId, name, color: 'bg-gray-500', order: funnel.stages.length };
+    await api.post('/stages', newStage);
     const updatedStages = [...funnel.stages, newStage];
-    updateFunnel(funnelId, { stages: updatedStages });
+    setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages: updatedStages } : f));
   };
   const updateStage = async (funnelId: string, stageId: string, updates: Partial<Stage>) => {
     const funnel = funnels.find(f => f.id === funnelId);
     if (!funnel) return;
+    await api.patch(`/stages/${stageId}`, updates);
     const updatedStages = funnel.stages.map(s => s.id === stageId ? { ...s, ...updates } : s);
-    updateFunnel(funnelId, { stages: updatedStages });
+    setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages: updatedStages } : f));
   };
   const deleteStage = async (funnelId: string, stageId: string) => {
     const funnel = funnels.find(f => f.id === funnelId);
     if (!funnel) return;
+    await api.delete(`/stages/${stageId}`);
     const updatedStages = funnel.stages.filter(s => s.id !== stageId);
-    updateFunnel(funnelId, { stages: updatedStages });
+    setFunnels(prev => prev.map(f => f.id === funnelId ? { ...f, stages: updatedStages } : f));
   };
 
   const addTask = async (leadId: string, task: Task) => { 
-      const lead = leads.find(l => l.id === leadId);
-      if (!lead) return;
-      const updatedTasks = [...(lead.tasks || []), task];
-      await updateLead(leadId, { tasks: updatedTasks });
+      await api.post('/tasks', { ...task, leadId });
+      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: [...(l.tasks || []), task] } : l));
   };
   const toggleTask = async (leadId: string, taskId: string) => { 
       const lead = leads.find(l => l.id === leadId);
       if (!lead) return;
-      const updatedTasks = (lead.tasks || []).map(t => t.id === taskId ? { ...t, completed: !t.completed } : t);
-      await updateLead(leadId, { tasks: updatedTasks });
+      const task = lead.tasks?.find(t => t.id === taskId);
+      if (task) {
+          await api.patch(`/tasks/${taskId}/toggle`, { completed: !task.completed });
+          setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: (l.tasks || []).map(t => t.id === taskId ? { ...t, completed: !t.completed } : t) } : l));
+      }
   };
   const deleteTask = async (leadId: string, taskId: string) => { 
-      const lead = leads.find(l => l.id === leadId);
-      if (!lead) return;
-      const updatedTasks = (lead.tasks || []).filter(t => t.id !== taskId);
-      await updateLead(leadId, { tasks: updatedTasks });
+      await api.delete(`/tasks/${taskId}`);
+      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, tasks: (l.tasks || []).filter(t => t.id !== taskId) } : l));
   };
   
   const addCustomField = async (f: CustomFieldDefinition) => { setCustomFields(prev => [...prev, f]); await api.post('/custom-fields', f); };
@@ -239,6 +242,11 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const deleteKnowledgeSource = async (id: string) => { setKnowledgeSources(prev => prev.filter(k => k.id !== id)); };
   const updateBotInstance = async (updates: Partial<BotInstance>) => { if (botInstance) setBotInstance({ ...botInstance, ...updates }); };
 
+  const addNote = async (leadId: string, note: any) => {
+    await api.post(`/leads/${leadId}/notes`, note);
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, notes: [note, ...l.notes] } : l));
+  };
+
   return (
     <CRMContext.Provider value={{
       funnels, leads, users, teams, customFields, allAccounts: accounts,
@@ -246,10 +254,24 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       activeFunnelId, currentUser, isLoading, isOnline,
       visibleLeads: leads, visibleUsers: users, currentAccount: accounts.find(a => a.id === currentUser?.accountId) || null,
       setActiveFunnelId, login, registerAccount, logout, refreshData,
-      addLead, updateLead, moveLead, deleteLead, duplicateLead: async () => {},
+      addLead, updateLead, moveLead, deleteLead, 
+      duplicateLead: async (lid, fid, sid) => { 
+        const original = leads.find(l => l.id === lid);
+        if (!original) return;
+        const newLead = { 
+            ...original, 
+            id: `l-${Date.now()}`, 
+            funnelId: fid, 
+            stageId: sid, 
+            createdAt: new Date().toISOString(),
+            notes: original.notes.map(n => ({ ...n, id: `n-${Date.now()}-${Math.random()}` })),
+            tasks: original.tasks.map(t => ({ ...t, id: `t-${Date.now()}-${Math.random()}` }))
+        };
+        await addLead(newLead);
+      },
       addFunnel, updateFunnel, deleteFunnel, addStage, updateStage, deleteStage,
       addTask, toggleTask, deleteTask, addCustomField, updateCustomField, deleteCustomField, updateUser, updateAccountStatus, extendAccountSubscription,
-      addWebhook, updateWebhook, deleteWebhook, addKnowledgeSource, deleteKnowledgeSource, updateBotInstance
+      addWebhook, updateWebhook, deleteWebhook, addKnowledgeSource, deleteKnowledgeSource, updateBotInstance, addNote
     }}>
       {children}
     </CRMContext.Provider>

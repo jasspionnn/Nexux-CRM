@@ -20,7 +20,7 @@ interface Props {
 export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) => {
   const { 
     leads, funnels, updateLead, customFields, users, 
-    addTask, toggleTask, deleteTask 
+    addTask, toggleTask, deleteTask, addNote
   } = useCRM();
   
   const lead = leads.find(l => l.id === leadId);
@@ -44,7 +44,7 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
           createdAt: new Date().toISOString(),
           authorName: users.find(u => u.id === lead.assignedUserId)?.name || 'Vendedor'
       };
-      updateLead(lead.id, { notes: [newNote, ...lead.notes] });
+      addNote(lead.id, newNote);
       setNoteText('');
   };
 
@@ -66,9 +66,9 @@ export const LeadDetailPage: React.FC<Props> = ({ leadId, onBack, onNavigate }) 
 
       await updateLead(lead.id, { 
           funnelId: targetFunnelId, 
-          stageId: firstStageId,
-          notes: [transferNote, ...lead.notes]
+          stageId: firstStageId
       });
+      await addNote(lead.id, transferNote);
       
       setTimeout(() => setIsTransferring(false), 800);
   };

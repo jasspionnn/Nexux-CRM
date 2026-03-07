@@ -52,6 +52,7 @@ interface CRMContextType {
   deleteKnowledgeSource: (id: string) => Promise<void>;
   updateBotInstance: (updates: Partial<BotInstance>) => Promise<void>;
   // Missing properties from build error
+  addNote: (leadId: string, note: any) => Promise<void>;
   updateVisibilitySettings: (settings: any) => Promise<void>;
   addUser: (user: Partial<User>) => Promise<void>;
   addTeam: (team: Partial<Team>) => Promise<void>;
@@ -170,7 +171,15 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       duplicateLead: async (lid, fid, sid) => { 
         const original = leads.find(l => l.id === lid);
         if (!original) return;
-        const newLead = { ...original, id: `l-${Date.now()}`, funnelId: fid, stageId: sid, createdAt: new Date().toISOString() };
+        const newLead = { 
+            ...original, 
+            id: `l-${Date.now()}`, 
+            funnelId: fid, 
+            stageId: sid, 
+            createdAt: new Date().toISOString(),
+            notes: original.notes.map(n => ({ ...n, id: `n-${Date.now()}-${Math.random()}` })),
+            tasks: original.tasks.map(t => ({ ...t, id: `t-${Date.now()}-${Math.random()}` }))
+        };
         await addLead(newLead);
       },
       updateFunnel: async (id, ups) => { await api.patch(`/funnels/${id}`, ups); setFunnels(p => p.map(f => f.id === id ? {...f, ...ups} : f)); },
@@ -188,9 +197,18 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         await api.delete(`/stages/${sid}`);
         setFunnels(p => p.map(f => f.id === fid ? {...f, stages: f.stages.filter(s => s.id !== sid)} : f));
       },
-      addTask: async (lid, t) => { await api.post('/tasks', t); /* Optimistic update logic would go here */ },
-      toggleTask: async (lid, tid) => { await api.patch(`/tasks/${tid}/toggle`, {}); },
-      deleteTask: async (lid, tid) => { await api.delete(`/tasks/${tid}`); },
+      addTask: async (lid, t) => { 
+        await api.post('/tasks', { ...t, leadId: lid }); 
+        setLeads(p => p.map(l => l.id === lid ? {...l, tasks: [t, ...l.tasks]} : l)); 
+      },
+      toggleTask: async (lid, tid) => { 
+        await api.patch(`/tasks/${tid}/toggle`, {}); 
+        setLeads(p => p.map(l => l.id === lid ? {...l, tasks: l.tasks.map(t => t.id === tid ? {...t, completed: !t.completed} : t)} : l));
+      },
+      deleteTask: async (lid, tid) => { 
+        await api.delete(`/tasks/${tid}`); 
+        setLeads(p => p.map(l => l.id === lid ? {...l, tasks: l.tasks.filter(t => t.id !== tid)} : l));
+      },
       addCustomField: async (cf) => { await api.post('/custom-fields', cf); setCustomFields(p => [...p, cf]); },
       updateCustomField: async (id, ups) => { await api.patch(`/custom-fields/${id}`, ups); setCustomFields(p => p.map(c => c.id === id ? {...c, ...ups} : c)); },
       deleteCustomField: async id => { await api.delete(`/custom-fields/${id}`); setCustomFields(p => p.filter(c => c.id !== id)); },
@@ -205,6 +223,10 @@ export const CRMProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       updateBotInstance: async (ups) => { await api.patch('/bot', ups); setBotInstance(p => p ? {...p, ...ups} : null); },
       
       // New methods
+      addNote: async (lid, n) => { 
+        await api.post(`/leads/${lid}/notes`, n); 
+        setLeads(p => p.map(l => l.id === lid ? {...l, notes: [n, ...l.notes]} : l)); 
+      },
       updateVisibilitySettings: async (s) => { console.log('Update visibility', s); },
       addUser: async (u) => { await api.post('/users', u); setUsers(p => [...p, u as User]); },
       addTeam: async (t) => { await api.post('/teams', t); setTeams(p => [...p, t as Team]); },

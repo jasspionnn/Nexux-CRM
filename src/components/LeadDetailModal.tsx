@@ -10,7 +10,7 @@ interface Props {
 }
 
 export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose, onLeadSelect }) => {
-  const { leads, funnels, updateLead, duplicateLead, customFields } = useCRM();
+  const { leads, funnels, updateLead, duplicateLead, customFields, addNote } = useCRM();
   const lead = leads.find(l => l.id === leadId);
   const [noteText, setNoteText] = useState('');
   
@@ -43,7 +43,7 @@ export const LeadDetailModal: React.FC<Props> = ({ leadId, onClose, onLeadSelect
       createdAt: new Date().toISOString(),
       authorName: 'Eu' 
     };
-    updateLead(lead.id, { notes: [newNote, ...lead.notes] });
+    addNote(lead.id, newNote);
     setNoteText('');
   };
 

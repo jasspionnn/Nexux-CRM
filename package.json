@@ -5,15 +5,15 @@
   "type": "module",
   "main": "index.tsx",
   "scripts": {
-    "dev": "npm run build && concurrently \"vite\" \"wrangler pages dev dist --port 8787 --d1=DB\"",
-    "backend": "wrangler pages dev dist --port 8787 --d1=DB",
+    "dev": "npm run build && concurrently \"vite\" \"wrangler pages dev dist --port 8787 --d1=DB --persist-to=.wrangler/state/v3/d1\"",
+    "backend": "wrangler pages dev dist --port 8787 --d1=DB --persist-to=.wrangler/state/v3/d1",
     "backend:remote": "wrangler pages dev dist --port 8787 --d1=DB --remote",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "db:setup": "wrangler d1 execute nexus-db --local --file=schema.sql",
     "db:prod": "wrangler d1 execute nexus-db --remote --file=schema.sql",
-    "db:seed:local": "wrangler d1 execute nexus-db --local --file=seed.sql",
-    "db:seed:prod": "wrangler d1 execute nexus-db --remote --file=seed.sql",
+    "db:seed:local": "wrangler d1 execute nexus-db --local --file=seed__DO_NOT_RUN_IN_PROD.sql",
+    "db:seed:prod": "wrangler d1 execute nexus-db --remote --file=seed__DO_NOT_RUN_IN_PROD.sql",
     "deploy": "npm run build && wrangler pages deploy dist"
   },
   "dependencies": {
