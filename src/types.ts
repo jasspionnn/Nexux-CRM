@@ -44,6 +44,7 @@ export interface Webhook {
   funnelId: string;
   stageId: string;
   active: boolean;
+  url: string;
   createdAt: string;
 }
 

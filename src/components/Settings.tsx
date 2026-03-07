@@ -9,9 +9,9 @@ import {
   MoreVertical, HelpCircle, ChevronDown, ChevronUp, GripVertical, AlertCircle
 } from 'lucide-react';
 // Added CustomFieldType and CustomFieldContext to imports to fix type mismatch during casting
-import { VisibilityLevel, UserRole, User, Team, Funnel, Stage, CustomFieldDefinition, CustomFieldType, CustomFieldContext } from '../types';
+import { VisibilityLevel, UserRole, User, Team, Funnel, Stage, CustomFieldDefinition, CustomFieldType, CustomFieldContext, Webhook } from '../types';
 
-type SettingsTab = 'pipeline' | 'fields' | 'access' | 'billing';
+type SettingsTab = 'pipeline' | 'fields' | 'webhooks' | 'access' | 'billing';
 
 export const Settings = () => {
   const { 
@@ -19,7 +19,8 @@ export const Settings = () => {
     updateVisibilitySettings, updateUser, teams, 
     addUser, addTeam, updateTeam, deleteTeam, deleteUser,
     addFunnel, updateFunnel, deleteFunnel, addStage, updateStage, deleteStage, reorderStages,
-    customFields, addCustomField, updateCustomField, deleteCustomField
+    customFields, addCustomField, updateCustomField, deleteCustomField,
+    webhooks, addWebhook, updateWebhook, deleteWebhook
   } = useCRM();
   
   const [activeTab, setActiveTab] = useState<SettingsTab>('access');
@@ -28,7 +29,10 @@ export const Settings = () => {
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [isFunnelModalOpen, setIsFunnelModalOpen] = useState(false);
   const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
+  const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
   const [editingField, setEditingField] = useState<CustomFieldDefinition | null>(null);
+  const [editingWebhook, setEditingWebhook] = useState<Webhook | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedFunnelId, setSelectedFunnelId] = useState<string>(funnels[0]?.id || '');
 
   const filteredUsers = useMemo(() => users.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()) || u.email.toLowerCase().includes(userSearch.toLowerCase())), [users, userSearch]);
@@ -46,6 +50,7 @@ export const Settings = () => {
               { id: 'access', label: 'Equipes e Acessos', icon: ShieldCheck },
               { id: 'pipeline', label: 'Funis de Vendas', icon: Layers },
               { id: 'fields', label: 'Campos', icon: SlidersHorizontal },
+              { id: 'webhooks', label: 'Webhooks', icon: Target },
               { id: 'billing', label: 'Plano', icon: CreditCard },
             ].map(tab => (
               <button 
@@ -60,6 +65,7 @@ export const Settings = () => {
         {activeTab === 'access' && <button onClick={() => setIsUserModalOpen(true)} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-sm"><Plus size={18} /> Novo Usuário</button>}
         {activeTab === 'pipeline' && <button onClick={() => setIsFunnelModalOpen(true)} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-sm"><Plus size={18} /> Novo Funil</button>}
         {activeTab === 'fields' && <button onClick={() => {setEditingField(null); setIsFieldModalOpen(true)}} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-sm"><Plus size={18} /> Novo Campo</button>}
+        {activeTab === 'webhooks' && <button onClick={() => {setEditingWebhook(null); setIsWebhookModalOpen(true)}} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-sm"><Plus size={18} /> Novo Webhook</button>}
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0">
@@ -160,6 +166,70 @@ export const Settings = () => {
                 </div>
             </div>
         )}
+
+        {activeTab === 'webhooks' && (
+            <div className="space-y-8 animate-fade-in">
+                <div className="flex justify-between items-center">
+                    <div><h3 className="text-xl font-black text-gray-900">Webhooks</h3><p className="text-sm text-gray-500">Integre com outras ferramentas via webhooks.</p></div>
+                </div>
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase">
+                            <tr><th className="px-6 py-4">Nome</th><th className="px-6 py-4">URL</th><th className="px-6 py-4">Funil / Estágio</th><th className="px-6 py-4">Status</th><th className="px-6 py-4 w-10"></th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {webhooks.map(webhook => (
+                                <tr key={webhook.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => { setEditingWebhook(webhook); setIsWebhookModalOpen(true); }}>
+                                    <td className="px-6 py-4 font-bold text-sm text-gray-800">{webhook.name}</td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-2">
+                                            <code className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-600 truncate max-w-[200px]">{webhook.url}</code>
+                                            <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(webhook.url); setCopiedId(webhook.id); setTimeout(() => setCopiedId(null), 2000); }} className="text-gray-400 hover:text-blue-600">
+                                                {copiedId === webhook.id ? <Check size={14} className="text-green-500" /> : <Save size={14} />}
+                                            </button>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-xs font-bold text-gray-500">
+                                        {funnels.find(f => f.id === webhook.funnelId)?.name || 'Todos'} / {funnels.find(f => f.id === webhook.funnelId)?.stages.find(s => s.id === webhook.stageId)?.name || 'Todos'}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <button onClick={(e) => { e.stopPropagation(); updateWebhook(webhook.id, { active: !webhook.active }); }} className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${webhook.active ? 'bg-green-500' : 'bg-gray-300'}`}>
+                                            <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${webhook.active ? 'translate-x-5' : 'translate-x-1'}`} />
+                                        </button>
+                                    </td>
+                                    <td className="px-6 py-4"><button onClick={(e) => { e.stopPropagation(); deleteWebhook(webhook.id)}} className="text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button></td>
+                                </tr>
+                            ))}
+                            {webhooks.length === 0 && <tr><td colSpan={5} className="px-6 py-20 text-center text-gray-300 font-bold uppercase text-[10px] tracking-widest">Nenhum webhook configurado</td></tr>}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        )}
+
+        {activeTab === 'billing' && (
+            <div className="space-y-8 animate-fade-in max-w-3xl">
+                <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-8 opacity-10"><Target size={120} /></div>
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-3 mb-6"><div className="p-2 bg-white/20 rounded-lg"><Briefcase size={24} /></div><h3 className="text-xl font-black">Plano Atual</h3></div>
+                        <div className="flex items-end gap-4 mb-8">
+                            <div className="text-5xl font-black">{currentAccount?.plan === 'enterprise' ? 'Enterprise' : currentAccount?.plan === 'pro' ? 'Pro' : 'Starter'}</div>
+                            <div className="text-blue-200 font-medium mb-1">/ {currentAccount?.status === 'active' ? 'Ativo' : 'Inativo'}</div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-black/20 rounded-xl p-4"><div className="text-blue-200 text-xs font-bold uppercase mb-1">Empresa</div><div className="font-bold">{currentAccount?.companyName}</div></div>
+                            <div className="bg-black/20 rounded-xl p-4"><div className="text-blue-200 text-xs font-bold uppercase mb-1">Vencimento</div><div className="font-bold">{currentAccount?.expiresAt ? new Date(currentAccount.expiresAt).toLocaleDateString() : 'N/A'}</div></div>
+                        </div>
+                    </div>
+                </div>
+                <div className="bg-white border border-gray-100 rounded-2xl p-8 text-center">
+                    <h4 className="text-lg font-black text-gray-900 mb-2">Precisa de mais recursos?</h4>
+                    <p className="text-gray-500 mb-6">Entre em contato com nosso suporte para fazer um upgrade no seu plano.</p>
+                    <button className="bg-gray-900 text-white px-6 py-3 rounded-xl font-bold hover:bg-gray-800 transition-colors inline-flex items-center gap-2"><HelpCircle size={18} /> Falar com Suporte</button>
+                </div>
+            </div>
+        )}
       </div>
 
       {/* MODAL: NOVO/EDITAR CAMPO */}
@@ -247,6 +317,54 @@ export const Settings = () => {
                     )}
 
                     <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold hover:bg-blue-700 shadow-md mt-4">{editingField ? 'Salvar Alterações' : 'Adicionar Campo'}</button>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {/* MODAL: NOVO/EDITAR WEBHOOK */}
+      {isWebhookModalOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
+                <div className="px-8 py-6 border-b bg-gray-50 flex justify-between items-center">
+                    <h3 className="font-bold text-gray-800">{editingWebhook ? 'Editar Webhook' : 'Novo Webhook'}</h3>
+                    <button onClick={() => setIsWebhookModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
+                </div>
+                <form onSubmit={(e) => {
+                    e.preventDefault();
+                    const form = e.target as any;
+                    const webhookData = {
+                        name: form.wname.value,
+                        funnelId: form.wfunnel.value,
+                        stageId: form.wstage.value,
+                        active: editingWebhook ? editingWebhook.active : true,
+                        url: editingWebhook ? editingWebhook.url : `https://api.nexus.com/webhooks/${Math.random().toString(36).substring(7)}`,
+                        events: ['lead.created']
+                    };
+                    if (editingWebhook) {
+                        updateWebhook(editingWebhook.id, webhookData);
+                    } else {
+                        addWebhook({ id: `wh-${Date.now()}`, accountId: currentUser?.accountId || '', ...webhookData } as any);
+                    }
+                    setIsWebhookModalOpen(false);
+                }} className="p-8 space-y-5">
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Nome do Webhook</label>
+                        <input name="wname" defaultValue={editingWebhook?.name || ''} required className="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm font-medium" />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Funil de Destino</label>
+                        <select name="wfunnel" defaultValue={editingWebhook?.funnelId || selectedFunnelId} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none bg-white text-sm font-medium">
+                            {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Estágio Inicial</label>
+                        <select name="wstage" defaultValue={editingWebhook?.stageId || ''} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 outline-none bg-white text-sm font-medium">
+                            {funnels.find(f => f.id === (editingWebhook?.funnelId || selectedFunnelId))?.stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                    </div>
+                    <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold hover:bg-blue-700 shadow-md mt-4">{editingWebhook ? 'Salvar Alterações' : 'Criar Webhook'}</button>
                 </form>
             </div>
         </div>
