@@ -4,18 +4,22 @@ import { useCRM } from '../context/CRMContext';
 import { UserRole } from '../types';
 import { 
   Building, Power, Search, ShieldCheck, Calendar, CheckCircle, 
-  Loader2, Save, Upload, Trash2, Image as ImageIcon, LogOut, User as UserIcon
+  Loader2, Save, Upload, Trash2, Image as ImageIcon, LogOut, User as UserIcon, Plus, X
 } from 'lucide-react';
 import { api } from '../services/api';
 
 export const NexusAdminDashboard = () => {
-  const { allAccounts = [], updateAccountStatus, extendAccountSubscription, isLoading, currentUser, logout } = useCRM();
+  const { allAccounts = [], updateAccountStatus, extendAccountSubscription, isLoading, currentUser, logout, refreshData } = useCRM();
   const [activeTab, setActiveTab] = useState<'accounts' | 'settings'>('accounts');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showSaveToast, setShowSaveToast] = useState(false);
   const [systemSettings, setSystemSettings] = useState({ login_background: '' });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [isNewAccountModalOpen, setIsNewAccountModalOpen] = useState(false);
+  const [newAccountData, setNewAccountData] = useState({ companyName: '', userName: '', email: '', password: '' });
+  const [isCreatingAccount, setIsCreatingAccount] = useState(false);
 
   useEffect(() => {
       api.get<any>('/public/settings')
@@ -79,6 +83,21 @@ export const NexusAdminDashboard = () => {
       }
   };
 
+  const handleCreateAccount = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsCreatingAccount(true);
+      try {
+          await api.post('/auth/register', newAccountData);
+          await refreshData();
+          setIsNewAccountModalOpen(false);
+          setNewAccountData({ companyName: '', userName: '', email: '', password: '' });
+      } catch (err: any) {
+          alert(`Erro ao criar conta: ${err.message}`);
+      } finally {
+          setIsCreatingAccount(false);
+      }
+  };
+
   const getDaysRemaining = (dateStr?: string) => {
       if (!dateStr) return 0;
       const expDate = new Date(dateStr);
@@ -122,14 +141,23 @@ export const NexusAdminDashboard = () => {
             
             <div className="flex items-center gap-6">
                 {activeTab === 'accounts' && (
-                    <div className="relative">
-                        <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
-                        <input 
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            placeholder="Buscar empresa ou email..."
-                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 w-64 text-sm font-bold"
-                        />
+                    <div className="flex items-center gap-4">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                            <input 
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                placeholder="Buscar empresa ou email..."
+                                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 w-64 text-sm font-bold"
+                            />
+                        </div>
+                        <button 
+                            onClick={() => setIsNewAccountModalOpen(true)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 shadow-sm transition-colors"
+                        >
+                            <Plus size={18} />
+                            Nova Empresa
+                        </button>
                     </div>
                 )}
 
@@ -282,6 +310,94 @@ export const NexusAdminDashboard = () => {
             <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-scale-in z-[100]">
                 <CheckCircle className="text-green-400" size={20} />
                 <span className="font-bold text-sm">Configurações globais salvas!</span>
+            </div>
+        )}
+
+        {isNewAccountModalOpen && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[200] p-4 animate-fade-in">
+                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+                    <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
+                                <Building size={20} />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-gray-900">Nova Empresa</h2>
+                                <p className="text-xs text-gray-500 font-medium">Criar nova conta e usuário admin</p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => setIsNewAccountModalOpen(false)}
+                            className="p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 rounded-xl transition-colors"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    <form onSubmit={handleCreateAccount} className="p-6 space-y-5">
+                        <div>
+                            <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-2">Nome da Empresa</label>
+                            <input 
+                                required
+                                value={newAccountData.companyName}
+                                onChange={e => setNewAccountData({...newAccountData, companyName: e.target.value})}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                placeholder="Ex: Acme Corp"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-2">Nome do Administrador</label>
+                            <input 
+                                required
+                                value={newAccountData.userName}
+                                onChange={e => setNewAccountData({...newAccountData, userName: e.target.value})}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                placeholder="Ex: João Silva"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-2">E-mail</label>
+                            <input 
+                                required
+                                type="email"
+                                value={newAccountData.email}
+                                onChange={e => setNewAccountData({...newAccountData, email: e.target.value})}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                placeholder="admin@acme.com"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-gray-700 uppercase tracking-widest mb-2">Senha Provisória</label>
+                            <input 
+                                required
+                                type="password"
+                                minLength={6}
+                                value={newAccountData.password}
+                                onChange={e => setNewAccountData({...newAccountData, password: e.target.value})}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                placeholder="Mínimo 6 caracteres"
+                            />
+                        </div>
+
+                        <div className="pt-4 flex gap-3">
+                            <button 
+                                type="button"
+                                onClick={() => setIsNewAccountModalOpen(false)}
+                                className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl text-sm transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                type="submit"
+                                disabled={isCreatingAccount}
+                                className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition-colors shadow-lg shadow-blue-200 flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isCreatingAccount ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                                {isCreatingAccount ? 'Criando...' : 'Criar Empresa'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         )}
     </div>

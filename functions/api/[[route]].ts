@@ -325,6 +325,11 @@ app.delete('/teams/:id', async (c) => {
 });
 
 // --- ADMIN ---
+app.get('/admin/accounts', async (c) => {
+    const res = await c.env.DB.prepare('SELECT id, company_name as companyName, email, status, plan, expires_at as expiresAt FROM accounts').all();
+    return c.json({ accounts: res.results || [] });
+});
+
 app.patch('/admin/accounts/:id', async (c) => {
     const id = c.req.param('id');
     const { status } = await c.req.json();
