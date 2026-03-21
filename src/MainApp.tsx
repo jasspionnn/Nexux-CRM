@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CRMProvider, useCRM } from './context/CRMContext';
-import { Sidebar as Navbar } from './components/Sidebar';
+import { Header as Navbar } from './components/Header';
 import { Dashboard } from './components/Dashboard';
 import { KanbanBoard } from './components/KanbanBoard';
 import { Settings } from './components/Settings';
@@ -10,6 +10,7 @@ import { TasksView } from './components/TasksView';
 import { LoginPage } from './components/LoginPage';
 import { NexusAdminDashboard } from './components/NexusAdminDashboard';
 import { StrategicInsights } from './components/StrategicInsights';
+import { AIBotSettings } from './components/AIBotSettings';
 import { UserRole } from './types';
 import { Loader2 } from 'lucide-react';
 
@@ -48,6 +49,7 @@ const AppContent = () => {
       case 'kanban': return <KanbanBoard onNavigate={handleNavigate} />;
       case 'leads-db': return <LeadsDatabase onNavigate={handleNavigate} />;
       case 'tasks': return <TasksView onNavigate={handleNavigate} />;
+      case 'ai-bot': return <AIBotSettings />;
       case 'settings': return <Settings />;
       case 'lead-detail': 
         return <LeadDetailPage 
@@ -60,12 +62,11 @@ const AppContent = () => {
   };
 
   return (
-    <div className={`flex flex-col h-screen bg-gray-50 overflow-hidden ${currentUser.role !== UserRole.NEXUS_ADMIN ? 'pt-16' : ''}`}>
+    <div className={`flex flex-col h-screen bg-slate-50 overflow-hidden`}>
       {currentUser.role !== UserRole.NEXUS_ADMIN && <Navbar currentView={currentView} onChangeView={(view: string) => handleNavigate(view)} />}
-      <main className="flex-1 overflow-hidden relative">
+      <main className="flex-1 overflow-y-auto relative">
         {renderView()}
       </main>
-      {currentUser.role !== UserRole.NEXUS_ADMIN && <StrategicInsights />}
     </div>
   );
 };
