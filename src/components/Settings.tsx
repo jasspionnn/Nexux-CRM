@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Layers, SlidersHorizontal, Zap, Shield, CreditCard, Plus, ChevronRight, Trash2, GripVertical, Check, X, Edit2 } from 'lucide-react';
 
 const COLORS = [
@@ -8,39 +8,48 @@ const COLORS = [
 
 export const Settings = () => {
   const [activeTab, setActiveTab] = useState('funis');
+  const [isLoading, setIsLoading] = useState(true);
   
   // State for Funnels
-  const [funnels, setFunnels] = useState([
-    { 
-      id: '1', 
-      name: 'Funil de Vendas', 
-      stages: [
-        { id: '1', name: 'Novo Lead', color: 'bg-blue-300' },
-        { id: '2', name: 'Qualificação', color: 'bg-green-300' },
-        { id: '3', name: 'Proposta', color: 'bg-yellow-300' },
-        { id: '4', name: 'Fechamento', color: 'bg-red-300' },
-      ]
-    },
-    { id: '2', name: 'Funil de Marketing', stages: [] },
-  ]);
-  const [activeFunnelId, setActiveFunnelId] = useState(funnels[0]?.id);
+  const [funnels, setFunnels] = useState<any[]>([]);
+  const [activeFunnelId, setActiveFunnelId] = useState<string>('');
 
   // State for Custom Fields
-  const [customFields, setCustomFields] = useState([
-    { id: '1', name: 'Origem do Lead', type: 'Texto', context: 'Lead' },
-    { id: '2', name: 'Tamanho da Empresa', type: 'Seleção', context: 'Empresa' },
-  ]);
+  const [customFields, setCustomFields] = useState<any[]>([]);
 
   // State for Webhooks
-  const [webhooks, setWebhooks] = useState([
-    { id: '1', name: 'Integração RD Station', url: 'https://api.rd.services/webhook', active: true },
-  ]);
+  const [webhooks, setWebhooks] = useState<any[]>([]);
 
   // State for Teams
-  const [teamMembers, setTeamMembers] = useState([
-    { id: '1', name: 'Caue', email: 'caue@example.com', role: 'Admin', status: 'Ativo' },
-    { id: '2', name: 'João Vendedor', email: 'joao@example.com', role: 'Usuário', status: 'Ativo' },
-  ]);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const [funnelsRes, fieldsRes, webhooksRes, usersRes] = await Promise.all([
+        fetch('/api/funnels'),
+        fetch('/api/custom-fields'),
+        fetch('/api/webhooks'),
+        fetch('/api/users')
+      ]);
+
+      const funnelsData = await funnelsRes.json();
+      setFunnels(funnelsData);
+      if (funnelsData.length > 0) setActiveFunnelId(funnelsData[0].id);
+
+      setCustomFields(await fieldsRes.json());
+      setWebhooks(await webhooksRes.json());
+      setTeamMembers(await usersRes.json());
+    } catch (error) {
+      console.error('Failed to fetch settings data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const tabs = [
     { id: 'funis', label: 'Funis de Vendas', icon: Layers },
@@ -53,53 +62,153 @@ export const Settings = () => {
   // --- Funnel Handlers ---
   const activeFunnel = funnels.find(f => f.id === activeFunnelId);
 
-  const handleAddFunnel = () => {
-    const newFunnel = { id: Date.now().toString(), name: 'Novo Funil', stages: [] };
+  const handleAddFunnel = async () => {
+    const res = await fetch('/api/funnels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Novo Funil' })
+    });
+    const newFunnel = await res.json();
     setFunnels([...funnels, newFunnel]);
     setActiveFunnelId(newFunnel.id);
   };
 
-  const handleDeleteFunnel = (id: string) => {
+  const handleDeleteFunnel = async (id: string) => {
+    await fetch(`/api/funnels/${id}`, { method: 'DELETE' });
     const updated = funnels.filter(f => f.id !== id);
     setFunnels(updated);
     if (activeFunnelId === id) setActiveFunnelId(updated[0]?.id || '');
   };
 
-  const handleUpdateFunnelName = (id: string, newName: string) => {
+  const handleUpdateFunnelName = async (id: string, newName: string) => {
     setFunnels(funnels.map(f => f.id === id ? { ...f, name: newName } : f));
+    await fetch(`/api/funnels/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName })
+    });
   };
 
-  const handleAddStage = (funnelId: string) => {
+  const handleAddStage = async (funnelId: string) => {
+    const res = await fetch(`/api/funnels/${funnelId}/stages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Nova Etapa', color: COLORS[0], order: activeFunnel?.stages?.length || 0 })
+    });
+    const newStage = await res.json();
+    setFunnels(funnels.map(f => {
+      if (f.id === funnelId) {
+        return { ...f, stages: [...(f.stages || []), newStage] };
+      }
+      return f;
+    }));
+  };
+
+  const handleUpdateStage = async (funnelId: string, stageId: string, updates: any) => {
     setFunnels(funnels.map(f => {
       if (f.id === funnelId) {
         return {
           ...f,
-          stages: [...f.stages, { id: Date.now().toString(), name: 'Nova Etapa', color: COLORS[0] }]
+          stages: f.stages.map((s: any) => s.id === stageId ? { ...s, ...updates } : s)
         };
+      }
+      return f;
+    }));
+    
+    const stage = funnels.find(f => f.id === funnelId)?.stages.find((s: any) => s.id === stageId);
+    await fetch(`/api/stages/${stageId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...stage, ...updates })
+    });
+  };
+
+  const handleDeleteStage = async (funnelId: string, stageId: string) => {
+    await fetch(`/api/stages/${stageId}`, { method: 'DELETE' });
+    setFunnels(funnels.map(f => {
+      if (f.id === funnelId) {
+        return { ...f, stages: f.stages.filter((s: any) => s.id !== stageId) };
       }
       return f;
     }));
   };
 
-  const handleUpdateStage = (funnelId: string, stageId: string, updates: any) => {
-    setFunnels(funnels.map(f => {
-      if (f.id === funnelId) {
-        return {
-          ...f,
-          stages: f.stages.map(s => s.id === stageId ? { ...s, ...updates } : s)
-        };
-      }
-      return f;
-    }));
+  // --- Custom Fields Handlers ---
+  const handleAddCustomField = async () => {
+    const res = await fetch('/api/custom-fields', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Novo Campo', type: 'Texto', context: 'Lead' })
+    });
+    const newField = await res.json();
+    setCustomFields([...customFields, newField]);
   };
 
-  const handleDeleteStage = (funnelId: string, stageId: string) => {
-    setFunnels(funnels.map(f => {
-      if (f.id === funnelId) {
-        return { ...f, stages: f.stages.filter(s => s.id !== stageId) };
-      }
-      return f;
-    }));
+  const handleUpdateCustomField = async (id: string, updates: any) => {
+    setCustomFields(customFields.map(f => f.id === id ? { ...f, ...updates } : f));
+    const field = customFields.find(f => f.id === id);
+    await fetch(`/api/custom-fields/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...field, ...updates })
+    });
+  };
+
+  const handleDeleteCustomField = async (id: string) => {
+    await fetch(`/api/custom-fields/${id}`, { method: 'DELETE' });
+    setCustomFields(customFields.filter(f => f.id !== id));
+  };
+
+  // --- Webhooks Handlers ---
+  const handleAddWebhook = async () => {
+    const res = await fetch('/api/webhooks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Novo Webhook', url: 'https://...', active: true })
+    });
+    const newWebhook = await res.json();
+    setWebhooks([...webhooks, newWebhook]);
+  };
+
+  const handleUpdateWebhook = async (id: string, updates: any) => {
+    setWebhooks(webhooks.map(w => w.id === id ? { ...w, ...updates } : w));
+    const webhook = webhooks.find(w => w.id === id);
+    await fetch(`/api/webhooks/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...webhook, ...updates })
+    });
+  };
+
+  const handleDeleteWebhook = async (id: string) => {
+    await fetch(`/api/webhooks/${id}`, { method: 'DELETE' });
+    setWebhooks(webhooks.filter(w => w.id !== id));
+  };
+
+  // --- Team Handlers ---
+  const handleAddTeamMember = async () => {
+    const res = await fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Novo Usuário', email: 'novo@email.com', role: 'Usuário', status: 'Pendente' })
+    });
+    const newUser = await res.json();
+    setTeamMembers([...teamMembers, newUser]);
+  };
+
+  const handleUpdateTeamMember = async (id: string, updates: any) => {
+    setTeamMembers(teamMembers.map(m => m.id === id ? { ...m, ...updates } : m));
+    const member = teamMembers.find(m => m.id === id);
+    await fetch(`/api/users/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...member, ...updates })
+    });
+  };
+
+  const handleDeleteTeamMember = async (id: string) => {
+    await fetch(`/api/users/${id}`, { method: 'DELETE' });
+    setTeamMembers(teamMembers.filter(m => m.id !== id));
   };
 
   // --- Renderers ---
@@ -167,7 +276,7 @@ export const Settings = () => {
               </div>
 
               <div className="space-y-3">
-                {activeFunnel.stages.map((stage) => (
+                {activeFunnel.stages.map((stage: any) => (
                   <div key={stage.id} className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-xl shadow-sm group">
                     <button className="text-slate-300 hover:text-slate-400 cursor-grab">
                       <GripVertical size={20} />
@@ -228,7 +337,7 @@ export const Settings = () => {
             <p className="text-slate-500 text-sm mt-1">Gerencie os campos adicionais para leads e empresas.</p>
           </div>
           <button 
-            onClick={() => setCustomFields([...customFields, { id: Date.now().toString(), name: 'Novo Campo', type: 'Texto', context: 'Lead' }])}
+            onClick={handleAddCustomField}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 transition-colors"
           >
             <Plus size={16} />
@@ -253,14 +362,14 @@ export const Settings = () => {
                     <input 
                       type="text" 
                       value={field.name}
-                      onChange={(e) => setCustomFields(customFields.map(f => f.id === field.id ? { ...f, name: e.target.value } : f))}
+                      onChange={(e) => handleUpdateCustomField(field.id, { name: e.target.value })}
                       className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full"
                     />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-slate-600">
                     <select 
                       value={field.type}
-                      onChange={(e) => setCustomFields(customFields.map(f => f.id === field.id ? { ...f, type: e.target.value } : f))}
+                      onChange={(e) => handleUpdateCustomField(field.id, { type: e.target.value })}
                       className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-600"
                     >
                       <option>Texto</option>
@@ -272,7 +381,7 @@ export const Settings = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-slate-600">
                     <select 
                       value={field.context}
-                      onChange={(e) => setCustomFields(customFields.map(f => f.id === field.id ? { ...f, context: e.target.value } : f))}
+                      onChange={(e) => handleUpdateCustomField(field.id, { context: e.target.value })}
                       className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-600"
                     >
                       <option>Lead</option>
@@ -282,7 +391,7 @@ export const Settings = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">
                     <button 
-                      onClick={() => setCustomFields(customFields.filter(f => f.id !== field.id))}
+                      onClick={() => handleDeleteCustomField(field.id)}
                       className="text-slate-400 hover:text-red-500 transition-colors"
                     >
                       <Trash2 size={18} />
@@ -311,7 +420,7 @@ export const Settings = () => {
             <p className="text-slate-500 text-sm mt-1">Integre o CRM com outras ferramentas via webhooks.</p>
           </div>
           <button 
-            onClick={() => setWebhooks([...webhooks, { id: Date.now().toString(), name: 'Novo Webhook', url: 'https://...', active: true }])}
+            onClick={handleAddWebhook}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 transition-colors"
           >
             <Plus size={16} />
@@ -327,12 +436,12 @@ export const Settings = () => {
                   <input 
                     type="text" 
                     value={webhook.name}
-                    onChange={(e) => setWebhooks(webhooks.map(w => w.id === webhook.id ? { ...w, name: e.target.value } : w))}
+                    onChange={(e) => handleUpdateWebhook(webhook.id, { name: e.target.value })}
                     className="font-bold text-lg text-slate-900 bg-transparent border-none p-0 focus:ring-0 outline-none w-1/2"
                     placeholder="Nome do Webhook"
                   />
                   <button 
-                    onClick={() => setWebhooks(webhooks.map(w => w.id === webhook.id ? { ...w, active: !w.active } : w))}
+                    onClick={() => handleUpdateWebhook(webhook.id, { active: !webhook.active })}
                     className={`px-2.5 py-1 rounded-full text-xs font-bold ${webhook.active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}
                   >
                     {webhook.active ? 'Ativo' : 'Inativo'}
@@ -343,14 +452,14 @@ export const Settings = () => {
                   <input 
                     type="text" 
                     value={webhook.url}
-                    onChange={(e) => setWebhooks(webhooks.map(w => w.id === webhook.id ? { ...w, url: e.target.value } : w))}
+                    onChange={(e) => handleUpdateWebhook(webhook.id, { url: e.target.value })}
                     className="flex-1 bg-transparent border-none p-0 focus:ring-0 outline-none text-sm font-mono text-slate-700"
                     placeholder="https://sua-api.com/webhook"
                   />
                 </div>
               </div>
               <button 
-                onClick={() => setWebhooks(webhooks.filter(w => w.id !== webhook.id))}
+                onClick={() => handleDeleteWebhook(webhook.id)}
                 className="text-slate-400 hover:text-red-500 transition-colors mt-1"
               >
                 <Trash2 size={20} />
@@ -376,7 +485,7 @@ export const Settings = () => {
             <p className="text-slate-500 text-sm mt-1">Gerencie os usuários e permissões da sua conta.</p>
           </div>
           <button 
-            onClick={() => setTeamMembers([...teamMembers, { id: Date.now().toString(), name: 'Novo Usuário', email: 'novo@email.com', role: 'Usuário', status: 'Pendente' }])}
+            onClick={handleAddTeamMember}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 transition-colors"
           >
             <Plus size={16} />
@@ -402,7 +511,7 @@ export const Settings = () => {
                       <input 
                         type="text" 
                         value={member.name}
-                        onChange={(e) => setTeamMembers(teamMembers.map(m => m.id === member.id ? { ...m, name: e.target.value } : m))}
+                        onChange={(e) => handleUpdateTeamMember(member.id, { name: e.target.value })}
                         className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full"
                       />
                     </div>
@@ -410,7 +519,7 @@ export const Settings = () => {
                       <input 
                         type="text" 
                         value={member.email}
-                        onChange={(e) => setTeamMembers(teamMembers.map(m => m.id === member.id ? { ...m, email: e.target.value } : m))}
+                        onChange={(e) => handleUpdateTeamMember(member.id, { email: e.target.value })}
                         className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full text-sm"
                       />
                     </div>
@@ -418,7 +527,7 @@ export const Settings = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-slate-600">
                     <select 
                       value={member.role}
-                      onChange={(e) => setTeamMembers(teamMembers.map(m => m.id === member.id ? { ...m, role: e.target.value } : m))}
+                      onChange={(e) => handleUpdateTeamMember(member.id, { role: e.target.value })}
                       className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-600 font-medium"
                     >
                       <option>Admin</option>
@@ -433,7 +542,7 @@ export const Settings = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">
                     <button 
-                      onClick={() => setTeamMembers(teamMembers.filter(m => m.id !== member.id))}
+                      onClick={() => handleDeleteTeamMember(member.id)}
                       className="text-slate-400 hover:text-red-500 transition-colors"
                     >
                       <Trash2 size={18} />
@@ -488,6 +597,17 @@ export const Settings = () => {
       </div>
     </div>
   );
+
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center bg-white">
+        <div className="text-slate-500 flex flex-col items-center gap-2">
+          <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <span>Carregando configurações...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col bg-white">
