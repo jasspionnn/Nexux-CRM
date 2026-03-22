@@ -26,7 +26,7 @@ app.post('/funnels', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
   // Using a default account_id for now
-  const account_id = '1'; 
+  const account_id = 'acc_demo'; 
   
   await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)')
     .bind(id, account_id, body.name)
@@ -91,7 +91,7 @@ app.get('/custom-fields', async (c) => {
 app.post('/custom-fields', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
-  const account_id = '1';
+  const account_id = 'acc_demo';
   
   await c.env.DB.prepare('INSERT INTO custom_fields (id, account_id, name, type, context) VALUES (?, ?, ?, ?, ?)')
     .bind(id, account_id, body.name, body.type, body.context)
@@ -126,7 +126,7 @@ app.get('/webhooks', async (c) => {
 app.post('/webhooks', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
-  const account_id = '1';
+  const account_id = 'acc_demo';
   
   await c.env.DB.prepare('INSERT INTO webhooks (id, account_id, name, url, events, is_active) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(id, account_id, body.name, body.url, 'all', body.active ? 1 : 0)
@@ -161,7 +161,7 @@ app.get('/users', async (c) => {
 app.post('/users', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
-  const account_id = '1';
+  const account_id = 'acc_demo';
   
   await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
     .bind(id, account_id, body.name, body.email, 'temp_password', body.role, body.status)
@@ -185,6 +185,91 @@ app.delete('/users/:id', async (c) => {
   const id = c.req.param('id');
   await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
   return c.json({ success: true });
+});
+
+// Leads
+app.get('/leads', async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT * FROM leads ORDER BY created_at DESC').all();
+  return c.json(results);
+});
+
+app.post('/leads', async (c) => {
+  const body = await c.req.json();
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  
+  await c.env.DB.prepare(`
+    INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, assigned_user_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    id,
+    'acc_demo', // Using the same demo account ID
+    body.funnel_id,
+    body.stage_id,
+    body.title || 'Nova Negociação',
+    body.company || '',
+    body.value || 0,
+    body.assigned_user_id || null,
+    now,
+    now
+  ).run();
+  
+  const newLead = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ?').bind(id).first();
+  return c.json(newLead);
+});
+
+app.get('/leads/:id', async (c) => {
+  const id = c.req.param('id');
+  const lead = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ?').bind(id).first();
+  if (!lead) return c.json({ error: 'Lead not found' }, 404);
+  return c.json(lead);
+});
+
+app.put('/leads/:id', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  
+  // Build dynamic update query
+  const fields = [];
+  const values = [];
+  
+  const allowedFields = ['title', 'company', 'value', 'contact_name', 'contact_email', 'contact_phone', 'stage_id', 'assigned_user_id', 'probability', 'tags', 'custom_values'];
+  
+  for (const key of Object.keys(body)) {
+    if (allowedFields.includes(key)) {
+      fields.push(`${key} = ?`);
+      values.push(body[key]);
+    }
+  }
+  
+  if (fields.length === 0) return c.json({ success: true });
+  
+  values.push(id);
+  
+  const query = `UPDATE leads SET ${fields.join(', ')} WHERE id = ?`;
+  await c.env.DB.prepare(query).bind(...values).run();
+  
+  return c.json({ success: true });
+});
+
+// Notes
+app.get('/leads/:id/notes', async (c) => {
+  const leadId = c.req.param('id');
+  const { results } = await c.env.DB.prepare('SELECT * FROM notes WHERE lead_id = ? ORDER BY created_at DESC').bind(leadId).all();
+  return c.json(results);
+});
+
+app.post('/leads/:id/notes', async (c) => {
+  const leadId = c.req.param('id');
+  const body = await c.req.json();
+  const id = crypto.randomUUID();
+  
+  await c.env.DB.prepare('INSERT INTO notes (id, lead_id, content, author_name) VALUES (?, ?, ?, ?)')
+    .bind(id, leadId, body.content, body.author_name || 'Usuário')
+    .run();
+    
+  const newNote = await c.env.DB.prepare('SELECT * FROM notes WHERE id = ?').bind(id).first();
+  return c.json(newNote);
 });
 
 export const onRequest = handle(app);
