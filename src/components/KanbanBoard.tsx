@@ -24,11 +24,19 @@ export const KanbanBoard = ({ onNavigate }: any) => {
       const funnelsData = await funnelsRes.json();
       const leadsData = await leadsRes.json();
       
-      setFunnels(funnelsData);
-      setLeads(leadsData);
+      if (Array.isArray(funnelsData)) {
+        setFunnels(funnelsData);
+        if (funnelsData.length > 0 && !activeFunnelId) {
+          setActiveFunnelId(funnelsData[0].id);
+        }
+      } else {
+        console.error('Funnels data is not an array:', funnelsData);
+      }
       
-      if (funnelsData.length > 0 && !activeFunnelId) {
-        setActiveFunnelId(funnelsData[0].id);
+      if (Array.isArray(leadsData)) {
+        setLeads(leadsData);
+      } else {
+        console.error('Leads data is not an array:', leadsData);
       }
     } catch (error) {
       console.error(error);
@@ -61,6 +69,45 @@ export const KanbanBoard = ({ onNavigate }: any) => {
       onNavigate('lead-detail', createdLead.id);
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent, leadId: string) => {
+    e.dataTransfer.setData('leadId', leadId);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = async (e: React.DragEvent, stageId: string) => {
+    e.preventDefault();
+    const leadId = e.dataTransfer.getData('leadId');
+    if (!leadId) return;
+
+    // Optimistic update
+    const updatedLeads = leads.map(lead => {
+      if (lead.id === leadId) {
+        return { ...lead, stage_id: stageId };
+      }
+      return lead;
+    });
+    setLeads(updatedLeads);
+
+    // API call
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage_id: stageId })
+      });
+      if (!res.ok) {
+        throw new Error('Failed to update lead stage');
+      }
+    } catch (error) {
+      console.error('Failed to update lead stage:', error);
+      // Revert on error
+      fetchData();
     }
   };
 
@@ -110,7 +157,12 @@ export const KanbanBoard = ({ onNavigate }: any) => {
               const totalValue = stageLeads.reduce((sum, l) => sum + (l.value || 0), 0);
               
               return (
-                <div key={stage.id} className="w-80 shrink-0 flex flex-col max-h-full">
+                <div 
+                  key={stage.id} 
+                  className="w-80 shrink-0 flex flex-col max-h-full"
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, stage.id)}
+                >
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color || '#3b82f6' }}></div>
@@ -127,6 +179,8 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                     {stageLeads.map(lead => (
                       <div 
                         key={lead.id} 
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, lead.id)}
                         className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer" 
                         onClick={() => onNavigate('lead-detail', lead.id)}
                       >
@@ -137,7 +191,7 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                         </div>
                         <div className="flex items-center justify-between">
                           <div className="text-xs text-slate-500">
-                            {new Date(lead.created_at).toLocaleDateString('pt-BR')}
+                            {lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR') : 'Hoje'}
                           </div>
                           {lead.assigned_user_id && (
                             <div className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-white text-[10px] font-bold">

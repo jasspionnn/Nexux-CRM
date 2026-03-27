@@ -189,18 +189,17 @@ app.delete('/users/:id', async (c) => {
 
 // Leads
 app.get('/leads', async (c) => {
-  const { results } = await c.env.DB.prepare('SELECT * FROM leads ORDER BY created_at DESC').all();
+  const { results } = await c.env.DB.prepare('SELECT * FROM leads').all();
   return c.json(results);
 });
 
 app.post('/leads', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
-  const now = new Date().toISOString();
   
   await c.env.DB.prepare(`
-    INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, assigned_user_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, assigned_user_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     id,
     'acc_demo', // Using the same demo account ID
@@ -209,9 +208,7 @@ app.post('/leads', async (c) => {
     body.title || 'Nova Negociação',
     body.company || '',
     body.value || 0,
-    body.assigned_user_id || null,
-    now,
-    now
+    body.assigned_user_id || null
   ).run();
   
   const newLead = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ?').bind(id).first();
@@ -270,6 +267,61 @@ app.post('/leads/:id/notes', async (c) => {
     
   const newNote = await c.env.DB.prepare('SELECT * FROM notes WHERE id = ?').bind(id).first();
   return c.json(newNote);
+});
+
+// Tasks
+app.get('/tasks', async (c) => {
+  const { results } = await c.env.DB.prepare(`
+    SELECT t.*, l.title as lead_title 
+    FROM tasks t 
+    LEFT JOIN leads l ON t.lead_id = l.id 
+    ORDER BY t.due_date ASC
+  `).all();
+  return c.json(results);
+});
+
+app.post('/tasks', async (c) => {
+  const body = await c.req.json();
+  const id = crypto.randomUUID();
+  
+  await c.env.DB.prepare('INSERT INTO tasks (id, lead_id, title, due_date, completed, type) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(id, body.lead_id, body.title, body.due_date, body.completed ? 1 : 0, body.type || 'task')
+    .run();
+    
+  const newTask = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(id).first();
+  return c.json(newTask);
+});
+
+app.put('/tasks/:id', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  
+  const fields = [];
+  const values = [];
+  
+  const allowedFields = ['title', 'due_date', 'completed', 'type', 'lead_id'];
+  
+  for (const key of Object.keys(body)) {
+    if (allowedFields.includes(key)) {
+      fields.push(`${key} = ?`);
+      values.push(key === 'completed' ? (body[key] ? 1 : 0) : body[key]);
+    }
+  }
+  
+  if (fields.length === 0) return c.json({ success: true });
+  
+  values.push(id);
+  
+  const query = `UPDATE tasks SET ${fields.join(', ')} WHERE id = ?`;
+  await c.env.DB.prepare(query).bind(...values).run();
+  
+  return c.json({ success: true });
+});
+
+app.delete('/tasks/:id', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id).run();
+  return c.json({ success: true });
 });
 
 export const onRequest = handle(app);

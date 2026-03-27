@@ -21,8 +21,18 @@ export const LeadsDatabase = ({ onNavigate }: any) => {
       ]);
       const leadsData = await leadsRes.json();
       const funnelsData = await funnelsRes.json();
-      setLeads(leadsData);
-      setFunnels(funnelsData);
+      
+      if (Array.isArray(leadsData)) {
+        setLeads(leadsData);
+      } else {
+        console.error('Leads data is not an array:', leadsData);
+      }
+      
+      if (Array.isArray(funnelsData)) {
+        setFunnels(funnelsData);
+      } else {
+        console.error('Funnels data is not an array:', funnelsData);
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -150,7 +160,7 @@ export const LeadsDatabase = ({ onNavigate }: any) => {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-slate-500 text-sm">
-                    {new Date(lead.created_at).toLocaleDateString('pt-BR')}
+                    {lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR') : 'Hoje'}
                   </td>
                 </tr>
               ))

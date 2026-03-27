@@ -135,54 +135,82 @@ export const Settings = () => {
 
   // --- Custom Fields Handlers ---
   const handleAddCustomField = async () => {
-    const res = await fetch('/api/custom-fields', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Novo Campo', type: 'Texto', context: 'Lead' })
-    });
-    const newField = await res.json();
-    setCustomFields([...customFields, newField]);
+    try {
+      const res = await fetch('/api/custom-fields', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Novo Campo', type: 'Texto', context: 'Lead' })
+      });
+      if (!res.ok) throw new Error('Failed to create custom field');
+      const newField = await res.json();
+      setCustomFields(prev => [...prev, newField]);
+    } catch (error) {
+      console.error('Error adding custom field:', error);
+      alert('Erro ao adicionar campo personalizado');
+    }
   };
 
   const handleUpdateCustomField = async (id: string, updates: any) => {
-    setCustomFields(customFields.map(f => f.id === id ? { ...f, ...updates } : f));
+    setCustomFields(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
     const field = customFields.find(f => f.id === id);
-    await fetch(`/api/custom-fields/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...field, ...updates })
-    });
+    try {
+      await fetch(`/api/custom-fields/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...field, ...updates })
+      });
+    } catch (error) {
+      console.error('Error updating custom field:', error);
+    }
   };
 
   const handleDeleteCustomField = async (id: string) => {
-    await fetch(`/api/custom-fields/${id}`, { method: 'DELETE' });
-    setCustomFields(customFields.filter(f => f.id !== id));
+    try {
+      await fetch(`/api/custom-fields/${id}`, { method: 'DELETE' });
+      setCustomFields(prev => prev.filter(f => f.id !== id));
+    } catch (error) {
+      console.error('Error deleting custom field:', error);
+    }
   };
 
   // --- Webhooks Handlers ---
   const handleAddWebhook = async () => {
-    const res = await fetch('/api/webhooks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Novo Webhook', url: 'https://...', active: true })
-    });
-    const newWebhook = await res.json();
-    setWebhooks([...webhooks, newWebhook]);
+    try {
+      const res = await fetch('/api/webhooks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Novo Webhook', url: 'https://...', active: true })
+      });
+      if (!res.ok) throw new Error('Failed to create webhook');
+      const newWebhook = await res.json();
+      setWebhooks(prev => [...prev, newWebhook]);
+    } catch (error) {
+      console.error('Error adding webhook:', error);
+      alert('Erro ao adicionar webhook');
+    }
   };
 
   const handleUpdateWebhook = async (id: string, updates: any) => {
-    setWebhooks(webhooks.map(w => w.id === id ? { ...w, ...updates } : w));
+    setWebhooks(prev => prev.map(w => w.id === id ? { ...w, ...updates } : w));
     const webhook = webhooks.find(w => w.id === id);
-    await fetch(`/api/webhooks/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...webhook, ...updates })
-    });
+    try {
+      await fetch(`/api/webhooks/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...webhook, ...updates })
+      });
+    } catch (error) {
+      console.error('Error updating webhook:', error);
+    }
   };
 
   const handleDeleteWebhook = async (id: string) => {
-    await fetch(`/api/webhooks/${id}`, { method: 'DELETE' });
-    setWebhooks(webhooks.filter(w => w.id !== id));
+    try {
+      await fetch(`/api/webhooks/${id}`, { method: 'DELETE' });
+      setWebhooks(prev => prev.filter(w => w.id !== id));
+    } catch (error) {
+      console.error('Error deleting webhook:', error);
+    }
   };
 
   // --- Team Handlers ---
