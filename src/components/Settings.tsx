@@ -24,7 +24,15 @@ export const Settings = () => {
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
 
   useEffect(() => {
-    fetchData();
+    // Ensure database schema is up to date and seed data exists before fetching
+    fetch('/api/migrate-db')
+      .then(() => fetch('/api/seed-db'))
+      .then(() => fetchData())
+      .catch((err) => {
+        console.error('Migration/Seed error:', err);
+        // Try fetching anyway in case it was a network error
+        fetchData();
+      });
   }, []);
 
   const fetchData = async () => {
@@ -141,12 +149,15 @@ export const Settings = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Novo Campo', type: 'Texto', context: 'Lead' })
       });
-      if (!res.ok) throw new Error('Failed to create custom field');
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create custom field');
+      }
       const newField = await res.json();
       setCustomFields(prev => [...prev, newField]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding custom field:', error);
-      alert('Erro ao adicionar campo personalizado');
+      alert(`Erro ao adicionar campo personalizado: ${error.message}`);
     }
   };
 
@@ -181,12 +192,15 @@ export const Settings = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Novo Webhook', url: 'https://...', active: true })
       });
-      if (!res.ok) throw new Error('Failed to create webhook');
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create webhook');
+      }
       const newWebhook = await res.json();
       setWebhooks(prev => [...prev, newWebhook]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding webhook:', error);
-      alert('Erro ao adicionar webhook');
+      alert(`Erro ao adicionar webhook: ${error.message}`);
     }
   };
 
@@ -221,12 +235,15 @@ export const Settings = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Novo Usuário', email: `novo_${Date.now()}@email.com`, role: 'Usuário', status: 'Pendente' })
       });
-      if (!res.ok) throw new Error('Failed to create user');
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to create user');
+      }
       const newUser = await res.json();
       setTeamMembers(prev => [...prev, newUser]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding team member:', error);
-      alert('Erro ao adicionar usuário. Verifique se o email já existe.');
+      alert(`Erro ao adicionar usuário: ${error.message}`);
     }
   };
 

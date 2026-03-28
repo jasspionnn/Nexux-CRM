@@ -8,6 +8,190 @@ type Bindings = {
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
 // Funnels
+app.get('/debug-db', async (c) => {
+  try {
+    const accounts = await c.env.DB.prepare('SELECT * FROM accounts').all();
+    const users = await c.env.DB.prepare('SELECT * FROM users').all();
+    return c.json({ accounts: accounts.results, users: users.results });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.get('/seed-db', async (c) => {
+  try {
+    await c.env.DB.prepare(`
+      INSERT INTO accounts (id, company_name, owner_name, email, status, plan, expires_at)
+      VALUES ('acc_demo', 'Tech Solutions Ltda', 'João Silva', 'joao@tech.com', 'active', 'pro', '2025-12-31T23:59:59Z')
+      ON CONFLICT(id) DO NOTHING;
+    `).run();
+    
+    await c.env.DB.prepare(`
+      INSERT INTO users (id, account_id, name, email, password, role, avatar, status, joined_at)
+      VALUES ('u_owner', 'acc_demo', 'João Silva', 'joao@tech.com', '123456', 'ACCOUNT_ADMIN', 'https://ui-avatars.com/api/?name=Joao+Silva&background=0D8ABC&color=fff', 'active', '2023-01-01T10:00:00Z')
+      ON CONFLICT(id) DO NOTHING;
+    `).run();
+    
+    await c.env.DB.prepare(`
+      INSERT INTO funnels (id, account_id, name) VALUES ('f_vendas', 'acc_demo', 'Funil de Vendas Padrão')
+      ON CONFLICT(id) DO NOTHING;
+    `).run();
+    
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.get('/migrate-db', async (c) => {
+  try {
+    // We can't easily run the entire schema.sql here because D1 prepare().run() only executes one statement at a time.
+    // Instead, we will just ensure the most critical tables exist if they somehow got deleted.
+    
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS accounts (
+          id TEXT PRIMARY KEY,
+          company_name TEXT NOT NULL,
+          owner_name TEXT,
+          email TEXT NOT NULL,
+          status TEXT DEFAULT 'active',
+          plan TEXT DEFAULT 'pro',
+          expires_at TEXT,
+          created_at TEXT DEFAULT (datetime('now'))
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS funnels (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          default_won_stage_id TEXT,
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS stages (
+          id TEXT PRIMARY KEY,
+          funnel_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          order_index INTEGER NOT NULL,
+          color TEXT,
+          FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS leads (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          funnel_id TEXT NOT NULL,
+          stage_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          company TEXT,
+          value REAL,
+          assigned_user_id TEXT,
+          custom_values TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+          FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE,
+          FOREIGN KEY (stage_id) REFERENCES stages(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS custom_fields (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          context TEXT,
+          funnel_id TEXT,
+          options TEXT,
+          visible_stage_ids TEXT,
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS webhooks (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          url TEXT NOT NULL,
+          events TEXT NOT NULL,
+          is_active INTEGER DEFAULT 1,
+          funnel_id TEXT,
+          stage_id TEXT,
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY,
+          account_id TEXT,
+          name TEXT NOT NULL,
+          email TEXT NOT NULL UNIQUE,
+          password TEXT NOT NULL,
+          role TEXT NOT NULL,
+          avatar TEXT,
+          status TEXT DEFAULT 'active',
+          team_id TEXT,
+          joined_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    // Add missing columns to custom_fields
+    try {
+      await c.env.DB.prepare('ALTER TABLE custom_fields ADD COLUMN context TEXT').run();
+    } catch (e) { /* Ignore if already exists */ }
+    try {
+      await c.env.DB.prepare('ALTER TABLE custom_fields ADD COLUMN funnel_id TEXT').run();
+    } catch (e) { /* Ignore if already exists */ }
+    try {
+      await c.env.DB.prepare('ALTER TABLE custom_fields ADD COLUMN options TEXT').run();
+    } catch (e) { /* Ignore if already exists */ }
+    try {
+      await c.env.DB.prepare('ALTER TABLE custom_fields ADD COLUMN visible_stage_ids TEXT').run();
+    } catch (e) { /* Ignore if already exists */ }
+
+    // Add missing columns to webhooks
+    try {
+      await c.env.DB.prepare('ALTER TABLE webhooks ADD COLUMN events TEXT NOT NULL DEFAULT "all"').run();
+    } catch (e) { /* Ignore if already exists */ }
+    try {
+      await c.env.DB.prepare('ALTER TABLE webhooks ADD COLUMN funnel_id TEXT').run();
+    } catch (e) { /* Ignore if already exists */ }
+    try {
+      await c.env.DB.prepare('ALTER TABLE webhooks ADD COLUMN stage_id TEXT').run();
+    } catch (e) { /* Ignore if already exists */ }
+
+    // Add missing columns to users
+    try {
+      await c.env.DB.prepare('ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT "USER"').run();
+    } catch (e) { /* Ignore if already exists */ }
+    try {
+      await c.env.DB.prepare('ALTER TABLE users ADD COLUMN avatar TEXT').run();
+    } catch (e) { /* Ignore if already exists */ }
+    try {
+      await c.env.DB.prepare('ALTER TABLE users ADD COLUMN status TEXT DEFAULT "active"').run();
+    } catch (e) { /* Ignore if already exists */ }
+    try {
+      await c.env.DB.prepare('ALTER TABLE users ADD COLUMN team_id TEXT').run();
+    } catch (e) { /* Ignore if already exists */ }
+    try {
+      await c.env.DB.prepare('ALTER TABLE users ADD COLUMN joined_at TEXT DEFAULT (datetime(\'now\'))').run();
+    } catch (e) { /* Ignore if already exists */ }
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
 app.get('/funnels', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT * FROM funnels').all();
   
@@ -89,15 +273,20 @@ app.get('/custom-fields', async (c) => {
 });
 
 app.post('/custom-fields', async (c) => {
-  const body = await c.req.json();
-  const id = crypto.randomUUID();
-  const account_id = 'acc_demo';
-  
-  await c.env.DB.prepare('INSERT INTO custom_fields (id, account_id, name, type, context) VALUES (?, ?, ?, ?, ?)')
-    .bind(id, account_id, body.name, body.type, body.context)
-    .run();
+  try {
+    const body = await c.req.json();
+    const id = crypto.randomUUID();
+    const account_id = 'acc_demo';
     
-  return c.json({ id, name: body.name, type: body.type, context: body.context });
+    await c.env.DB.prepare('INSERT INTO custom_fields (id, account_id, name, type, context) VALUES (?, ?, ?, ?, ?)')
+      .bind(id, account_id, body.name, body.type, body.context)
+      .run();
+      
+    return c.json({ id, name: body.name, type: body.type, context: body.context });
+  } catch (error: any) {
+    console.error('Error creating custom field:', error);
+    return c.json({ error: error.message }, 500);
+  }
 });
 
 app.put('/custom-fields/:id', async (c) => {
@@ -124,15 +313,20 @@ app.get('/webhooks', async (c) => {
 });
 
 app.post('/webhooks', async (c) => {
-  const body = await c.req.json();
-  const id = crypto.randomUUID();
-  const account_id = 'acc_demo';
-  
-  await c.env.DB.prepare('INSERT INTO webhooks (id, account_id, name, url, events, is_active) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(id, account_id, body.name, body.url, 'all', body.active ? 1 : 0)
-    .run();
+  try {
+    const body = await c.req.json();
+    const id = crypto.randomUUID();
+    const account_id = 'acc_demo';
     
-  return c.json({ id, name: body.name, url: body.url, active: body.active });
+    await c.env.DB.prepare('INSERT INTO webhooks (id, account_id, name, url, events, is_active) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(id, account_id, body.name, body.url, 'all', body.active ? 1 : 0)
+      .run();
+      
+    return c.json({ id, name: body.name, url: body.url, active: body.active });
+  } catch (error: any) {
+    console.error('Error creating webhook:', error);
+    return c.json({ error: error.message }, 500);
+  }
 });
 
 app.put('/webhooks/:id', async (c) => {
@@ -159,15 +353,20 @@ app.get('/users', async (c) => {
 });
 
 app.post('/users', async (c) => {
-  const body = await c.req.json();
-  const id = crypto.randomUUID();
-  const account_id = 'acc_demo';
-  
-  await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, account_id, body.name, body.email, 'temp_password', body.role, body.status)
-    .run();
+  try {
+    const body = await c.req.json();
+    const id = crypto.randomUUID();
+    const account_id = 'acc_demo';
     
-  return c.json({ id, name: body.name, email: body.email, role: body.role, status: body.status });
+    await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, account_id, body.name, body.email, 'temp_password', body.role, body.status)
+      .run();
+      
+    return c.json({ id, name: body.name, email: body.email, role: body.role, status: body.status });
+  } catch (error: any) {
+    console.error('Error creating user:', error);
+    return c.json({ error: error.message }, 500);
+  }
 });
 
 app.put('/users/:id', async (c) => {
