@@ -16,12 +16,50 @@ import { Loader2 } from 'lucide-react';
 
 const AppContent = () => {
   const { currentUser, isLoading } = useCRM();
-  const [currentView, setCurrentView] = useState('kanban');
-  const [viewData, setViewData] = useState<any>(null);
+  
+  const [currentView, setCurrentView] = useState(() => {
+    const hash = window.location.hash.replace(/^#\/?/, '');
+    return hash ? hash.split('/')[0] : 'kanban';
+  });
+  
+  const [viewData, setViewData] = useState<any>(() => {
+    const hash = window.location.hash.replace(/^#\/?/, '');
+    const parts = hash.split('/');
+    return parts.length > 1 ? parts[1] : null;
+  });
 
   useEffect(() => {
-    if (currentUser?.role === UserRole.NEXUS_ADMIN) {
-        setCurrentView('admin-accounts');
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#\/?/, '');
+      if (hash) {
+        const parts = hash.split('/');
+        setCurrentView(parts[0]);
+        setViewData(parts.length > 1 ? parts[1] : null);
+      } else {
+        if (currentUser?.role === UserRole.NEXUS_ADMIN) {
+          setCurrentView('admin-accounts');
+        } else {
+          setCurrentView('kanban');
+        }
+        setViewData(null);
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser) {
+      if (currentUser.role === UserRole.NEXUS_ADMIN) {
+        if (!window.location.hash || window.location.hash === '#/' || !window.location.hash.includes('admin')) {
+          window.location.hash = '#/admin-accounts';
+        }
+      } else {
+        if (!window.location.hash || window.location.hash === '#/') {
+          window.location.hash = '#/kanban';
+        }
+      }
     }
   }, [currentUser]);
 
@@ -37,8 +75,11 @@ const AppContent = () => {
   if (!currentUser) return <LoginPage />;
 
   const handleNavigate = (view: string, data?: any) => {
-      if (data !== undefined) setViewData(data);
-      setCurrentView(view);
+      if (data !== undefined) {
+          window.location.hash = `#/${view}/${data}`;
+      } else {
+          window.location.hash = `#/${view}`;
+      }
   };
 
   const renderView = () => {
