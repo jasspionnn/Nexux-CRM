@@ -10,7 +10,13 @@ const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 // Funnels
 app.get('/debug-schema', async (c) => {
   try {
-    const tableInfo = await c.env.DB.prepare('PRAGMA table_info(custom_fields)').all();
+    const table = c.req.query('table') || 'custom_fields';
+    let query = 'PRAGMA table_info(custom_fields)';
+    if (table === 'stages') query = 'PRAGMA table_info(stages)';
+    if (table === 'funnels') query = 'PRAGMA table_info(funnels)';
+    if (table === 'leads') query = 'PRAGMA table_info(leads)';
+    
+    const tableInfo = await c.env.DB.prepare(query).all();
     return c.json(tableInfo.results);
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
@@ -35,19 +41,30 @@ app.get('/seed-db', async (c) => {
       ON CONFLICT(id) DO NOTHING;
     `).run();
     
-    await c.env.DB.prepare(`
-      INSERT INTO users (id, account_id, name, email, password, role, avatar, status, joined_at)
-      VALUES ('u_owner', 'acc_demo', 'João Silva', 'joao@tech.com', '123456', 'ACCOUNT_ADMIN', 'https://ui-avatars.com/api/?name=Joao+Silva&background=0D8ABC&color=fff', 'active', '2023-01-01T10:00:00Z')
-      ON CONFLICT(id) DO NOTHING;
-    `).run();
+    // Check if user with email exists to avoid UNIQUE constraint error
+    const existingUser: any = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind('joao@tech.com').first();
+    if (!existingUser) {
+      await c.env.DB.prepare(`
+        INSERT INTO users (id, account_id, name, email, password, role, avatar, status, joined_at)
+        VALUES ('u_owner', 'acc_demo', 'João Silva', 'joao@tech.com', '123456', 'ACCOUNT_ADMIN', 'https://ui-avatars.com/api/?name=Joao+Silva&background=0D8ABC&color=fff', 'active', '2023-01-01T10:00:00Z')
+        ON CONFLICT(id) DO NOTHING;
+      `).run();
+    }
     
     await c.env.DB.prepare(`
       INSERT INTO funnels (id, account_id, name) VALUES ('f_vendas', 'acc_demo', 'Funil de Vendas Padrão')
       ON CONFLICT(id) DO NOTHING;
     `).run();
     
+    // Insert default stage if it doesn't exist
+    await c.env.DB.prepare(`
+      INSERT INTO stages (id, funnel_id, name, "order", color) VALUES ('s_contato', 'f_vendas', 'Contato Inicial', 0, '#3b82f6')
+      ON CONFLICT(id) DO NOTHING;
+    `).run();
+    
     return c.json({ success: true });
   } catch (error: any) {
+    console.error('Seed error:', error);
     return c.json({ error: error.message }, 500);
   }
 });
@@ -85,7 +102,7 @@ app.get('/migrate-db', async (c) => {
           id TEXT PRIMARY KEY,
           funnel_id TEXT NOT NULL,
           name TEXT NOT NULL,
-          order_index INTEGER NOT NULL,
+          "order" INTEGER NOT NULL,
           color TEXT,
           FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE
       );
@@ -152,6 +169,11 @@ app.get('/migrate-db', async (c) => {
           FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
       );
     `).run();
+
+    // Fix stages table if it was created with order_index instead of "order"
+    try {
+      await c.env.DB.prepare('ALTER TABLE stages RENAME COLUMN order_index TO "order"').run();
+    } catch (e) { /* Ignore if already renamed or doesn't exist */ }
 
     // Add missing columns to custom_fields
     try {
