@@ -169,6 +169,9 @@ app.get('/migrate-db', async (c) => {
 
     // Add missing columns to webhooks
     try {
+      await c.env.DB.prepare('ALTER TABLE webhooks ADD COLUMN url TEXT NOT NULL DEFAULT ""').run();
+    } catch (e) { /* Ignore if already exists */ }
+    try {
       await c.env.DB.prepare('ALTER TABLE webhooks ADD COLUMN events TEXT NOT NULL DEFAULT "all"').run();
     } catch (e) { /* Ignore if already exists */ }
     try {
