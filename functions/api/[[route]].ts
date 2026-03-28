@@ -290,8 +290,12 @@ app.post('/custom-fields', async (c) => {
     const id = crypto.randomUUID();
     const account_id = 'acc_demo';
     
-    // Provide an empty string for funnel_id to satisfy NOT NULL constraints on older schemas
-    const funnel_id = body.funnel_id || '';
+    // Provide a valid funnel_id to satisfy NOT NULL and FOREIGN KEY constraints on older schemas
+    let funnel_id = body.funnel_id;
+    if (!funnel_id) {
+      const funnel: any = await c.env.DB.prepare('SELECT id FROM funnels LIMIT 1').first();
+      funnel_id = funnel ? funnel.id : 'f_vendas';
+    }
     
     await c.env.DB.prepare('INSERT INTO custom_fields (id, account_id, name, type, context, funnel_id) VALUES (?, ?, ?, ?, ?, ?)')
       .bind(id, account_id, body.name, body.type, body.context, funnel_id)
@@ -333,9 +337,18 @@ app.post('/webhooks', async (c) => {
     const id = crypto.randomUUID();
     const account_id = 'acc_demo';
     
-    // Provide empty strings for funnel_id and stage_id to satisfy NOT NULL constraints on older schemas
-    const funnel_id = body.funnel_id || '';
-    const stage_id = body.stage_id || '';
+    // Provide valid funnel_id and stage_id to satisfy NOT NULL and FOREIGN KEY constraints on older schemas
+    let funnel_id = body.funnel_id;
+    if (!funnel_id) {
+      const funnel: any = await c.env.DB.prepare('SELECT id FROM funnels LIMIT 1').first();
+      funnel_id = funnel ? funnel.id : 'f_vendas';
+    }
+    
+    let stage_id = body.stage_id;
+    if (!stage_id) {
+      const stage: any = await c.env.DB.prepare('SELECT id FROM stages WHERE funnel_id = ? LIMIT 1').bind(funnel_id).first();
+      stage_id = stage ? stage.id : 's_contato';
+    }
     
     await c.env.DB.prepare('INSERT INTO webhooks (id, account_id, name, url, events, is_active, funnel_id, stage_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(id, account_id, body.name, body.url, 'all', body.active ? 1 : 0, funnel_id, stage_id)
