@@ -8,6 +8,15 @@ type Bindings = {
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
 // Funnels
+app.get('/debug-schema', async (c) => {
+  try {
+    const tableInfo = await c.env.DB.prepare('PRAGMA table_info(custom_fields)').all();
+    return c.json(tableInfo.results);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
 app.get('/debug-db', async (c) => {
   try {
     const accounts = await c.env.DB.prepare('SELECT * FROM accounts').all();
@@ -278,11 +287,14 @@ app.post('/custom-fields', async (c) => {
     const id = crypto.randomUUID();
     const account_id = 'acc_demo';
     
-    await c.env.DB.prepare('INSERT INTO custom_fields (id, account_id, name, type, context) VALUES (?, ?, ?, ?, ?)')
-      .bind(id, account_id, body.name, body.type, body.context)
+    // Provide an empty string for funnel_id to satisfy NOT NULL constraints on older schemas
+    const funnel_id = body.funnel_id || '';
+    
+    await c.env.DB.prepare('INSERT INTO custom_fields (id, account_id, name, type, context, funnel_id) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(id, account_id, body.name, body.type, body.context, funnel_id)
       .run();
       
-    return c.json({ id, name: body.name, type: body.type, context: body.context });
+    return c.json({ id, name: body.name, type: body.type, context: body.context, funnel_id });
   } catch (error: any) {
     console.error('Error creating custom field:', error);
     return c.json({ error: error.message }, 500);
@@ -318,11 +330,15 @@ app.post('/webhooks', async (c) => {
     const id = crypto.randomUUID();
     const account_id = 'acc_demo';
     
-    await c.env.DB.prepare('INSERT INTO webhooks (id, account_id, name, url, events, is_active) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(id, account_id, body.name, body.url, 'all', body.active ? 1 : 0)
+    // Provide empty strings for funnel_id and stage_id to satisfy NOT NULL constraints on older schemas
+    const funnel_id = body.funnel_id || '';
+    const stage_id = body.stage_id || '';
+    
+    await c.env.DB.prepare('INSERT INTO webhooks (id, account_id, name, url, events, is_active, funnel_id, stage_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, account_id, body.name, body.url, 'all', body.active ? 1 : 0, funnel_id, stage_id)
       .run();
       
-    return c.json({ id, name: body.name, url: body.url, active: body.active });
+    return c.json({ id, name: body.name, url: body.url, active: body.active, funnel_id, stage_id });
   } catch (error: any) {
     console.error('Error creating webhook:', error);
     return c.json({ error: error.message }, 500);
@@ -358,11 +374,15 @@ app.post('/users', async (c) => {
     const id = crypto.randomUUID();
     const account_id = 'acc_demo';
     
-    await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, account_id, body.name, body.email, 'temp_password', body.role, body.status)
+    // Provide empty strings for team_id and avatar to satisfy NOT NULL constraints on older schemas
+    const team_id = body.team_id || '';
+    const avatar = body.avatar || '';
+    
+    await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, status, team_id, avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, account_id, body.name, body.email, 'temp_password', body.role, body.status, team_id, avatar)
       .run();
       
-    return c.json({ id, name: body.name, email: body.email, role: body.role, status: body.status });
+    return c.json({ id, name: body.name, email: body.email, role: body.role, status: body.status, team_id, avatar });
   } catch (error: any) {
     console.error('Error creating user:', error);
     return c.json({ error: error.message }, 500);
