@@ -215,13 +215,19 @@ export const Settings = () => {
 
   // --- Team Handlers ---
   const handleAddTeamMember = async () => {
-    const res = await fetch('/api/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Novo Usuário', email: 'novo@email.com', role: 'Usuário', status: 'Pendente' })
-    });
-    const newUser = await res.json();
-    setTeamMembers([...teamMembers, newUser]);
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Novo Usuário', email: `novo_${Date.now()}@email.com`, role: 'Usuário', status: 'Pendente' })
+      });
+      if (!res.ok) throw new Error('Failed to create user');
+      const newUser = await res.json();
+      setTeamMembers(prev => [...prev, newUser]);
+    } catch (error) {
+      console.error('Error adding team member:', error);
+      alert('Erro ao adicionar usuário. Verifique se o email já existe.');
+    }
   };
 
   const handleUpdateTeamMember = async (id: string, updates: any) => {
