@@ -460,26 +460,54 @@ app.get('/leads', async (c) => {
   return c.json(results);
 });
 
+app.get('/test-db', async (c) => {
+  try {
+    const id = 'test_id_4';
+    await c.env.DB.prepare(`
+      INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, assigned_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      id,
+      'acc_demo',
+      'f_vendas',
+      's_new',
+      'Test',
+      '',
+      0,
+      null
+    ).run();
+    return c.json({ success: true });
+  } catch (e: any) {
+    return c.json({ error: e.message, stack: e.stack });
+  }
+});
+
 app.post('/leads', async (c) => {
-  const body = await c.req.json();
-  const id = crypto.randomUUID();
-  
-  await c.env.DB.prepare(`
-    INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, assigned_user_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    id,
-    'acc_demo', // Using the same demo account ID
-    body.funnel_id,
-    body.stage_id,
-    body.title || 'Nova Negociação',
-    body.company || '',
-    body.value || 0,
-    body.assigned_user_id || null
-  ).run();
-  
-  const newLead = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ?').bind(id).first();
-  return c.json(newLead);
+  try {
+    const body = await c.req.json();
+    console.log('POST /leads body:', body);
+    const id = crypto.randomUUID();
+    
+    await c.env.DB.prepare(`
+      INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, assigned_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      id,
+      'acc_demo', // Using the same demo account ID
+      body.funnel_id,
+      body.stage_id,
+      body.title || 'Nova Negociação',
+      body.company || '',
+      body.value || 0,
+      body.assigned_user_id || null
+    ).run();
+    
+    const newLead = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ?').bind(id).first();
+    return c.json(newLead);
+  } catch (error: any) {
+    console.error('Error creating lead:', error);
+    return c.json({ error: error.message }, 500);
+  }
 });
 
 app.get('/leads/:id', async (c) => {
