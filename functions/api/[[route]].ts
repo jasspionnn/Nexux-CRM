@@ -175,6 +175,16 @@ app.get('/migrate-db', async (c) => {
       await c.env.DB.prepare('ALTER TABLE stages RENAME COLUMN order_index TO "order"').run();
     } catch (e) { /* Ignore if already renamed or doesn't exist */ }
 
+    try { await c.env.DB.prepare('ALTER TABLE accounts ADD COLUMN expires_at TEXT').run(); } catch (e) { /* Ignore if already exists */ }
+    try { await c.env.DB.prepare(`ALTER TABLE accounts ADD COLUMN created_at TEXT DEFAULT (datetime('now'))`).run(); } catch (e) { /* Ignore if already exists */ }
+
+    try { await c.env.DB.prepare('ALTER TABLE funnels ADD COLUMN default_won_stage_id TEXT').run(); } catch (e) { /* Ignore if already exists */ }
+
+    try { await c.env.DB.prepare('ALTER TABLE stages ADD COLUMN color TEXT').run(); } catch (e) { /* Ignore if already exists */ }
+
+    try { await c.env.DB.prepare('ALTER TABLE leads ADD COLUMN custom_values TEXT').run(); } catch (e) { /* Ignore if already exists */ }
+    try { await c.env.DB.prepare(`ALTER TABLE leads ADD COLUMN created_at TEXT DEFAULT (datetime('now'))`).run(); } catch (e) { /* Ignore if already exists */ }
+
     // Add missing columns to custom_fields
     try {
       await c.env.DB.prepare('ALTER TABLE custom_fields ADD COLUMN context TEXT').run();
@@ -222,6 +232,7 @@ app.get('/migrate-db', async (c) => {
 
     return c.json({ success: true });
   } catch (error: any) {
+    console.error('Migration error:', error);
     return c.json({ error: error.message }, 500);
   }
 });
@@ -412,9 +423,8 @@ app.post('/users', async (c) => {
     const id = crypto.randomUUID();
     const account_id = 'acc_demo';
     
-    // Provide empty strings for team_id and avatar to satisfy NOT NULL constraints on older schemas
-    const team_id = body.team_id || '';
-    const avatar = body.avatar || '';
+    const team_id = body.team_id || null;
+    const avatar = body.avatar || null;
     
     await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, status, team_id, avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(id, account_id, body.name, body.email, 'temp_password', body.role, body.status, team_id, avatar)

@@ -150,8 +150,14 @@ export const Settings = () => {
         body: JSON.stringify({ name: 'Novo Campo', type: 'Texto', context: 'Lead' })
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to create custom field');
+        let errMessage = 'Failed to create custom field';
+        try {
+          const err = await res.json();
+          errMessage = err.error || errMessage;
+        } catch (e) {
+          errMessage = `HTTP Error ${res.status}: ${res.statusText}`;
+        }
+        throw new Error(errMessage);
       }
       const newField = await res.json();
       setCustomFields(prev => [...prev, newField]);
