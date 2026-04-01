@@ -36,8 +36,8 @@ app.get('/debug-db', async (c) => {
 app.get('/seed-db', async (c) => {
   try {
     await c.env.DB.prepare(`
-      INSERT INTO accounts (id, company_name, owner_name, email, status, plan, expires_at)
-      VALUES ('acc_demo', 'Tech Solutions Ltda', 'João Silva', 'joao@tech.com', 'active', 'pro', '2025-12-31T23:59:59Z')
+      INSERT INTO accounts (id, company_name, owner_name, email, status, plan, expires_at, created_at)
+      VALUES ('acc_demo', 'Tech Solutions Ltda', 'João Silva', 'joao@tech.com', 'active', 'pro', '2025-12-31T23:59:59Z', datetime('now'))
       ON CONFLICT(id) DO NOTHING;
     `).run();
     
@@ -426,7 +426,7 @@ app.post('/users', async (c) => {
     const team_id = body.team_id || null;
     const avatar = body.avatar || null;
     
-    await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, status, team_id, avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, status, team_id, avatar, joined_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))')
       .bind(id, account_id, body.name, body.email, 'temp_password', body.role, body.status, team_id, avatar)
       .run();
       
@@ -462,21 +462,9 @@ app.get('/leads', async (c) => {
 
 app.get('/test-db', async (c) => {
   try {
-    const id = 'test_id_4';
-    await c.env.DB.prepare(`
-      INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, assigned_user_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      id,
-      'acc_demo',
-      'f_vendas',
-      's_new',
-      'Test',
-      '',
-      0,
-      null
-    ).run();
-    return c.json({ success: true });
+    const table = c.req.query('table') || 'leads';
+    const schema = await c.env.DB.prepare(`PRAGMA table_info(${table})`).all();
+    return c.json({ success: true, schema: schema.results });
   } catch (e: any) {
     return c.json({ error: e.message, stack: e.stack });
   }
@@ -489,8 +477,8 @@ app.post('/leads', async (c) => {
     const id = crypto.randomUUID();
     
     await c.env.DB.prepare(`
-      INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, assigned_user_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, assigned_user_id, probability, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))
     `).bind(
       id,
       'acc_demo', // Using the same demo account ID
@@ -556,7 +544,7 @@ app.post('/leads/:id/notes', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
   
-  await c.env.DB.prepare('INSERT INTO notes (id, lead_id, content, author_name) VALUES (?, ?, ?, ?)')
+  await c.env.DB.prepare('INSERT INTO notes (id, lead_id, content, author_name, created_at) VALUES (?, ?, ?, ?, datetime(\'now\'))')
     .bind(id, leadId, body.content, body.author_name || 'Usuário')
     .run();
     
