@@ -12,8 +12,10 @@ export const LoginPage = () => {
 
   useEffect(() => {
     fetch('/api/global-settings')
-      .then(r => r.json())
-      .then(data => setSettings(data))
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && !data.error) setSettings(data);
+      })
       .catch(console.error);
   }, []);
 
@@ -154,7 +156,7 @@ export const LoginPage = () => {
             </p>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20">
-                {t.login_quote_author.charAt(0)}
+                {t.login_quote_author?.charAt(0) ?? 'J'}
               </div>
               <div>
                 <div className="text-white font-bold text-sm">{t.login_quote_author}</div>

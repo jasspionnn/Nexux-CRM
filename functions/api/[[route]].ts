@@ -899,18 +899,21 @@ app.put('/admin/accounts/:id/status', async (c) => {
 });
 
 app.get('/global-settings', async (c) => {
+  const defaultSettings = {
+    login_title: 'O CRM feito para times dinâmicos e modernos.',
+    login_subtitle: 'Acelere vendas, automatize sua captação com IA, e tenha uma visão cristalina sobre cada etapa do funil do seu cliente.',
+    login_badge_text: '✨ Atualização 2.0 disponível',
+    login_quote_text: 'A capacidade de plugar IA no WhatsApp e rastrear cada movimentação das oportunidades direto de dentro do Kanban mudou o jogo para a nossa equipe de B2B.',
+    login_quote_author: 'Juliana Diniz',
+    login_quote_role: 'Head of Sales, TechCorp'
+  };
+
   try {
     const settings = await c.env.DB.prepare('SELECT * FROM global_settings WHERE id = "nexus"').first();
-    return c.json(settings || {
-      login_title: 'O CRM feito para times dinâmicos e modernos.',
-      login_subtitle: 'Acelere vendas, automatize sua captação com IA, e tenha uma visão cristalina sobre cada etapa do funil do seu cliente.',
-      login_badge_text: '✨ Atualização 2.0 disponível',
-      login_quote_text: 'A capacidade de plugar IA no WhatsApp e rastrear cada movimentação das oportunidades direto de dentro do Kanban mudou o jogo para a nossa equipe de B2B.',
-      login_quote_author: 'Juliana Diniz',
-      login_quote_role: 'Head of Sales, TechCorp'
-    });
+    return c.json(settings || defaultSettings);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error('Error fetching global-settings, using defaults:', error);
+    return c.json(defaultSettings);
   }
 });
 
