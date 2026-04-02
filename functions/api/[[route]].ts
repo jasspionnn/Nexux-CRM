@@ -170,6 +170,83 @@ app.get('/migrate-db', async (c) => {
       );
     `).run();
 
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS teams (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          goal REAL,
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS notes (
+          id TEXT PRIMARY KEY,
+          lead_id TEXT NOT NULL,
+          content TEXT NOT NULL,
+          author_name TEXT NOT NULL,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS tasks (
+          id TEXT PRIMARY KEY,
+          lead_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          due_date TEXT,
+          completed INTEGER DEFAULT 0,
+          type TEXT,
+          FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS knowledge_sources (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS bot_chat_history (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          lead_phone TEXT NOT NULL,
+          role TEXT NOT NULL,
+          content TEXT NOT NULL,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS bot_settings (
+          account_id TEXT PRIMARY KEY,
+          system_prompt TEXT DEFAULT 'Você é um assistente de vendas gentil. Use as informações fornecidas para tirar dúvidas.',
+          temperature REAL DEFAULT 0.7,
+          auto_reply INTEGER DEFAULT 1,
+          whatsapp_webhook_token TEXT,
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS knowledge_chunks (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          content TEXT NOT NULL,
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+          FOREIGN KEY (source_id) REFERENCES knowledge_sources(id) ON DELETE CASCADE
+      );
+    `).run();
+
     // Fix stages table if it was created with order_index instead of "order"
     try {
       await c.env.DB.prepare('ALTER TABLE stages RENAME COLUMN order_index TO "order"').run();
@@ -605,6 +682,137 @@ app.delete('/tasks/:id', async (c) => {
   const id = c.req.param('id');
   await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id).run();
   return c.json({ success: true });
+});
+
+app.delete('/leads/:id', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(id).run();
+  return c.json({ success: true });
+});
+
+// Notes PUT/DELETE
+app.put('/notes/:id', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  const fields = [];
+  const values = [];
+  if (body.content !== undefined) { fields.push('content = ?'); values.push(body.content); }
+  if (fields.length === 0) return c.json({ success: true });
+  values.push(id);
+  await c.env.DB.prepare(`UPDATE notes SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run();
+  return c.json({ success: true });
+});
+
+app.delete('/notes/:id', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM notes WHERE id = ?').bind(id).run();
+  return c.json({ success: true });
+});
+
+// Teams
+app.get('/teams', async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT * FROM teams').all();
+  return c.json(results);
+});
+
+app.post('/teams', async (c) => {
+  const body = await c.req.json();
+  const id = crypto.randomUUID();
+  const account_id = 'acc_demo';
+  await c.env.DB.prepare('INSERT INTO teams (id, account_id, name, goal) VALUES (?, ?, ?, ?)')
+    .bind(id, account_id, body.name, body.goal || 0)
+    .run();
+  return c.json({ id, account_id, name: body.name, goal: body.goal || 0 });
+});
+
+app.put('/teams/:id', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  await c.env.DB.prepare('UPDATE teams SET name = ?, goal = ? WHERE id = ?')
+    .bind(body.name, body.goal, id).run();
+  return c.json({ success: true });
+});
+
+app.delete('/teams/:id', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM teams WHERE id = ?').bind(id).run();
+  return c.json({ success: true });
+});
+
+// Bot Settings
+app.get('/bot-settings', async (c) => {
+  const account_id = 'acc_demo';
+  const settings = await c.env.DB.prepare('SELECT * FROM bot_settings WHERE account_id = ?').bind(account_id).first();
+  return c.json(settings || {});
+});
+
+app.put('/bot-settings', async (c) => {
+  const account_id = 'acc_demo';
+  const body = await c.req.json();
+  
+  const existing = await c.env.DB.prepare('SELECT account_id FROM bot_settings WHERE account_id = ?').bind(account_id).first();
+  if (existing) {
+    await c.env.DB.prepare('UPDATE bot_settings SET system_prompt = ?, temperature = ?, auto_reply = ?, whatsapp_webhook_token = ? WHERE account_id = ?')
+      .bind(body.system_prompt, body.temperature, body.auto_reply ? 1 : 0, body.whatsapp_webhook_token, account_id).run();
+  } else {
+    await c.env.DB.prepare('INSERT INTO bot_settings (account_id, system_prompt, temperature, auto_reply, whatsapp_webhook_token) VALUES (?, ?, ?, ?, ?)')
+      .bind(account_id, body.system_prompt, body.temperature, body.auto_reply ? 1 : 0, body.whatsapp_webhook_token).run();
+  }
+  return c.json({ success: true });
+});
+
+// Knowledge Sources
+app.get('/knowledge-sources', async (c) => {
+  const account_id = 'acc_demo';
+  const { results } = await c.env.DB.prepare('SELECT * FROM knowledge_sources WHERE account_id = ?').bind(account_id).all();
+  return c.json(results);
+});
+
+app.post('/knowledge-sources', async (c) => {
+  const body = await c.req.json();
+  const id = crypto.randomUUID();
+  const account_id = 'acc_demo';
+  await c.env.DB.prepare('INSERT INTO knowledge_sources (id, account_id, name, type) VALUES (?, ?, ?, ?)')
+    .bind(id, account_id, body.name, body.type).run();
+  return c.json({ id, account_id, name: body.name, type: body.type });
+});
+
+app.delete('/knowledge-sources/:id', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM knowledge_sources WHERE id = ?').bind(id).run();
+  return c.json({ success: true });
+});
+
+// Knowledge Chunks
+app.get('/knowledge-sources/:sourceId/chunks', async (c) => {
+  const sourceId = c.req.param('sourceId');
+  const { results } = await c.env.DB.prepare('SELECT * FROM knowledge_chunks WHERE source_id = ?').bind(sourceId).all();
+  return c.json(results);
+});
+
+app.post('/knowledge-sources/:sourceId/chunks', async (c) => {
+  const sourceId = c.req.param('sourceId');
+  const body = await c.req.json();
+  const id = crypto.randomUUID();
+  const account_id = 'acc_demo';
+  await c.env.DB.prepare('INSERT INTO knowledge_chunks (id, account_id, source_id, content) VALUES (?, ?, ?, ?)')
+    .bind(id, account_id, sourceId, body.content).run();
+  return c.json({ id, account_id, source_id: sourceId, content: body.content });
+});
+
+app.delete('/knowledge-chunks/:id', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare('DELETE FROM knowledge_chunks WHERE id = ?').bind(id).run();
+  return c.json({ success: true });
+});
+
+// Bot Chat History
+app.get('/bot-chat-history/:phone', async (c) => {
+  const phone = c.req.param('phone');
+  const account_id = 'acc_demo';
+  const { results } = await c.env.DB.prepare('SELECT * FROM bot_chat_history WHERE account_id = ? AND lead_phone = ? ORDER BY created_at ASC')
+    .bind(account_id, phone).all();
+  return c.json(results);
 });
 
 export const onRequest = handle(app);
