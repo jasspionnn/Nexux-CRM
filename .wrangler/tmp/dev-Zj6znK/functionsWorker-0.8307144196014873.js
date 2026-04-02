@@ -2743,6 +2743,55 @@ app.get("/bot-chat-history/:phone", async (c) => {
   const { results } = await c.env.DB.prepare("SELECT * FROM bot_chat_history WHERE account_id = ? AND lead_phone = ? ORDER BY created_at ASC").bind(account_id, phone).all();
   return c.json(results);
 });
+app.get("/admin/stats", async (c) => {
+  try {
+    const totalAccounts = await c.env.DB.prepare("SELECT count(*) as count FROM accounts").first();
+    const activeAccounts = await c.env.DB.prepare('SELECT count(*) as count FROM accounts WHERE status = "active"').first();
+    const totalUsers = await c.env.DB.prepare("SELECT count(*) as count FROM users").first();
+    const proCount = await c.env.DB.prepare('SELECT count(*) as count FROM accounts WHERE plan = "pro" AND status = "active"').first();
+    const starterCount = await c.env.DB.prepare('SELECT count(*) as count FROM accounts WHERE plan = "starter" AND status = "active"').first();
+    const mrr = Number(proCount?.count || 0) * 199 + Number(starterCount?.count || 0) * 49;
+    return c.json({
+      totalAccounts: totalAccounts?.count || 0,
+      activeAccounts: activeAccounts?.count || 0,
+      totalUsers: totalUsers?.count || 0,
+      mrr
+    });
+  } catch (e) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+app.get("/admin/accounts", async (c) => {
+  const { results } = await c.env.DB.prepare("SELECT * FROM accounts ORDER BY created_at DESC").all();
+  return c.json(results);
+});
+app.post("/admin/accounts", async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = `acc_${crypto.randomUUID().slice(0, 8)}`;
+    await c.env.DB.prepare(`
+      INSERT INTO accounts (id, company_name, owner_name, email, status, plan, expires_at, created_at)
+      VALUES (?, ?, ?, ?, 'active', ?, ?, datetime('now'))
+    `).bind(id, body.company_name, body.owner_name, body.email, body.plan || "starter", body.expires_at || null).run();
+    const userId = `u_${crypto.randomUUID().slice(0, 8)}`;
+    await c.env.DB.prepare(`
+      INSERT INTO users (id, account_id, name, email, password, role, status, joined_at)
+      VALUES (?, ?, ?, ?, ?, 'ACCOUNT_ADMIN', 'active', datetime('now'))
+    `).bind(userId, id, body.owner_name, body.email, "temp123").run();
+    const funnelId = `f_${crypto.randomUUID().slice(0, 8)}`;
+    await c.env.DB.prepare("INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)").bind(funnelId, id, "Funil Inicial").run();
+    await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(crypto.randomUUID(), funnelId, "Contato Inicial", "#3b82f6", 0).run();
+    return c.json({ id, company_name: body.company_name, status: "active", owner: body.owner_name, defaultPassword: "temp123" });
+  } catch (error) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+app.put("/admin/accounts/:id/status", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json();
+  await c.env.DB.prepare("UPDATE accounts SET status = ? WHERE id = ?").bind(body.status, id).run();
+  return c.json({ success: true, status: body.status });
+});
 var onRequest = handle(app);
 var routes = [
   {
