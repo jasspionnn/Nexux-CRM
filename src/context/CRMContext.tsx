@@ -11,7 +11,7 @@ interface CRMContextType {
 const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
 export const CRMProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>({ id: '1', name: 'Demo User', email: 'user@nexus.com', role: UserRole.USER });
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const login = (user: User) => setCurrentUser(user);
