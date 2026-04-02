@@ -927,5 +927,36 @@ app.put('/admin/global-settings', async (c) => {
     return c.json({ error: error.message }, 500);
   }
 });
+app.post('/public/register', async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = `acc_${crypto.randomUUID().slice(0, 8)}`;
+    
+    await c.env.DB.prepare(`
+      INSERT INTO accounts (id, company_name, owner_name, email, status, plan, expires_at, created_at)
+      VALUES (?, ?, ?, ?, 'active', 'trial', datetime('now', '+14 days'), datetime('now'))
+    `).bind(id, body.company_name, body.owner_name, body.email).run();
+    
+    const userId = `u_${crypto.randomUUID().slice(0, 8)}`;
+    await c.env.DB.prepare(`
+      INSERT INTO users (id, account_id, name, email, password, role, status, joined_at)
+      VALUES (?, ?, ?, ?, ?, 'ACCOUNT_ADMIN', 'active', datetime('now'))
+    `).bind(userId, id, body.owner_name, body.email, body.password).run();
+
+    const funnelId = `f_${crypto.randomUUID().slice(0, 8)}`;
+    await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)').bind(funnelId, id, 'Funil Inicial').run();
+    await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(crypto.randomUUID(), funnelId, 'Contato Inicial', '#3b82f6', 0).run();
+
+    return c.json({ 
+      id: userId, 
+      account_id: id,
+      name: body.owner_name, 
+      email: body.email, 
+      role: 'ACCOUNT_ADMIN'
+    });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
 
 export const onRequest = handle(app);
