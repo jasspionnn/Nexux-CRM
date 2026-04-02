@@ -2372,6 +2372,24 @@ app.get("/migrate-db", async (c) => {
       await c.env.DB.prepare("ALTER TABLE users ADD COLUMN joined_at TEXT DEFAULT (datetime('now'))").run();
     } catch (e) {
     }
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS global_settings (
+          id TEXT PRIMARY KEY DEFAULT 'nexus',
+          login_title TEXT,
+          login_subtitle TEXT,
+          login_badge_text TEXT,
+          login_quote_text TEXT,
+          login_quote_author TEXT,
+          login_quote_role TEXT
+      );
+    `).run();
+    try {
+      await c.env.DB.prepare(`
+        INSERT INTO global_settings (id, login_title, login_subtitle, login_badge_text, login_quote_text, login_quote_author, login_quote_role)
+        VALUES ('nexus', 'O CRM feito para times din\xE2micos e modernos.', 'Acelere vendas, automatize sua capta\xE7\xE3o com IA, e tenha uma vis\xE3o cristalina sobre cada etapa do funil do seu cliente.', '\u2728 Atualiza\xE7\xE3o 2.0 dispon\xEDvel', 'A capacidade de plugar IA no WhatsApp e rastrear cada movimenta\xE7\xE3o das oportunidades direto de dentro do Kanban mudou o jogo para a nossa equipe de B2B.', 'Juliana Diniz', 'Head of Sales, TechCorp')
+      `).run();
+    } catch (e) {
+    }
     return c.json({ success: true });
   } catch (error) {
     console.error("Migration error:", error);
@@ -2791,6 +2809,34 @@ app.put("/admin/accounts/:id/status", async (c) => {
   const body = await c.req.json();
   await c.env.DB.prepare("UPDATE accounts SET status = ? WHERE id = ?").bind(body.status, id).run();
   return c.json({ success: true, status: body.status });
+});
+app.get("/global-settings", async (c) => {
+  try {
+    const settings = await c.env.DB.prepare('SELECT * FROM global_settings WHERE id = "nexus"').first();
+    return c.json(settings || {
+      login_title: "O CRM feito para times din\xE2micos e modernos.",
+      login_subtitle: "Acelere vendas, automatize sua capta\xE7\xE3o com IA, e tenha uma vis\xE3o cristalina sobre cada etapa do funil do seu cliente.",
+      login_badge_text: "\u2728 Atualiza\xE7\xE3o 2.0 dispon\xEDvel",
+      login_quote_text: "A capacidade de plugar IA no WhatsApp e rastrear cada movimenta\xE7\xE3o das oportunidades direto de dentro do Kanban mudou o jogo para a nossa equipe de B2B.",
+      login_quote_author: "Juliana Diniz",
+      login_quote_role: "Head of Sales, TechCorp"
+    });
+  } catch (error) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+app.put("/admin/global-settings", async (c) => {
+  try {
+    const body = await c.req.json();
+    await c.env.DB.prepare(`
+      UPDATE global_settings 
+      SET login_title = ?, login_subtitle = ?, login_badge_text = ?, login_quote_text = ?, login_quote_author = ?, login_quote_role = ?
+      WHERE id = 'nexus'
+    `).bind(body.login_title, body.login_subtitle, body.login_badge_text, body.login_quote_text, body.login_quote_author, body.login_quote_role).run();
+    return c.json({ success: true });
+  } catch (error) {
+    return c.json({ error: error.message }, 500);
+  }
 });
 var onRequest = handle(app);
 var routes = [

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { UserRole } from '../types';
 import { Hexagon, ArrowRight, Lock, Mail } from 'lucide-react';
@@ -8,6 +8,23 @@ export const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [settings, setSettings] = useState<any>(null);
+
+  useEffect(() => {
+    fetch('/api/global-settings')
+      .then(r => r.json())
+      .then(data => setSettings(data))
+      .catch(console.error);
+  }, []);
+
+  const t = settings || {
+    login_title: 'O CRM feito para times dinâmicos e modernos.',
+    login_subtitle: 'Acelere vendas, automatize sua captação com IA, e tenha uma visão cristalina sobre cada etapa do funil do seu cliente.',
+    login_badge_text: '✨ Atualização 2.0 disponível',
+    login_quote_text: 'A capacidade de plugar IA no WhatsApp e rastrear cada movimentação das oportunidades direto de dentro do Kanban mudou o jogo para a nossa equipe de B2B.',
+    login_quote_author: 'Juliana Diniz',
+    login_quote_role: 'Head of Sales, TechCorp'
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,13 +133,13 @@ export const LoginPage = () => {
 
         <div className="relative z-10 max-w-xl self-center xl:self-start xl:mt-24">
           <div className="inline-block px-4 py-2 border border-blue-500/30 rounded-full bg-blue-500/10 backdrop-blur-sm text-blue-300 font-bold text-xs uppercase tracking-wider mb-6">
-            ✨ Atualização 2.0 disponível
+            {t.login_badge_text}
           </div>
           <h2 className="text-5xl font-black text-white leading-tight mb-6">
-            O CRM feito para times dinâmicos e modernos.
+            {t.login_title}
           </h2>
           <p className="text-xl text-slate-400 mb-12 leading-relaxed font-light max-w-lg">
-            Acelere vendas, automatize sua captação com IA, e tenha uma visão cristalina sobre cada etapa do funil do seu cliente.
+            {t.login_subtitle}
           </p>
           
           {/* Glassmorphism Testimonial Card */}
@@ -133,15 +150,15 @@ export const LoginPage = () => {
               {[...Array(5)].map((_, i) => <svg key={i} className="w-4 h-4 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>)}
             </div>
             <p className="text-slate-300 italic mb-6 leading-relaxed text-sm">
-              "A capacidade de plugar IA no WhatsApp e rastrear cada movimentação das oportunidades direto de dentro do Kanban mudou o jogo para a nossa equipe de B2B."
+              "{t.login_quote_text}"
             </p>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20">
-                JD
+                {t.login_quote_author.charAt(0)}
               </div>
               <div>
-                <div className="text-white font-bold text-sm">Juliana Diniz</div>
-                <div className="text-blue-400 text-xs font-semibold">Head of Sales, TechCorp</div>
+                <div className="text-white font-bold text-sm">{t.login_quote_author}</div>
+                <div className="text-blue-400 text-xs font-semibold">{t.login_quote_role}</div>
               </div>
             </div>
           </div>

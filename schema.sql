@@ -151,3 +151,14 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
     FOREIGN KEY (source_id) REFERENCES knowledge_sources(id) ON DELETE CASCADE
 );
+
+-- Configurações Globais (White-label do Sistema)
+CREATE TABLE IF NOT EXISTS global_settings (
+    id TEXT PRIMARY KEY DEFAULT 'nexus',
+    login_title TEXT,
+    login_subtitle TEXT,
+    login_badge_text TEXT,
+    login_quote_text TEXT,
+    login_quote_author TEXT,
+    login_quote_role TEXT
+);

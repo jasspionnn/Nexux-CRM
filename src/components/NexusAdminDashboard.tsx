@@ -1,13 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Activity, DollarSign, Settings, LogOut, Search, Bell, Menu, X, Plus, ShieldCheck, Play, Pause, Key } from 'lucide-react';
+import { Building2, Activity, DollarSign, Settings, LogOut, Search, Bell, Menu, X, Plus, ShieldCheck, Play, Pause, Key, Save } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 export const NexusAdminDashboard = () => {
   const { currentUser, logout } = useCRM();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState<'accounts' | 'settings'>('accounts');
+  
   const [stats, setStats] = useState({ totalAccounts: 0, activeAccounts: 0, totalUsers: 0, mrr: 0 });
   const [accounts, setAccounts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Global Settings State
+  const [globalSettings, setGlobalSettings] = useState<any>({
+    login_title: '', login_subtitle: '', login_badge_text: '', login_quote_text: '', login_quote_author: '', login_quote_role: ''
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
 
   // Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -24,8 +32,11 @@ export const NexusAdminDashboard = () => {
     try {
       const statsRes = await fetch('/api/admin/stats');
       const accountsRes = await fetch('/api/admin/accounts');
+      const settingsRes = await fetch('/api/global-settings');
+      
       if (statsRes.ok) setStats(await statsRes.json());
       if (accountsRes.ok) setAccounts(await accountsRes.json());
+      if (settingsRes.ok) setGlobalSettings(await settingsRes.json());
     } catch (e) {
       console.error('Failed to fetch admin data', e);
     } finally {
@@ -41,9 +52,8 @@ export const NexusAdminDashboard = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
-      // update local
       setAccounts(prev => prev.map(acc => acc.id === id ? { ...acc, status: newStatus } : acc));
-      fetchData(); // refresh stats
+      fetchData();
     } catch(e) {
       console.error(e);
       alert('Erro ao alterar status');
@@ -75,10 +85,26 @@ export const NexusAdminDashboard = () => {
     }
   };
 
-  const closeCreatedModal = () => {
-    setCreatedInfo(null);
-    setIsAddModalOpen(false);
-  }
+  const handleSaveSettings = async () => {
+    setSavingSettings(true);
+    try {
+      const res = await fetch('/api/admin/global-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(globalSettings)
+      });
+      if (res.ok) {
+        alert('Configurações Globais atualizadas com sucesso!');
+      } else {
+        alert('Erro ao salvar as configurações.');
+      }
+    } catch(e) {
+      console.error(e);
+      alert('Erro de comunicação.');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   const kpis = [
     { title: 'Contas Licenciadas', value: stats.totalAccounts, icon: Building2, active: stats.activeAccounts },
@@ -99,14 +125,20 @@ export const NexusAdminDashboard = () => {
           </button>
         </div>
         <nav className="mt-6 space-y-1">
-          <a href="#" className="flex items-center px-6 py-3 bg-gray-800 text-white border-l-4 border-blue-500">
+          <button 
+            onClick={() => setActiveTab('accounts')}
+            className={`w-full flex items-center px-6 py-3 transition-colors ${activeTab === 'accounts' ? 'bg-gray-800 text-white border-l-4 border-blue-500' : 'hover:bg-gray-800 hover:text-white'}`}
+          >
             <Building2 className="mr-3" size={20} />
             Gestão de Contas Mãe
-          </a>
-          <a href="#" className="flex items-center px-6 py-3 hover:bg-gray-800 hover:text-white transition-colors">
+          </button>
+          <button 
+            onClick={() => setActiveTab('settings')}
+            className={`w-full flex items-center px-6 py-3 transition-colors ${activeTab === 'settings' ? 'bg-gray-800 text-white border-l-4 border-blue-500' : 'hover:bg-gray-800 hover:text-white'}`}
+          >
             <Settings className="mr-3" size={20} />
             Configurações Globais
-          </a>
+          </button>
         </nav>
         <div className="absolute bottom-0 w-full p-6 border-t border-gray-800">
           <button onClick={logout} className="flex items-center w-full px-4 py-2 hover:text-white hover:bg-gray-800 rounded-lg transition-colors">
@@ -153,122 +185,229 @@ export const NexusAdminDashboard = () => {
 
         {/* Dashboard Content */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-8 relative">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h2 className="text-3xl font-black text-slate-900 tracking-tight">Software Core</h2>
-              <p className="text-slate-500 font-medium mt-1">Gerencie licenças e recursos globais das Contas.</p>
-            </div>
-            <button 
-              onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-95"
-            >
-              <Plus size={18} />
-              Nova Licença
-            </button>
-          </div>
+          
+          {activeTab === 'accounts' && (
+            <>
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="text-3xl font-black text-slate-900 tracking-tight">Software Core</h2>
+                  <p className="text-slate-500 font-medium mt-1">Gerencie licenças e recursos globais das Contas.</p>
+                </div>
+                <button 
+                  onClick={() => setIsAddModalOpen(true)}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-95"
+                >
+                  <Plus size={18} />
+                  Nova Licença
+                </button>
+              </div>
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            {kpis.map((stat, index) => {
-              const Icon = stat.icon;
-              return (
-                <div key={index} className="bg-white rounded-2xl shadow-sm p-6 border border-gray-200/60 p-6 flex flex-col justify-center">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
-                      <Icon size={24} />
+              {/* Stats Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                {kpis.map((stat, index) => {
+                  const Icon = stat.icon;
+                  return (
+                    <div key={index} className="bg-white rounded-2xl shadow-sm border border-gray-200/60 p-6 flex flex-col justify-center">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                          <Icon size={24} />
+                        </div>
+                      </div>
+                      <p className="text-sm font-bold text-slate-400 uppercase tracking-wider">{stat.title}</p>
+                      <p className="text-4xl font-black text-slate-900 mt-1">{isLoading ? '-' : stat.value}</p>
+                      {stat.active !== undefined && (
+                        <div className="mt-3 text-sm font-medium text-green-600 flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                          {stat.active} licenças ativas no momento
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Master Accounts Table */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 overflow-hidden">
+                <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-slate-50/50">
+                  <h3 className="text-lg font-bold text-slate-900">Contas Mãe Ativas e Suspensas</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-white border-b border-gray-100/80 text-slate-400 text-xs uppercase tracking-wider font-bold">
+                        <th className="px-6 py-4">Empresa (Tenant)</th>
+                        <th className="px-6 py-4">Plano</th>
+                        <th className="px-6 py-4">Proprietário / Email</th>
+                        <th className="px-6 py-4">Status</th>
+                        <th className="px-6 py-4 text-right">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {accounts.map((acc) => (
+                        <tr key={acc.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-5">
+                            <div className="flex items-center gap-3">
+                              <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold shadow-sm ${acc.status === 'active' ? 'bg-gradient-to-tr from-blue-600 to-indigo-600' : 'bg-gray-300'}`}>
+                                {acc.company_name.charAt(0)}
+                              </div>
+                              <div>
+                                <div className="text-sm font-bold text-slate-900">{acc.company_name}</div>
+                                <div className="text-xs font-mono text-slate-400 mt-0.5">{acc.id}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-5">
+                            <span className="inline-flex items-center px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-slate-100 text-slate-600">
+                              {acc.plan}
+                            </span>
+                          </td>
+                          <td className="px-6 py-5">
+                             <div className="text-sm font-bold text-slate-800">{acc.owner_name}</div>
+                             <div className="text-xs text-slate-500 font-medium">{acc.email}</div>
+                          </td>
+                          <td className="px-6 py-5">
+                            {acc.status === 'active' ? (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-50 text-green-700 border border-green-200">
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)] animate-pulse"></div> Ativo
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-200">
+                                 Suspenso
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-5 text-right font-medium">
+                            {acc.status === 'active' ? (
+                              <button 
+                                onClick={() => handleToggleStatus(acc.id, acc.status)}
+                                className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"
+                              >
+                               <Pause size={14} /> Suspender
+                              </button>
+                            ) : (
+                              <button 
+                                onClick={() => handleToggleStatus(acc.id, acc.status)}
+                                className="inline-flex items-center gap-2 text-sm text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors"
+                              >
+                               <Play size={14} /> Reativar
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {accounts.length === 0 && !isLoading && (
+                        <tr>
+                          <td colSpan={5} className="py-12 text-center text-slate-400 font-medium">Nenhuma conta cadastrada no banco.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'settings' && (
+            <div className="max-w-3xl">
+              <div className="mb-8">
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight">White-label / Login Screen</h2>
+                <p className="text-slate-500 font-medium mt-1">Personalize a identidade da tela de Login de forma global no sistema.</p>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 overflow-hidden">
+                <div className="px-8 py-6 border-b border-gray-100 bg-slate-50/50">
+                  <h3 className="text-lg font-bold text-slate-900">Textos Dinâmicos da Tela de Login</h3>
+                </div>
+                <div className="p-8 space-y-6">
+                  
+                  <div className="space-y-1">
+                    <label className="text-xs uppercase tracking-wider font-bold text-slate-500">Badge (Etiqueta Brilhante superior)</label>
+                    <input 
+                      type="text" 
+                      value={globalSettings?.login_badge_text || ''}
+                      onChange={e => setGlobalSettings({...globalSettings, login_badge_text: e.target.value})}
+                      className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500" 
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs uppercase tracking-wider font-bold text-slate-500">Título Principal</label>
+                    <input 
+                      type="text" 
+                      value={globalSettings?.login_title || ''}
+                      onChange={e => setGlobalSettings({...globalSettings, login_title: e.target.value})}
+                      className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-lg" 
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs uppercase tracking-wider font-bold text-slate-500">Subtítulo Explicativo</label>
+                    <textarea 
+                      rows={2}
+                      value={globalSettings?.login_subtitle || ''}
+                      onChange={e => setGlobalSettings({...globalSettings, login_subtitle: e.target.value})}
+                      className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500" 
+                    />
+                  </div>
+
+                  <div className="border-t border-gray-100 pt-6 mt-6">
+                    <h4 className="text-sm font-bold text-slate-800 mb-4">Cartão de Depoimento Flutuante (Glassmorphism)</h4>
+                    
+                    <div className="space-y-4">
+                      <div className="space-y-1">
+                        <label className="text-xs uppercase tracking-wider font-bold text-slate-500">Texto Citação (Aspas)</label>
+                        <textarea 
+                          rows={3}
+                          value={globalSettings?.login_quote_text || ''}
+                          onChange={e => setGlobalSettings({...globalSettings, login_quote_text: e.target.value})}
+                          className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500 italic" 
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-xs uppercase tracking-wider font-bold text-slate-500">Autor do Depoimento</label>
+                          <input 
+                            type="text" 
+                            value={globalSettings?.login_quote_author || ''}
+                            onChange={e => setGlobalSettings({...globalSettings, login_quote_author: e.target.value})}
+                            className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500" 
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs uppercase tracking-wider font-bold text-slate-500">Cargo / Empresa (Subtitle)</label>
+                          <input 
+                            type="text" 
+                            value={globalSettings?.login_quote_role || ''}
+                            onChange={e => setGlobalSettings({...globalSettings, login_quote_role: e.target.value})}
+                            className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500 text-blue-600" 
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <p className="text-sm font-bold text-slate-400 uppercase tracking-wider">{stat.title}</p>
-                  <p className="text-4xl font-black text-slate-900 mt-1">{isLoading ? '-' : stat.value}</p>
-                  {stat.active !== undefined && (
-                    <div className="mt-3 text-sm font-medium text-green-600 flex items-center gap-1">
-                      <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                      {stat.active} licenças ativas no momento
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
 
-          {/* Master Accounts Table */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 overflow-hidden">
-            <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-slate-50/50">
-              <h3 className="text-lg font-bold text-slate-900">Contas Mãe Ativas e Suspensas</h3>
+                  <div className="pt-6">
+                    <button 
+                      onClick={handleSaveSettings}
+                      disabled={savingSettings}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 px-6 rounded-xl transition-all shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 active:scale-95 ml-auto"
+                    >
+                      {savingSettings ? (
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <Save size={18} />
+                          Salvar Alterações Globais
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-white border-b border-gray-100/80 text-slate-400 text-xs uppercase tracking-wider font-bold">
-                    <th className="px-6 py-4">Empresa (Tenant)</th>
-                    <th className="px-6 py-4">Plano</th>
-                    <th className="px-6 py-4">Proprietário / Email</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4 text-right">Ação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {accounts.map((acc) => (
-                    <tr key={acc.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-5">
-                        <div className="flex items-center gap-3">
-                          <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold shadow-sm ${acc.status === 'active' ? 'bg-gradient-to-tr from-blue-600 to-indigo-600' : 'bg-gray-300'}`}>
-                            {acc.company_name.charAt(0)}
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-slate-900">{acc.company_name}</div>
-                            <div className="text-xs font-mono text-slate-400 mt-0.5">{acc.id}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <span className="inline-flex items-center px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider bg-slate-100 text-slate-600">
-                          {acc.plan}
-                        </span>
-                      </td>
-                      <td className="px-6 py-5">
-                         <div className="text-sm font-bold text-slate-800">{acc.owner_name}</div>
-                         <div className="text-xs text-slate-500 font-medium">{acc.email}</div>
-                      </td>
-                      <td className="px-6 py-5">
-                        {acc.status === 'active' ? (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-green-50 text-green-700 border border-green-200">
-                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)] animate-pulse"></div> Ativo
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-200">
-                             Suspenso
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-5 text-right font-medium">
-                        {acc.status === 'active' ? (
-                          <button 
-                            onClick={() => handleToggleStatus(acc.id, acc.status)}
-                            className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"
-                          >
-                           <Pause size={14} /> Suspender
-                          </button>
-                        ) : (
-                          <button 
-                            onClick={() => handleToggleStatus(acc.id, acc.status)}
-                            className="inline-flex items-center gap-2 text-sm text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors"
-                          >
-                           <Play size={14} /> Reativar
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {accounts.length === 0 && !isLoading && (
-                    <tr>
-                      <td colSpan={5} className="py-12 text-center text-slate-400 font-medium">Nenhuma conta cadastrada no banco.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          )}
+
         </main>
       </div>
 
@@ -337,7 +476,7 @@ export const NexusAdminDashboard = () => {
                </div>
             </div>
 
-            <button onClick={closeCreatedModal} className="w-full py-3 bg-slate-900 rounded-xl text-white font-bold hover:bg-black transition-colors">
+            <button onClick={() => setCreatedInfo(null)} className="w-full py-3 bg-slate-900 rounded-xl text-white font-bold hover:bg-black transition-colors">
               Concluir
             </button>
           </div>

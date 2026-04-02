@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
 
 interface CRMContextType {
@@ -11,11 +11,21 @@ interface CRMContextType {
 const CRMContext = createContext<CRMContextType | undefined>(undefined);
 
 export const CRMProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    const saved = localStorage.getItem('nexus_user');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [isLoading, setIsLoading] = useState(false);
 
-  const login = (user: User) => setCurrentUser(user);
-  const logout = () => setCurrentUser(null);
+  const login = (user: User) => {
+    localStorage.setItem('nexus_user', JSON.stringify(user));
+    setCurrentUser(user);
+  };
+  
+  const logout = () => {
+    localStorage.removeItem('nexus_user');
+    setCurrentUser(null);
+  };
 
   return (
     <CRMContext.Provider value={{ currentUser, isLoading, login, logout }}>
