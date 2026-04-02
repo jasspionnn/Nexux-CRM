@@ -408,7 +408,8 @@ export const Settings = () => {
               <tr>
                 <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Nome do Campo</th>
                 <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tipo</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contexto</th>
+                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contexto & Funil</th>
+                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Opções de Seleção</th>
                 <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Ações</th>
               </tr>
             </thead>
@@ -420,14 +421,15 @@ export const Settings = () => {
                       type="text" 
                       value={field.name}
                       onChange={(e) => handleUpdateCustomField(field.id, { name: e.target.value })}
-                      className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full"
+                      className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full font-bold"
+                      placeholder="Nome do Campo"
                     />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-slate-600">
                     <select 
                       value={field.type}
                       onChange={(e) => handleUpdateCustomField(field.id, { type: e.target.value })}
-                      className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-600"
+                      className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-600 font-medium"
                     >
                       <option>Texto</option>
                       <option>Número</option>
@@ -435,16 +437,36 @@ export const Settings = () => {
                       <option>Data</option>
                     </select>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-slate-600">
+                  <td className="px-6 py-4 whitespace-nowrap text-slate-600 space-y-1">
                     <select 
                       value={field.context}
                       onChange={(e) => handleUpdateCustomField(field.id, { context: e.target.value })}
-                      className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-600"
+                      className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-600 block w-full text-sm font-medium"
                     >
                       <option>Lead</option>
                       <option>Empresa</option>
                       <option>Negociação</option>
                     </select>
+                    <select 
+                      value={field.funnel_id || ''}
+                      onChange={(e) => handleUpdateCustomField(field.id, { funnel_id: e.target.value })}
+                      className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-400 block w-full text-xs"
+                    >
+                      <option value="">Aplicar à todos os Funis</option>
+                      {funnels.map(f => (
+                        <option key={f.id} value={f.id}>{f.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-slate-600 w-64">
+                    <input 
+                      type="text" 
+                      value={field.options || ''}
+                      placeholder={field.type === 'Seleção' ? "Opção A, Opção B, ..." : "Apenas para o tipo Seleção"}
+                      disabled={field.type !== 'Seleção'}
+                      onChange={(e) => handleUpdateCustomField(field.id, { options: e.target.value })}
+                      className="bg-transparent border border-gray-200 rounded px-2 py-1 focus:border-blue-500 outline-none w-full text-sm disabled:opacity-30 disabled:bg-gray-50"
+                    />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">
                     <button 
@@ -458,7 +480,7 @@ export const Settings = () => {
               ))}
               {customFields.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-8 text-center text-slate-500">Nenhum campo personalizado configurado.</td>
+                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500">Nenhum campo personalizado configurado.</td>
                 </tr>
               )}
             </tbody>

@@ -407,11 +407,11 @@ app.post('/custom-fields', async (c) => {
       funnel_id = funnel ? funnel.id : 'f_vendas';
     }
     
-    await c.env.DB.prepare('INSERT INTO custom_fields (id, account_id, name, type, context, funnel_id) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(id, account_id, body.name, body.type, body.context, funnel_id)
+    await c.env.DB.prepare('INSERT INTO custom_fields (id, account_id, name, type, context, funnel_id, options, visible_stage_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, account_id, body.name, body.type, body.context, funnel_id, body.options || null, body.visible_stage_ids || null)
       .run();
       
-    return c.json({ id, name: body.name, type: body.type, context: body.context, funnel_id });
+    return c.json({ id, name: body.name, type: body.type, context: body.context, funnel_id, options: body.options, visible_stage_ids: body.visible_stage_ids });
   } catch (error: any) {
     console.error('Error creating custom field:', error);
     return c.json({ error: error.message }, 500);
@@ -422,8 +422,8 @@ app.put('/custom-fields/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
   
-  await c.env.DB.prepare('UPDATE custom_fields SET name = ?, type = ?, context = ? WHERE id = ?')
-    .bind(body.name, body.type, body.context, id)
+  await c.env.DB.prepare('UPDATE custom_fields SET name = ?, type = ?, context = ?, options = ?, visible_stage_ids = ?, funnel_id = ? WHERE id = ?')
+    .bind(body.name, body.type, body.context, body.options || null, body.visible_stage_ids || null, body.funnel_id || null, id)
     .run();
     
   return c.json({ success: true });

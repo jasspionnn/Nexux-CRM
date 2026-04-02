@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// ../.wrangler/tmp/bundle-0lL65P/strip-cf-connecting-ip-header.js
+// ../.wrangler/tmp/bundle-uOyy8V/strip-cf-connecting-ip-header.js
 function stripCfConnectingIPHeader(input, init) {
   const request = new Request(input, init);
   request.headers.delete("CF-Connecting-IP");
@@ -2450,8 +2450,8 @@ app.post("/custom-fields", async (c) => {
       const funnel = await c.env.DB.prepare("SELECT id FROM funnels LIMIT 1").first();
       funnel_id = funnel ? funnel.id : "f_vendas";
     }
-    await c.env.DB.prepare("INSERT INTO custom_fields (id, account_id, name, type, context, funnel_id) VALUES (?, ?, ?, ?, ?, ?)").bind(id, account_id, body.name, body.type, body.context, funnel_id).run();
-    return c.json({ id, name: body.name, type: body.type, context: body.context, funnel_id });
+    await c.env.DB.prepare("INSERT INTO custom_fields (id, account_id, name, type, context, funnel_id, options, visible_stage_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(id, account_id, body.name, body.type, body.context, funnel_id, body.options || null, body.visible_stage_ids || null).run();
+    return c.json({ id, name: body.name, type: body.type, context: body.context, funnel_id, options: body.options, visible_stage_ids: body.visible_stage_ids });
   } catch (error) {
     console.error("Error creating custom field:", error);
     return c.json({ error: error.message }, 500);
@@ -2460,7 +2460,7 @@ app.post("/custom-fields", async (c) => {
 app.put("/custom-fields/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json();
-  await c.env.DB.prepare("UPDATE custom_fields SET name = ?, type = ?, context = ? WHERE id = ?").bind(body.name, body.type, body.context, id).run();
+  await c.env.DB.prepare("UPDATE custom_fields SET name = ?, type = ?, context = ?, options = ?, visible_stage_ids = ?, funnel_id = ? WHERE id = ?").bind(body.name, body.type, body.context, body.options || null, body.visible_stage_ids || null, body.funnel_id || null, id).run();
   return c.json({ success: true });
 });
 app.delete("/custom-fields/:id", async (c) => {
@@ -3256,7 +3256,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx)
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// ../.wrangler/tmp/bundle-0lL65P/middleware-insertion-facade.js
+// ../.wrangler/tmp/bundle-uOyy8V/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -3288,7 +3288,7 @@ function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// ../.wrangler/tmp/bundle-0lL65P/middleware-loader.entry.ts
+// ../.wrangler/tmp/bundle-uOyy8V/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
