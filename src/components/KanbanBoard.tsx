@@ -29,13 +29,9 @@ export const KanbanBoard = ({ onNavigate }: any) => {
   const userDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (userDropdownRef.current && !userDropdownRef.current.contains(e.target as Node)) {
-        setShowUserDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    const handleClickOutside = () => setShowUserDropdown(false);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
   }, []);
   
   // Date Filters
@@ -275,27 +271,30 @@ export const KanbanBoard = ({ onNavigate }: any) => {
               </div>
               <button
                 type="button"
-                onClick={() => setShowUserDropdown(prev => !prev)}
+                onClick={(e) => { e.stopPropagation(); setShowUserDropdown(prev => !prev); }}
                 className={`w-full flex items-center justify-between pl-9 pr-3 py-2.5 bg-white border rounded-xl text-[11px] font-bold text-slate-700 hover:border-slate-300 transition-all cursor-pointer ${
                   filterUsers.length > 0 ? 'border-indigo-400 text-indigo-700 bg-indigo-50' : 'border-slate-200'
                 }`}
               >
                 <span className="truncate">
-                  {filterUsers.length === 0 ? "Todos os usuários" : `${filterUsers.length} selecionado(s)`}
+                  {filterUsers.length === 0 ? "Todos os usu\u00e1rios" : `${filterUsers.length} selecionado(s)`}
                 </span>
                 <ChevronDown size={14} className={`text-slate-300 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} />
               </button>
 
               {showUserDropdown && (
-                <div className="absolute top-[calc(100%+8px)] left-0 w-64 bg-white border border-slate-100 rounded-2xl shadow-2xl p-2 z-[60]">
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute top-[calc(100%+8px)] left-0 w-64 bg-white border border-slate-100 rounded-2xl shadow-2xl p-2 z-[60]"
+                >
                   <div className="max-h-60 overflow-y-auto space-y-1 no-scrollbar">
                     {users.length === 0 && (
-                      <p className="text-[11px] text-slate-400 text-center py-3">Nenhum usuário encontrado</p>
+                      <p className="text-[11px] text-slate-400 text-center py-3">Nenhum usu\u00e1rio encontrado</p>
                     )}
                     {users.map(user => (
                       <div
                         key={user.id}
-                        onMouseDown={(e) => { e.preventDefault(); toggleUserFilter(user.id); }}
+                        onClick={() => toggleUserFilter(user.id)}
                         className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer ${
                           filterUsers.includes(String(user.id)) ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50'
                         }`}
