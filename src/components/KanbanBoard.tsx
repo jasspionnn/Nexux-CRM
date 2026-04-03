@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Check, Filter, X, 
   Calendar, Clock, Target, CheckCircle2, 
@@ -26,13 +26,6 @@ export const KanbanBoard = ({ onNavigate }: any) => {
   const [filterStatus, setFilterStatus] = useState<StatusFilter>('all');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
-  const userDropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = () => setShowUserDropdown(false);
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
   
   // Date Filters
   const [filterCreation, setFilterCreation] = useState({ start: '', end: '' });
@@ -265,31 +258,36 @@ export const KanbanBoard = ({ onNavigate }: any) => {
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
             </div>
 
-            <div className="min-w-[180px] relative" ref={userDropdownRef}>
+            {/* Invisible backdrop to close dropdown on outside click */}
+            {showUserDropdown && (
+              <div
+                className="fixed inset-0 z-[50]"
+                onClick={() => setShowUserDropdown(false)}
+              />
+            )}
+
+            <div className="min-w-[180px] relative" style={{ zIndex: showUserDropdown ? 61 : 'auto' }}>
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
                 <User size={14} />
               </div>
               <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); setShowUserDropdown(prev => !prev); }}
+                onClick={() => setShowUserDropdown(prev => !prev)}
                 className={`w-full flex items-center justify-between pl-9 pr-3 py-2.5 bg-white border rounded-xl text-[11px] font-bold text-slate-700 hover:border-slate-300 transition-all cursor-pointer ${
                   filterUsers.length > 0 ? 'border-indigo-400 text-indigo-700 bg-indigo-50' : 'border-slate-200'
                 }`}
               >
                 <span className="truncate">
-                  {filterUsers.length === 0 ? "Todos os usu\u00e1rios" : `${filterUsers.length} selecionado(s)`}
+                  {filterUsers.length === 0 ? 'Todos os usuários' : `${filterUsers.length} selecionado(s)`}
                 </span>
                 <ChevronDown size={14} className={`text-slate-300 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} />
               </button>
 
               {showUserDropdown && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute top-[calc(100%+8px)] left-0 w-64 bg-white border border-slate-100 rounded-2xl shadow-2xl p-2 z-[60]"
-                >
+                <div className="absolute top-[calc(100%+8px)] left-0 w-64 bg-white border border-slate-100 rounded-2xl shadow-2xl p-2 z-[62]">
                   <div className="max-h-60 overflow-y-auto space-y-1 no-scrollbar">
                     {users.length === 0 && (
-                      <p className="text-[11px] text-slate-400 text-center py-3">Nenhum usu\u00e1rio encontrado</p>
+                      <p className="text-[11px] text-slate-400 text-center py-3">Nenhum usuário encontrado</p>
                     )}
                     {users.map(user => (
                       <div
