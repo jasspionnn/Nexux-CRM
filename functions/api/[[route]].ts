@@ -727,6 +727,16 @@ app.post('/leads/:id/notes', async (c) => {
   return c.json(newNote);
 });
 
+app.get('/leads/:id/tasks', async (c) => {
+  const leadId = c.req.param('id');
+  const { results } = await c.env.DB.prepare(`
+    SELECT * FROM tasks 
+    WHERE lead_id = ? 
+    ORDER BY completed ASC, due_date ASC
+  `).bind(leadId).all();
+  return c.json(results || []);
+});
+
 // Tasks
 app.get('/tasks', async (c) => {
   const { results } = await c.env.DB.prepare(`

@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, ThumbsDown, ThumbsUp, Briefcase, Phone, MessageSquare, Send, Layers, Edit2, Check, X } from 'lucide-react';
+import { 
+  ArrowLeft, ThumbsDown, ThumbsUp, Briefcase, Phone, MessageSquare, Send, Layers, 
+  Edit2, Check, X, Calendar, Trash2, Clock, CheckCircle2, Circle, Plus
+} from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 const EditableField = ({ label, value, onSave, type = "text" }: any) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -106,9 +111,14 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
   const [lead, setLead] = useState<any>(null);
   const [funnel, setFunnel] = useState<any>(null);
   const [notes, setNotes] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [noteText, setNoteText] = useState('');
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDate, setNewTaskDate] = useState('');
+  const [activeTab, setActiveTab] = useState<'notes' | 'tasks'>('notes');
   const [isLoading, setIsLoading] = useState(true);
+  const [isAddingTask, setIsAddingTask] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -130,6 +140,10 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
       const notesRes = await fetch(`/api/leads/${leadId}/notes`);
       const notesData = await notesRes.json();
       setNotes(notesData);
+
+      const tasksRes = await fetch(`/api/leads/${leadId}/tasks`);
+      const tasksData = await tasksRes.json();
+      setTasks(tasksData);
 
       const usersRes = await fetch('/api/users');
       const usersData = await usersRes.json();
@@ -182,6 +196,46 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content: '🔴 Lead marcado como PERDIDO.', author_name: currentUser?.name || 'Sistema' })
     }).then(() => fetchData());
+  };
+
+  const handleAddTask = async () => {
+    if (!newTaskTitle.trim()) return;
+    
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_id: leadId,
+          title: newTaskTitle,
+          due_date: newTaskDate ? new Date(newTaskDate).toISOString() : null,
+          completed: 0
+        })
+      });
+      const data = await res.json();
+      setTasks([data, ...tasks]);
+      setNewTaskTitle('');
+      setNewTaskDate('');
+      setIsAddingTask(false);
+    } catch (error) {
+      console.error('Error adding task:', error);
+    }
+  };
+
+  const handleToggleTask = async (task: any) => {
+    const newStatus = task.completed ? 0 : 1;
+    setTasks(tasks.map(t => t.id === task.id ? { ...t, completed: newStatus } : t));
+    
+    await fetch(`/api/tasks/${task.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ completed: newStatus })
+    });
+  };
+
+  const handleDeleteTask = async (id: string) => {
+    setTasks(tasks.filter(t => t.id !== id));
+    await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
   };
 
   if (isLoading) {
@@ -338,53 +392,205 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
         {/* Right Content - No independent scroll */}
         <div className="flex-1 p-8 bg-white">
           <div className="max-w-4xl mx-auto">
-            <div className="flex items-center gap-2 text-gray-900 mb-6">
-              <MessageSquare size={20} className="text-indigo-600" />
-              <h2 className="text-lg font-bold">ANOTAÇÕES DO LEAD</h2>
+            {/* Tabs */}
+            <div className="flex items-center gap-8 border-b border-gray-100 mb-8">
+              <button 
+                onClick={() => setActiveTab('notes')}
+                className={`pb-4 px-2 text-sm font-bold tracking-wider uppercase transition-all relative ${
+                  activeTab === 'notes' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <MessageSquare size={18} />
+                  ANOTAÇÕES {notes.length > 0 && <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-full text-slate-500">{notes.length}</span>}
+                </div>
+                {activeTab === 'notes' && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 rounded-t-full"></div>}
+              </button>
+              
+              <button 
+                onClick={() => setActiveTab('tasks')}
+                className={`pb-4 px-2 text-sm font-bold tracking-wider uppercase transition-all relative ${
+                  activeTab === 'tasks' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={18} />
+                  TAREFAS {tasks.filter(t => !t.completed).length > 0 && (
+                    <span className="text-[10px] bg-indigo-100 px-1.5 py-0.5 rounded-full text-indigo-600">
+                      {tasks.filter(t => !t.completed).length}
+                    </span>
+                  )}
+                </div>
+                {activeTab === 'tasks' && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 rounded-t-full"></div>}
+              </button>
             </div>
 
-            {/* Note Input */}
-            <div className="bg-white border border-gray-200 rounded-3xl p-4 shadow-sm mb-10 relative">
-              <textarea
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                placeholder="Descreva o andamento da negociação..."
-                className="w-full h-24 resize-none border-none focus:ring-0 p-2 text-slate-700 placeholder-slate-400 outline-none bg-white font-medium shadow-inner rounded-xl"
-              />
-              <div className="absolute bottom-4 right-4">
-                <button 
-                  onClick={handleAddNote}
-                  disabled={!noteText.trim()}
-                  className="w-10 h-10 bg-indigo-200 text-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-300 transition-colors disabled:opacity-50"
-                >
-                  <Send size={18} className="ml-1" />
-                </button>
-              </div>
-            </div>
+            {activeTab === 'notes' ? (
+              <>
+                <div className="flex items-center gap-2 text-gray-900 mb-6">
+                  <MessageSquare size={20} className="text-indigo-600" />
+                  <h2 className="text-lg font-bold uppercase tracking-wide">ANOTAÇÕES DO LEAD</h2>
+                </div>
 
-            {/* Notes List */}
-            <div className="space-y-8 pl-2">
-              {notes.length === 0 ? (
-                <div className="text-gray-400 text-sm italic">Nenhuma anotação ainda.</div>
-              ) : (
-                notes.map((note) => (
-                  <div key={note.id} className="flex gap-4">
-                    <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0 text-sm">
-                      {note.author_name ? note.author_name.charAt(0).toUpperCase() : 'U'}
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-bold text-gray-900 tracking-wider uppercase">{note.author_name}</span>
-                        <span className="text-[11px] font-medium text-gray-400">
-                          {new Date(note.created_at).toLocaleString('pt-BR')}
-                        </span>
+                {/* Note Input */}
+                <div className="bg-white border border-gray-200 rounded-3xl p-4 shadow-sm mb-10 relative">
+                  <textarea
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    placeholder="Descreva o andamento da negociação..."
+                    className="w-full h-24 resize-none border-none focus:ring-0 p-2 text-slate-700 placeholder-slate-400 outline-none bg-white font-medium shadow-inner rounded-xl"
+                  />
+                  <div className="absolute bottom-4 right-4">
+                    <button 
+                      onClick={handleAddNote}
+                      disabled={!noteText.trim()}
+                      className="w-10 h-10 bg-indigo-200 text-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-300 transition-colors disabled:opacity-50"
+                    >
+                      <Send size={18} className="ml-1" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Notes List */}
+                <div className="space-y-8 pl-2">
+                  {notes.length === 0 ? (
+                    <div className="text-gray-400 text-sm italic">Nenhuma anotação ainda.</div>
+                  ) : (
+                    notes.map((note) => (
+                      <div key={note.id} className="flex gap-4">
+                        <div className="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0 text-sm">
+                          {note.author_name ? note.author_name.charAt(0).toUpperCase() : 'U'}
+                        </div>
+                        <div className="flex-1 pt-1">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-gray-900 tracking-wider uppercase">{note.author_name}</span>
+                            <span className="text-[11px] font-medium text-gray-400">
+                              {new Date(note.created_at).toLocaleString('pt-BR')}
+                            </span>
+                          </div>
+                          <p className="text-gray-800 text-sm whitespace-pre-wrap">{note.content}</p>
+                        </div>
                       </div>
-                      <p className="text-gray-800 text-sm whitespace-pre-wrap">{note.content}</p>
+                    ))
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-gray-900">
+                    <CheckCircle2 size={20} className="text-indigo-600" />
+                    <h2 className="text-lg font-bold uppercase tracking-wide">PRÓXIMAS TAREFAS</h2>
+                  </div>
+                  <button 
+                    onClick={() => setIsAddingTask(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-bold text-sm hover:bg-indigo-100 transition-colors"
+                  >
+                    <Plus size={18} />
+                    ADICIONAR TAREFA
+                  </button>
+                </div>
+
+                {/* Task Quick Input Modal/Inline */}
+                {isAddingTask && (
+                  <div className="bg-slate-50 border border-indigo-100 rounded-2xl p-6 mb-8 animate-in zoom-in-95 duration-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">O que precisa ser feito?</label>
+                        <input 
+                          type="text" 
+                          value={newTaskTitle}
+                          onChange={e => setNewTaskTitle(e.target.value)}
+                          placeholder="Ex: Ligar para cliente..."
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Quando?</label>
+                        <input 
+                          type="datetime-local" 
+                          value={newTaskDate}
+                          onChange={e => setNewTaskDate(e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-3">
+                      <button 
+                        onClick={() => setIsAddingTask(false)}
+                        className="px-4 py-2 text-slate-400 hover:text-slate-600 font-bold text-xs uppercase tracking-widest"
+                      >
+                        Cancelar
+                      </button>
+                      <button 
+                        onClick={handleAddTask}
+                        disabled={!newTaskTitle.trim()}
+                        className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 disabled:opacity-50 transition-all"
+                      >
+                        Salvar Tarefa
+                      </button>
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                )}
+
+                {/* Tasks List */}
+                <div className="space-y-3">
+                  {tasks.length === 0 ? (
+                    <div className="text-center py-12 bg-slate-50 border border-dashed border-slate-200 rounded-3xl">
+                      <CheckCircle2 size={40} className="mx-auto text-slate-200 mb-3" />
+                      <p className="text-slate-400 text-sm italic font-medium">Nenhuma tarefa pendente para este lead.</p>
+                      <button onClick={() => setIsAddingTask(true)} className="mt-4 text-indigo-600 font-bold text-sm hover:underline">
+                        Clique para criar a primeira
+                      </button>
+                    </div>
+                  ) : (
+                    tasks.map(task => (
+                      <div 
+                        key={task.id} 
+                        className={`group flex items-center justify-between p-4 rounded-2xl border transition-all ${
+                          task.completed 
+                            ? 'bg-slate-50 border-slate-100 opacity-60' 
+                            : 'bg-white border-slate-200 hover:border-indigo-200 hover:shadow-lg shadow-slate-200/40'
+                        }`}
+                      >
+                        <div className="flex items-center gap-4 flex-1">
+                          <button 
+                            onClick={() => handleToggleTask(task)}
+                            className={`p-1 rounded-lg transition-colors ${
+                              task.completed ? 'text-green-500' : 'text-slate-300 hover:text-indigo-500'
+                            }`}
+                          >
+                            {task.completed ? <CheckCircle2 size={24} /> : <Circle size={24} />}
+                          </button>
+                          
+                          <div className="min-w-0 flex-1">
+                            <h4 className={`font-bold text-sm truncate ${task.completed ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+                              {task.title}
+                            </h4>
+                            {task.due_date && (
+                              <div className={`flex items-center gap-2 mt-1 text-[11px] font-bold uppercase tracking-wider ${
+                                task.completed ? 'text-slate-300' : 'text-slate-400 text-indigo-500'
+                              }`}>
+                                <Calendar size={12} />
+                                {format(new Date(task.due_date), "dd MMM HH:mm", { locale: ptBR })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <button 
+                          onClick={() => handleDeleteTask(task.id)}
+                          className="p-2 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all rounded-xl hover:bg-red-50"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
