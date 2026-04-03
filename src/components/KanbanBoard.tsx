@@ -357,7 +357,7 @@ export const KanbanBoard = ({ onNavigate }: any) => {
             />
           </div>
 
-          <div className="mt-auto pt-8 flex gap-3">
+          <div className="mt-auto pt-8 flex gap-3 pb-6">
             <button 
               onClick={resetFilters}
               className="flex-1 px-4 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
@@ -367,7 +367,7 @@ export const KanbanBoard = ({ onNavigate }: any) => {
             </button>
             <button 
               onClick={() => setShowFilters(false)}
-              className="flex-1 px-4 py-3 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+              className="flex-1 px-4 py-3 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shadow-xl shadow-slate-200/50"
             >
               Aplicar
             </button>
@@ -379,6 +379,8 @@ export const KanbanBoard = ({ onNavigate }: any) => {
   );
 };
 
+import { DatePicker } from './ui/DatePicker';
+
 const FilterDateSection = ({ title, icon, value, onChange }: any) => (
   <div className="animate-in fade-in slide-in-from-right-4 duration-500">
     <div className="flex items-center gap-2 mb-3">
@@ -387,25 +389,6 @@ const FilterDateSection = ({ title, icon, value, onChange }: any) => (
       </div>
       <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{title}</h3>
     </div>
-    <div className="space-y-2 bg-slate-50 p-3 rounded-2xl border border-slate-100 group hover:border-indigo-100 transition-all">
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] font-bold text-slate-400 uppercase w-6">De</span>
-        <input 
-          type="date" 
-          value={value.start} 
-          onChange={(e) => onChange({ ...value, start: e.target.value })}
-          className="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20"
-        />
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] font-bold text-slate-400 uppercase w-6">Até</span>
-        <input 
-          type="date" 
-          value={value.end} 
-          onChange={(e) => onChange({ ...value, end: e.target.value })}
-          className="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20"
-        />
-      </div>
-    </div>
+    <DatePicker value={value} onChange={onChange} />
   </div>
 );
