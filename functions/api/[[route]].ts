@@ -289,6 +289,9 @@ app.get('/migrate-db', async (c) => {
     try {
       await c.env.DB.prepare('ALTER TABLE webhooks ADD COLUMN stage_id TEXT').run();
     } catch (e) { /* Ignore if already exists */ }
+    try {
+      await c.env.DB.prepare('ALTER TABLE webhooks ADD COLUMN is_active INTEGER DEFAULT 1').run();
+    } catch (e) { /* Ignore if already exists */ }
 
     // Add missing columns to users
     try {
