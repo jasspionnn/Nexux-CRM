@@ -539,7 +539,7 @@ export const Settings = () => {
                     <select
                       value={webhook.funnel_id || ''}
                       onChange={(e) => handleUpdateWebhook(webhook.id, { funnel_id: e.target.value, stage_id: null })}
-                      className="w-full bg-slate-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
                     >
                       <option value="">Selecione um Funil</option>
                       {funnels.map(f => (
@@ -552,7 +552,7 @@ export const Settings = () => {
                     <select
                       value={webhook.stage_id || ''}
                       onChange={(e) => handleUpdateWebhook(webhook.id, { stage_id: e.target.value })}
-                      className="w-full bg-slate-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
                     >
                       <option value="">Selecione uma Etapa</option>
                       {targetFunnel?.stages?.map((s: any) => (
