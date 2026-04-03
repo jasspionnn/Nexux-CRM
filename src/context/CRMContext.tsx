@@ -21,7 +21,23 @@ export const CRMProvider: React.FC<{children: React.ReactNode}> = ({ children })
       return null;
     }
   });
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Perform database migration and seeding once when the app starts
+    const initializeDB = async () => {
+      try {
+        await fetch('/api/migrate-db');
+        await fetch('/api/seed-db');
+      } catch (err) {
+        console.error('Database initialization error:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    initializeDB();
+  }, []);
 
   const login = (user: User) => {
     localStorage.setItem('nexus_user', JSON.stringify(user));

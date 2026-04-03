@@ -24,15 +24,7 @@ export const Settings = () => {
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
 
   useEffect(() => {
-    // Ensure database schema is up to date and seed data exists before fetching
-    fetch('/api/migrate-db')
-      .then(() => fetch('/api/seed-db'))
-      .then(() => fetchData())
-      .catch((err) => {
-        console.error('Migration/Seed error:', err);
-        // Try fetching anyway in case it was a network error
-        fetchData();
-      });
+    fetchData();
   }, []);
 
   const fetchData = async () => {
