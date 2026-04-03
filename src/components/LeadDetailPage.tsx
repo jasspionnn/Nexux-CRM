@@ -182,19 +182,32 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
   };
 
   const handleWin = () => {
-    if (funnel?.stages?.length > 0) {
+    const isWon = lead.stage_id === funnel?.default_won_stage_id;
+    const isLost = lead.stage_id === funnel?.default_lost_stage_id;
+
+    if (funnel?.default_won_stage_id) {
+      updateLead({ stage_id: funnel.default_won_stage_id });
+      // Add success note
+      fetch(`/api/leads/${leadId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '🎉 Negócio marcado como GANHO!', author_name: currentUser?.name || 'Sistema' })
+      }).then(() => fetchData());
+    } else if (funnel?.stages?.length > 0) {
       const lastStage = funnel.stages[funnel.stages.length - 1];
       updateLead({ stage_id: lastStage.id });
     }
   };
 
   const handleLoss = () => {
-    // For now, let's just add a tag or note, or maybe move to a specific stage if we had one.
-    // Let's add a note indicating loss.
+    if (funnel?.default_lost_stage_id) {
+      updateLead({ stage_id: funnel.default_lost_stage_id });
+    }
+    
     fetch(`/api/leads/${leadId}/notes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: '🔴 Lead marcado como PERDIDO.', author_name: currentUser?.name || 'Sistema' })
+      body: JSON.stringify({ content: '🔴 Negócio marcado como PERDIDO.', author_name: currentUser?.name || 'Sistema' })
     }).then(() => fetchData());
   };
 
@@ -263,9 +276,21 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
             </div>
             <div className="text-xs text-gray-400 mt-1 font-medium">ID: {lead.id}</div>
             <div className="flex items-center gap-2 mt-3">
-              <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-full text-[10px] font-bold tracking-wider uppercase">
-                EM NEGOCIAÇÃO
-              </span>
+              {lead.stage_id === funnel?.default_won_stage_id ? (
+                <span className="px-3 py-1 bg-green-500 text-white rounded-full text-[10px] font-bold tracking-wider uppercase flex items-center gap-1 shadow-lg shadow-green-200">
+                  <ThumbsUp size={10} />
+                  VENDIDO
+                </span>
+              ) : lead.stage_id === funnel?.default_lost_stage_id ? (
+                <span className="px-3 py-1 bg-red-500 text-white rounded-full text-[10px] font-bold tracking-wider uppercase flex items-center gap-1 shadow-lg shadow-red-200">
+                  <ThumbsDown size={10} />
+                  PERDIDO
+                </span>
+              ) : (
+                <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-full text-[10px] font-bold tracking-wider uppercase">
+                  EM NEGOCIAÇÃO
+                </span>
+              )}
               <span className="px-3 py-1 bg-cyan-400 text-white rounded-full text-[10px] font-bold tracking-wider uppercase">
                 {funnel?.name || 'FUNIL'}
               </span>
@@ -291,6 +316,8 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
           const isLast = index === stages.length - 1;
           const isActive = index <= currentStageIndex;
           const isCurrent = index === currentStageIndex;
+          const isWonStage = stage.id === funnel?.default_won_stage_id;
+          const isLostStage = stage.id === funnel?.default_lost_stage_id;
           
           let clipPath = 'polygon(0% 0%, 95% 0%, 100% 50%, 95% 100%, 0% 100%, 5% 50%)';
           if (isFirst) clipPath = 'polygon(0% 0%, 95% 0%, 100% 50%, 95% 100%, 0% 100%)';
@@ -300,9 +327,12 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
             <div
               key={stage.id}
               onClick={() => handleStageChange(stage.id)}
-              className={`flex-1 min-w-[140px] h-10 flex items-center justify-center text-[11px] font-bold tracking-wider uppercase relative cursor-pointer transition-colors ${
-                isCurrent ? 'bg-cyan-400 text-white z-10' : 
-                isActive ? 'bg-cyan-100 text-cyan-800' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+              className={`flex-1 min-w-[140px] h-10 flex items-center justify-center text-[11px] font-bold tracking-wider uppercase relative cursor-pointer transition-all ${
+                isCurrent 
+                  ? (isWonStage ? 'bg-green-500 text-white z-10 shadow-lg' : 'bg-cyan-400 text-white z-10 shadow-lg') : 
+                isActive 
+                  ? (isWonStage ? 'bg-green-100 text-green-800' : 'bg-cyan-100 text-cyan-800') : 
+                'bg-gray-200 text-gray-500 hover:bg-gray-300'
               }`}
               style={{
                 clipPath,

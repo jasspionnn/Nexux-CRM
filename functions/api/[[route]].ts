@@ -93,6 +93,7 @@ app.get('/migrate-db', async (c) => {
           account_id TEXT NOT NULL,
           name TEXT NOT NULL,
           default_won_stage_id TEXT,
+          default_lost_stage_id TEXT,
           FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
       );
     `).run();
@@ -283,6 +284,14 @@ app.get('/migrate-db', async (c) => {
     try {
       await c.env.DB.prepare('ALTER TABLE webhooks ADD COLUMN events TEXT NOT NULL DEFAULT "all"').run();
     } catch (e) { /* Ignore if already exists */ }
+
+    // Add missing columns to funnels
+    try {
+      await c.env.DB.prepare('ALTER TABLE funnels ADD COLUMN default_won_stage_id TEXT').run();
+    } catch (e) { /* Ignore if already exists */ }
+    try {
+      await c.env.DB.prepare('ALTER TABLE funnels ADD COLUMN default_lost_stage_id TEXT').run();
+    } catch (e) { /* Ignore if already exists */ }
     try {
       await c.env.DB.prepare('ALTER TABLE webhooks ADD COLUMN funnel_id TEXT').run();
     } catch (e) { /* Ignore if already exists */ }
@@ -367,8 +376,8 @@ app.put('/funnels/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
   
-  await c.env.DB.prepare('UPDATE funnels SET name = ? WHERE id = ?')
-    .bind(body.name, id)
+  await c.env.DB.prepare('UPDATE funnels SET name = ?, default_won_stage_id = ?, default_lost_stage_id = ? WHERE id = ?')
+    .bind(body.name, body.default_won_stage_id || null, body.default_lost_stage_id || null, id)
     .run();
     
   return c.json({ success: true });

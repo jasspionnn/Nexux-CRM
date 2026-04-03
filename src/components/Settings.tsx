@@ -86,12 +86,39 @@ export const Settings = () => {
   };
 
   const handleUpdateFunnelName = async (id: string, newName: string) => {
-    setFunnels(funnels.map(f => f.id === id ? { ...f, name: newName } : f));
-    await fetch(`/api/funnels/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName })
-    });
+    setFunnels(prev => prev.map(f => f.id === id ? { ...f, name: newName } : f));
+    const funnel = funnels.find(f => f.id === id);
+    try {
+      await fetch(`/api/funnels/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name: newName,
+          default_won_stage_id: funnel?.default_won_stage_id,
+          default_lost_stage_id: funnel?.default_lost_stage_id
+        })
+      });
+    } catch (error) {
+      console.error('Error updating funnel name:', error);
+    }
+  };
+
+  const handleUpdateFunnelAutomation = async (id: string, updates: any) => {
+    setFunnels(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+    const funnel = funnels.find(f => f.id === id);
+    try {
+      await fetch(`/api/funnels/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name: funnel?.name,
+          default_won_stage_id: updates.default_won_stage_id ?? funnel?.default_won_stage_id,
+          default_lost_stage_id: updates.default_lost_stage_id ?? funnel?.default_lost_stage_id
+        })
+      });
+    } catch (error) {
+      console.error('Error updating funnel automation:', error);
+    }
   };
 
   const handleAddStage = async (funnelId: string) => {
@@ -316,6 +343,42 @@ export const Settings = () => {
               >
                 <Trash2 size={20} />
               </button>
+            </div>
+            
+            {/* Automation Section */}
+            <div className="bg-white border border-indigo-100 rounded-2xl p-6 mb-8 shadow-sm">
+              <div className="flex items-center gap-2 mb-4 text-indigo-600">
+                <SlidersHorizontal size={20} />
+                <h3 className="text-lg font-bold uppercase tracking-wide">Automação de Status</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Etapa de Sucesso (Ganho)</label>
+                  <select 
+                    value={activeFunnel.default_won_stage_id || ''}
+                    onChange={(e) => handleUpdateFunnelAutomation(activeFunnel.id, { default_won_stage_id: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  >
+                    <option value="">Selecione a etapa final de sucesso...</option>
+                    {activeFunnel.stages.map((s: any) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Etapa de Perda (Perda)</label>
+                  <select 
+                    value={activeFunnel.default_lost_stage_id || ''}
+                    onChange={(e) => handleUpdateFunnelAutomation(activeFunnel.id, { default_lost_stage_id: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  >
+                    <option value="">Selecione a etapa de descarte...</option>
+                    {activeFunnel.stages.map((s: any) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
 
             {/* Stages Section */}

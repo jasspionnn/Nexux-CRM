@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, MoreHorizontal } from 'lucide-react';
+import { Plus, MoreHorizontal, Check } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 export const KanbanBoard = ({ onNavigate }: any) => {
@@ -176,31 +176,50 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                   </div>
                   
                   <div className="flex-1 overflow-y-auto space-y-3 pb-2">
-                    {stageLeads.map(lead => (
-                      <div 
-                        key={lead.id} 
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, lead.id)}
-                        className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer" 
-                        onClick={() => onNavigate('lead-detail', lead.id)}
-                      >
-                        <div className="text-xs font-bold text-indigo-600 mb-1">{lead.company || 'Sem empresa'}</div>
-                        <h4 className="font-bold text-slate-900 mb-2">{lead.title}</h4>
-                        <div className="text-sm font-semibold text-slate-700 mb-3">
-                          R$ {(lead.value || 0).toLocaleString('pt-BR')}
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <div className="text-xs text-slate-500">
-                            {lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR') : 'Hoje'}
+                    {stageLeads.map(lead => {
+                      const isWon = lead.stage_id === activeFunnel?.default_won_stage_id;
+                      
+                      return (
+                        <div 
+                          key={lead.id} 
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, lead.id)}
+                          className={`p-4 rounded-xl border transition-all cursor-pointer ${
+                            isWon 
+                              ? 'bg-green-50/50 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.15)] hover:shadow-green-100 ring-2 ring-green-500/20' 
+                              : 'bg-white border-gray-200 shadow-sm hover:shadow-md'
+                          }`} 
+                          onClick={() => onNavigate('lead-detail', lead.id)}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-xs font-bold text-indigo-600 truncate mr-2">{lead.company || 'Sem empresa'}</div>
+                            {isWon && (
+                              <span className="flex items-center gap-1 px-2 py-0.5 bg-green-500 text-white rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm">
+                                <Check size={8} />
+                                Vendido
+                              </span>
+                            )}
                           </div>
-                          {lead.assigned_user_id && (
-                            <div className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-white text-[10px] font-bold">
-                              U
+                          
+                          <h4 className={`font-bold mb-2 ${isWon ? 'text-green-900' : 'text-slate-900'}`}>{lead.title}</h4>
+                          
+                          <div className="text-sm font-semibold text-slate-700 mb-3">
+                            R$ {(lead.value || 0).toLocaleString('pt-BR')}
+                          </div>
+                          
+                          <div className="flex items-center justify-between">
+                            <div className="text-xs text-slate-500">
+                              {lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR') : 'Hoje'}
                             </div>
-                          )}
+                            {lead.assigned_user_id && (
+                              <div className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-white text-[10px] font-bold">
+                                {lead.assigned_user_name ? lead.assigned_user_name.charAt(0).toUpperCase() : 'U'}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   
                   <button 
