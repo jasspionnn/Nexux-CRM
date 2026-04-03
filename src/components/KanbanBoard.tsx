@@ -3,7 +3,7 @@ import {
   Plus, Check, Filter, X, 
   Calendar, Clock, Target, CheckCircle2, 
   LayoutGrid, List, ChevronDown, BarChart3, User,
-  Building2, DollarSign, GripVertical
+  Building2, DollarSign, GripVertical, RotateCcw
 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 import { DatePicker } from './ui/DatePicker';
