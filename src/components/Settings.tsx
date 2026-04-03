@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Layers, SlidersHorizontal, Zap, Shield, CreditCard, Plus, ChevronRight, Trash2, GripVertical, 
   Check, X, Edit2, Copy, ExternalLink, Info, Hash, Type, Calendar, List, Users, User, 
-  MoreVertical, ShieldCheck, Activity 
+  MoreVertical, ShieldCheck, Activity, ChevronDown, ChevronUp 
 } from 'lucide-react';
 
 const COLORS = [
@@ -13,6 +13,7 @@ const COLORS = [
 export const Settings = () => {
   const [activeTab, setActiveTab] = useState('funis');
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedWebhooks, setExpandedWebhooks] = useState<Set<string>>(new Set());
   
   // State for Funnels
   const [funnels, setFunnels] = useState<any[]>([]);
@@ -188,18 +189,20 @@ export const Settings = () => {
 
   // --- Webhooks Handlers ---
   const handleAddWebhook = async () => {
+    const newWebhook = { name: 'Novo Webhook', active: true };
     try {
       const res = await fetch('/api/webhooks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Novo Webhook', url: 'https://...', active: true })
+        body: JSON.stringify(newWebhook)
       });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Failed to create webhook');
       }
-      const newWebhook = await res.json();
-      setWebhooks(prev => [...prev, newWebhook]);
+      const data = await res.json();
+      setWebhooks(prev => [...prev, data]);
+      setExpandedWebhooks(prev => new Set(prev).add(data.id));
     } catch (error: any) {
       console.error('Error adding webhook:', error);
       alert(`Erro ao adicionar webhook: ${error.message}`);
@@ -539,36 +542,70 @@ export const Settings = () => {
           {webhooks.map(webhook => {
             const webhookUrl = `${window.location.origin}/api/webhooks/incoming/${webhook.id}`;
             const targetFunnel = funnels.find(f => f.id === (webhook.funnel_id || (funnels.length > 0 ? funnels[0].id : '')));
+            const isExpanded = expandedWebhooks.has(webhook.id);
             
+            const toggleExpand = () => {
+              setExpandedWebhooks(prev => {
+                const next = new Set(prev);
+                if (next.has(webhook.id)) {
+                  next.delete(webhook.id);
+                } else {
+                  next.add(webhook.id);
+                }
+                return next;
+              });
+            };
+
             return (
-              <div key={webhook.id} className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xl shadow-slate-200/40 relative overflow-hidden group transition-all hover:border-indigo-200">
+              <div key={webhook.id} className={`bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-200/40 relative overflow-hidden group transition-all ${isExpanded ? 'p-8 border-indigo-200' : 'p-4 border-transparent hover:border-slate-300'}`}>
                 {webhook.active && (
-                  <div className="absolute top-0 left-0 w-1 h-full bg-green-500 group-hover:w-2 transition-all"></div>
+                  <div className={`absolute top-0 left-0 w-1 bg-green-500 transition-all ${isExpanded ? 'h-full' : 'h-full opacity-50'}`}></div>
                 )}
                 
-                <div className="flex items-start justify-between gap-6 mb-8">
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-4">
-                      <div className={`w-3 h-3 rounded-full ${webhook.active ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)] animate-pulse' : 'bg-slate-300'}`}></div>
+                <div className={`flex items-center justify-between gap-6 ${isExpanded ? 'mb-8' : ''}`}>
+                  <div className="flex-1 flex items-center gap-4 min-w-0">
+                    <button 
+                      onClick={toggleExpand}
+                      className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors shrink-0"
+                    >
+                      {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                    </button>
+                    
+                    <div className={`w-3 h-3 rounded-full shrink-0 ${webhook.active ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)] animate-pulse' : 'bg-slate-300'}`}></div>
+                    
+                    {isExpanded ? (
                       <input 
                         type="text" 
                         value={webhook.name}
                         onChange={(e) => handleUpdateWebhook(webhook.id, { name: e.target.value })}
-                        className="font-black text-2xl text-slate-900 bg-transparent border-none p-0 focus:ring-0 outline-none w-full placeholder:text-slate-200"
+                        className="font-black text-2xl text-slate-900 bg-transparent border-none p-0 focus:ring-0 outline-none w-full placeholder:text-slate-200 truncate"
                         placeholder="Ex: Landing Page Campanha"
+                        onClick={(e) => e.stopPropagation()}
                       />
-                    </div>
-                    <p className="text-slate-500 text-sm font-medium">Configure o destino dos dados recebidos por este canal.</p>
+                    ) : (
+                      <div className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer" onClick={toggleExpand}>
+                        <span className="font-bold text-slate-900 truncate">{webhook.name}</span>
+                        <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest hidden sm:block">ID: {webhook.id.slice(0,8)}</span>
+                      </div>
+                    )}
                   </div>
                   
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
+                    {!isExpanded && (
+                       <button 
+                         onClick={toggleExpand}
+                         className="px-3 py-1 bg-slate-50 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold transition-all border border-slate-200"
+                        >
+                          Configurar
+                       </button>
+                    )}
                     <button 
                       onClick={() => handleUpdateWebhook(webhook.id, { active: !webhook.active })}
                       className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
                         webhook.active ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-slate-100 text-slate-400 border border-slate-200'
                       }`}
                     >
-                      {webhook.active ? 'Rodando Live' : 'Pausado'}
+                      {webhook.active ? (isExpanded ? 'Rodando Live' : 'Live') : 'Pausado'}
                     </button>
                     <button 
                       onClick={() => handleDeleteWebhook(webhook.id)}
@@ -579,69 +616,73 @@ export const Settings = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 pb-8 border-b border-slate-100 font-sans">
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <Layers size={14} />
-                      Funil de Destino
+                {isExpanded && (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 pb-8 border-b border-slate-100 font-sans">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          <Layers size={14} />
+                          Funil de Destino
+                        </div>
+                        <select
+                          value={webhook.funnel_id || ''}
+                          onChange={(e) => handleUpdateWebhook(webhook.id, { funnel_id: e.target.value, stage_id: null })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none hover:bg-white transition-all appearance-none cursor-pointer"
+                        >
+                          <option value="">Selecione um Funil</option>
+                          {funnels.map(f => (
+                            <option key={f.id} value={f.id}>{f.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          <Zap size={14} />
+                          Etapa Inicial
+                        </div>
+                        <select
+                          value={webhook.stage_id || ''}
+                          onChange={(e) => handleUpdateWebhook(webhook.id, { stage_id: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none hover:bg-white transition-all appearance-none cursor-pointer"
+                        >
+                          <option value="">Selecione uma Etapa</option>
+                          {targetFunnel?.stages?.map((s: any) => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-                    <select
-                      value={webhook.funnel_id || ''}
-                      onChange={(e) => handleUpdateWebhook(webhook.id, { funnel_id: e.target.value, stage_id: null })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none hover:bg-white transition-all appearance-none cursor-pointer"
-                    >
-                      <option value="">Selecione um Funil</option>
-                      {funnels.map(f => (
-                        <option key={f.id} value={f.id}>{f.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <Zap size={14} />
-                      Etapa Inicial
-                    </div>
-                    <select
-                      value={webhook.stage_id || ''}
-                      onChange={(e) => handleUpdateWebhook(webhook.id, { stage_id: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none hover:bg-white transition-all appearance-none cursor-pointer"
-                    >
-                      <option value="">Selecione uma Etapa</option>
-                      {targetFunnel?.stages?.map((s: any) => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
 
-                <div className="space-y-3">
-                   <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <ExternalLink size={14} />
-                      Endpoint de Integração (POST)
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        <ExternalLink size={14} />
+                        Endpoint de Integração (POST)
+                      </div>
+                      <div className="bg-slate-900 rounded-2xl p-5 flex items-center justify-between gap-6 group/url shadow-inner">
+                        <div className="flex-1 min-w-0">
+                          <code className="text-indigo-300 text-sm font-mono block truncate selection:bg-indigo-500 selection:text-white">{webhookUrl}</code>
+                        </div>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(webhookUrl);
+                            alert('Endpoint copiado! Use-o para enviar dados via POST.');
+                          }}
+                          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-900/20 active:scale-95"
+                        >
+                          <Copy size={16} />
+                          Copiar URL
+                        </button>
+                      </div>
                     </div>
-                  <div className="bg-slate-900 rounded-2xl p-5 flex items-center justify-between gap-6 group/url shadow-inner">
-                    <div className="flex-1 min-w-0">
-                      <code className="text-indigo-300 text-sm font-mono block truncate selection:bg-indigo-500 selection:text-white">{webhookUrl}</code>
+                    
+                    <div className="mt-8 flex items-center gap-4 text-xs font-medium text-slate-500 bg-slate-100/50 p-4 rounded-xl border border-dashed border-slate-200">
+                      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                        <Info size={16} />
+                      </div>
+                      <span className="flex-1 italic">Dica: Envie qualquer JSON. O sistema extrai automaticamente campos como **nome**, **email** e **telefone**.</span>
                     </div>
-                    <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(webhookUrl);
-                        alert('Endpoint copiado! Use-o para enviar dados via POST.');
-                      }}
-                      className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-900/20 active:scale-95"
-                    >
-                      <Copy size={16} />
-                      Copiar URL
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="mt-8 flex items-center gap-4 text-xs font-medium text-slate-500 bg-slate-100/50 p-4 rounded-xl border border-dashed border-slate-200">
-                  <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
-                    <Info size={16} />
-                  </div>
-                  <span className="flex-1 italic">Dica: Envie qualquer JSON. O sistema extrai automaticamente campos como **nome**, **email** e **telefone**.</span>
-                </div>
+                  </>
+                )}
               </div>
             );
           })}
