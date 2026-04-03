@@ -494,11 +494,87 @@ app.put('/webhooks/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
   
-  await c.env.DB.prepare('UPDATE webhooks SET name = ?, url = ?, is_active = ? WHERE id = ?')
-    .bind(body.name, body.url, body.active ? 1 : 0, id)
+  await c.env.DB.prepare('UPDATE webhooks SET name = ?, url = ?, is_active = ?, funnel_id = ?, stage_id = ? WHERE id = ?')
+    .bind(body.name, body.url, body.active ? 1 : 0, body.funnel_id || null, body.stage_id || null, id)
     .run();
     
   return c.json({ success: true });
+});
+
+// Inbound Webhooks (Capture)
+app.post('/webhooks/incoming/:id', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const webhook: any = await c.env.DB.prepare('SELECT * FROM webhooks WHERE id = ?').bind(id).first();
+    if (!webhook) return c.json({ error: 'Webhook not found' }, 404);
+    if (webhook.is_active === 0) return c.json({ error: 'Webhook is inactive' }, 403);
+
+    const payload = await c.req.json();
+    console.log('Incoming webhook payload:', payload);
+
+    // Smart Extraction Logic
+    const extractField = (data: any, keywords: string[]): string | null => {
+      if (!data || typeof data !== 'object') return null;
+      
+      // Check first level keys
+      for (const key of Object.keys(data)) {
+        const lowerKey = key.toLowerCase();
+        if (keywords.some(kw => lowerKey.includes(kw))) {
+          if (typeof data[key] === 'string' || typeof data[key] === 'number') {
+            return String(data[key]);
+          }
+        }
+      }
+      
+      // Recursive search for nested objects
+      for (const key of Object.keys(data)) {
+        if (typeof data[key] === 'object' && data[key] !== null) {
+          const found = extractField(data[key], keywords);
+          if (found) return found;
+        }
+      }
+      
+      return null;
+    };
+
+    const name = extractField(payload, ['nome', 'name', 'first', 'full_name', 'cliente', 'lead_name']) || 'Lead Webhook';
+    const email = extractField(payload, ['email', 'mail', 'e-mail', 'contato_email']);
+    const phone = extractField(payload, ['phone', 'tel', 'whatsapp', 'mobile', 'celular', 'cel']);
+
+    // Create Lead
+    const leadId = crypto.randomUUID();
+    const funnel_id = webhook.funnel_id || 'f_vendas';
+    const stage_id = webhook.stage_id || 's_contato';
+    
+    // Store original payload in custom_values
+    const custom_values = JSON.stringify({ 
+      webhook_id: id,
+      webhook_name: webhook.name,
+      original_payload: payload,
+      captured_email: email,
+      captured_phone: phone
+    });
+
+    await c.env.DB.prepare(`
+      INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, assigned_user_id, custom_values, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).bind(
+      leadId,
+      webhook.account_id,
+      funnel_id,
+      stage_id,
+      name,
+      'Captado via Webhook',
+      0,
+      null,
+      custom_values
+    ).run();
+
+    return c.json({ success: true, lead_id: leadId });
+  } catch (error: any) {
+    console.error('Webhook processing error:', error);
+    return c.json({ error: error.message }, 500);
+  }
 });
 
 app.delete('/webhooks/:id', async (c) => {
