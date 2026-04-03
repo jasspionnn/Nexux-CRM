@@ -21,18 +21,21 @@ export const CRMProvider: React.FC<{children: React.ReactNode}> = ({ children })
       return null;
     }
   });
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    // Perform database migration and seeding once when the app starts
+    // Perform database migration and seeding once per browser environment
+    // Use a version identifier to allow forcing a migration if the schema changes in the future
+    const db_version = 'v1';
+    if (localStorage.getItem(`nexus_db_initialized_${db_version}`)) return;
+
     const initializeDB = async () => {
       try {
         await fetch('/api/migrate-db');
         await fetch('/api/seed-db');
+        localStorage.setItem(`nexus_db_initialized_${db_version}`, 'true');
       } catch (err) {
         console.error('Database initialization error:', err);
-      } finally {
-        setIsLoading(false);
       }
     };
     

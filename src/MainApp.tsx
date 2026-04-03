@@ -63,14 +63,6 @@ const AppContent = () => {
     }
   }, [currentUser]);
 
-  if (isLoading) {
-      return (
-          <div className="h-screen w-screen flex flex-col items-center justify-center bg-white">
-              <Loader2 className="animate-spin text-indigo-600 mb-4" size={48} />
-              <p className="text-gray-800 font-black text-lg tracking-tighter uppercase">Nexus CRM</p>
-          </div>
-      );
-  }
 
   if (!currentUser) return <LoginPage />;
 
