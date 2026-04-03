@@ -4,13 +4,17 @@ import {
   BarChart2, Users, CheckSquare, DollarSign, 
   ArrowUpRight, Clock, Target, TrendingUp, 
   Award, Briefcase, Plus, Calendar, 
-  ChevronRight, ArrowDownRight, Activity
+  ChevronRight, ArrowDownRight, Activity,
+  Filter, Search
 } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, 
   Tooltip, ResponsiveContainer, BarChart, Bar, 
   Cell, PieChart, Pie
 } from 'recharts';
+
+type DateRange = '7d' | '15d' | '30d' | 'thisMonth' | 'all' | 'custom';
+type ChartPeriod = 'weekly' | 'monthly';
 
 export const Dashboard = () => {
   const { currentUser } = useCRM();
@@ -19,6 +23,16 @@ export const Dashboard = () => {
   const [funnels, setFunnels] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // --- Filter State ---
+  const [dateRange, setDateRange] = useState<DateRange>('all');
+  const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('weekly');
+  const [customStartDate, setCustomStartDate] = useState(
+    new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]
+  );
+  const [customEndDate, setCustomEndDate] = useState(
+    new Date().toISOString().split('T')[0]
+  );
 
   useEffect(() => {
     const fetchData = async () => {
@@ -51,45 +65,82 @@ export const Dashboard = () => {
 
   // --- Analytics Logic ---
   const stats = useMemo(() => {
-    const totalPipelineValue = leads.reduce((sum, lead) => sum + (lead.value || 0), 0);
+    // 1. Helper to check if date is in range
+    const isDateInRange = (dateStr: string) => {
+      if (dateRange === 'all') return true;
+      const date = new Date(dateStr);
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+      
+      let start = new Date();
+      start.setHours(0, 0, 0, 0);
+
+      if (dateRange === '7d') start.setDate(today.getDate() - 7);
+      else if (dateRange === '15d') start.setDate(today.getDate() - 15);
+      else if (dateRange === '30d') start.setDate(today.getDate() - 30);
+      else if (dateRange === 'thisMonth') {
+        start = new Date(today.getFullYear(), today.getMonth(), 1);
+      } else if (dateRange === 'custom') {
+        const customS = new Date(customStartDate);
+        const customE = new Date(customEndDate);
+        customS.setHours(0, 0, 0, 0);
+        customE.setHours(23, 59, 59, 999);
+        return date >= customS && date <= customE;
+      }
+      
+      return date >= start && date <= today;
+    };
+
+    // 2. Filter Leads and Tasks
+    const filteredLeads = leads.filter(l => isDateInRange(l.created_at));
+    const filteredTasks = tasks.filter(t => !t.completed); // Tasks are usually better as 'future' but we can filter by creation or due date if needed
     
-    // Calculate Won Value based on funnel settings
-    const wonLeads = leads.filter(lead => {
+    // Calculate Stats on Filtered Data
+    const totalPipelineValue = filteredLeads.reduce((sum, lead) => sum + (lead.value || 0), 0);
+    
+    const wonLeads = filteredLeads.filter(lead => {
       const funnel = funnels.find(f => f.id === lead.funnel_id);
       return funnel && lead.stage_id === funnel.default_won_stage_id;
     });
     
+    const lostLeads = filteredLeads.filter(lead => {
+      const funnel = funnels.find(f => f.id === lead.funnel_id);
+      return funnel && lead.stage_id === funnel.default_lost_stage_id;
+    });
+
     const wonValue = wonLeads.reduce((sum, lead) => sum + (lead.value || 0), 0);
-    const conversionRate = leads.length > 0 ? (wonLeads.length / leads.length) * 100 : 0;
-    const pendingTasks = tasks.filter(t => !t.completed).length;
+    const totalClosed = wonLeads.length + lostLeads.length;
+    const conversionRate = totalClosed > 0 ? (wonLeads.length / totalClosed) * 100 : 0;
+    const pendingTasksCount = filteredTasks.length;
     
-    // Daily Growth Data (Last 7 days)
-    const last7Days = [...Array(7)].map((_, i) => {
+    // 3. Dynamic Chart Data (Last 7 or 30 days)
+    const chartDays = chartPeriod === 'weekly' ? 7 : 30;
+    const chartData = [...Array(chartDays)].map((_, i) => {
       const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
+      d.setDate(d.getDate() - (chartDays - 1 - i));
       const dateStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-      const dayValue = leads
+      const dayValue = filteredLeads
         .filter(l => new Date(l.created_at).toDateString() === d.toDateString())
         .reduce((sum, l) => sum + (l.value || 0), 0);
       return { name: dateStr, value: dayValue };
     });
 
     // Funnel Distribution
-    const activeFunnel = funnels[0]; // Typical use case: first funnel
+    const activeFunnel = funnels[0];
     const stageDistribution = activeFunnel?.stages?.map((stage: any) => ({
       name: stage.name,
-      leads: leads.filter(l => l.stage_id === stage.id).length,
+      leads: leads.filter(l => l.stage_id === stage.id).length, // Distribution usually shows all current leads, not just filtered by creation
       color: stage.color || '#6366f1'
     })) || [];
 
-    // Sales Ranking
+    // Sales Ranking (Based on Filtered Won Leads)
     const ranking = users.map(user => {
-      const userWonLeads = wonLeads.filter(l => l.assigned_user_id === user.id);
-      const userWonValue = userWonLeads.reduce((sum, l) => sum + (l.value || 0), 0);
+      const userWonLeadsInPeriod = wonLeads.filter(l => l.assigned_user_id === user.id);
+      const userWonValue = userWonLeadsInPeriod.reduce((sum, l) => sum + (l.value || 0), 0);
       return {
         ...user,
         wonValue: userWonValue,
-        wonCount: userWonLeads.length
+        wonCount: userWonLeadsInPeriod.length
       };
     }).sort((a, b) => b.wonValue - a.wonValue).slice(0, 5);
 
@@ -97,13 +148,13 @@ export const Dashboard = () => {
       totalPipelineValue,
       wonValue,
       conversionRate,
-      pendingTasks,
-      last7Days,
+      pendingTasksCount,
+      chartData,
       stageDistribution,
       ranking,
-      recentLeads: [...leads].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5)
+      recentLeads: filteredLeads.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5)
     };
-  }, [leads, tasks, funnels, users]);
+  }, [leads, tasks, funnels, users, dateRange, customStartDate, customEndDate, chartPeriod]);
 
   if (isLoading) {
     return (
@@ -121,7 +172,7 @@ export const Dashboard = () => {
       <div className="max-w-[1600px] mx-auto">
         
         {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 mb-10">
           <div>
             <div className="flex items-center gap-3 mb-2">
               <div className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-black uppercase tracking-widest">Dashboard</div>
@@ -131,17 +182,49 @@ export const Dashboard = () => {
             <h1 className="text-4xl font-black text-slate-900 tracking-tight">
               Olá, <span className="text-indigo-600">{currentUser?.name?.split(' ')[0] || 'Usuário'}</span> 👋
             </h1>
-            <p className="text-slate-500 font-medium mt-1">Sua central de inteligência e performance comercial.</p>
+            <p className="text-slate-500 font-medium mt-1">Veja como está a performance comercial no período selecionado.</p>
           </div>
           
-          <div className="flex items-center gap-3">
-            <button className="flex items-center gap-2 px-5 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all shadow-sm">
-              <Calendar size={18} />
-              Relatórios
-            </button>
-            <button className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:-translate-y-0.5 active:translate-y-0">
-              <Plus size={18} />
-              Nova Negociação
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-4 bg-white p-3 rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100">
+            <div className="flex items-center gap-3 min-w-[200px]">
+              <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shadow-inner">
+                <Filter size={18} />
+              </div>
+              <select 
+                value={dateRange}
+                onChange={(e) => setDateRange(e.target.value as DateRange)}
+                className="bg-transparent border-none p-0 focus:ring-0 outline-none font-bold text-slate-900 text-sm w-full cursor-pointer hover:text-indigo-600 transition-colors"
+              >
+                <option value="all">Todo o Período</option>
+                <option value="7d">Últimos 7 dias</option>
+                <option value="15d">Últimos 15 dias</option>
+                <option value="30d">Últimos 30 dias</option>
+                <option value="thisMonth">Este Mês</option>
+                <option value="custom">Personalizado</option>
+              </select>
+            </div>
+            
+            {dateRange === 'custom' && (
+              <div className="flex items-center gap-2 border-l border-slate-100 pl-4 py-1 animate-in fade-in slide-in-from-left-2 duration-300">
+                <input 
+                  type="date" 
+                  value={customStartDate} 
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="bg-slate-50 border-none rounded-lg px-2 py-1 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-indigo-500 outline-none"
+                />
+                <span className="text-slate-300 font-black">→</span>
+                <input 
+                  type="date" 
+                  value={customEndDate} 
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="bg-slate-50 border-none rounded-lg px-2 py-1 text-xs font-bold text-slate-900 focus:ring-1 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+            )}
+            
+            <button className="md:ml-2 flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">
+              <Search size={14} />
+              Filtrar
             </button>
           </div>
         </div>
@@ -153,31 +236,29 @@ export const Dashboard = () => {
             value={`R$ ${stats.wonValue.toLocaleString('pt-BR')}`}
             icon={<Target size={24} />}
             color="bg-green-500"
-            trend="+14.2%"
+            trend={dateRange === 'all' ? undefined : "Periodo atual"}
             trendUp={true}
           />
           <MetricCard 
-            title="Pipeline Ativo"
+            title="Novas Oportunidades"
             value={`R$ ${stats.totalPipelineValue.toLocaleString('pt-BR')}`}
             icon={<DollarSign size={24} />}
             color="bg-indigo-500"
-            trend="+8.5%"
-            trendUp={true}
+            subtitle="Criadas no período"
           />
           <MetricCard 
             title="Taxa de Conversão"
             value={`${stats.conversionRate.toFixed(1)}%`}
             icon={<TrendingUp size={24} />}
             color="bg-cyan-500"
-            trend="-2.1%"
-            trendUp={false}
+            subtitle="Fechamentos vs Perdas"
           />
           <MetricCard 
-            title="Tarefas do Dia"
-            value={stats.pendingTasks}
+            title="Pendências críticas"
+            value={stats.pendingTasksCount}
             icon={<CheckSquare size={24} />}
             color="bg-orange-500"
-            subtitle="Pendências críticas"
+            subtitle="Próximas Tarefas"
           />
         </div>
 
@@ -189,17 +270,27 @@ export const Dashboard = () => {
             <div className="flex items-center justify-between mb-8">
               <div>
                 <h3 className="text-xl font-black text-slate-900 tracking-tight">Evolução do Pipeline</h3>
-                <p className="text-slate-400 text-sm font-medium">Volume financeiro gerado nos últimos 7 dias</p>
+                <p className="text-slate-400 text-sm font-medium">Financeiro gerado por dia ({chartPeriod === 'weekly' ? 'Semana' : 'Mês'})</p>
               </div>
-              <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl">
-                <button className="px-4 py-1.5 bg-white text-indigo-600 rounded-lg text-xs font-black shadow-sm">Semanal</button>
-                <button className="px-4 py-1.5 text-slate-400 rounded-lg text-xs font-black hover:text-slate-600">Mensal</button>
+              <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+                <button 
+                  onClick={() => setChartPeriod('weekly')}
+                  className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${chartPeriod === 'weekly' ? 'bg-white text-indigo-600 shadow-lg shadow-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  Semanal
+                </button>
+                <button 
+                  onClick={() => setChartPeriod('monthly')}
+                  className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${chartPeriod === 'monthly' ? 'bg-white text-indigo-600 shadow-lg shadow-slate-200' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  Mensal
+                </button>
               </div>
             </div>
             
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={stats.last7Days}>
+                <AreaChart data={stats.chartData}>
                   <defs>
                     <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
@@ -214,9 +305,7 @@ export const Dashboard = () => {
                     tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }}
                     dy={10}
                   />
-                  <YAxis 
-                    hide 
-                  />
+                  <YAxis hide />
                   <Tooltip 
                     content={<CustomTooltip />}
                     cursor={{ stroke: '#6366f1', strokeWidth: 2 }}
@@ -228,6 +317,7 @@ export const Dashboard = () => {
                     strokeWidth={4}
                     fillOpacity={1} 
                     fill="url(#colorValue)" 
+                    animationDuration={1500}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -237,12 +327,12 @@ export const Dashboard = () => {
           {/* Sales Ranking */}
           <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-xl shadow-slate-200/40">
             <div className="flex items-center gap-3 mb-8">
-              <div className="w-10 h-10 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center">
+              <div className="w-10 h-10 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center border border-amber-100">
                 <Award size={20} />
               </div>
               <div>
                 <h3 className="text-xl font-black text-slate-900 tracking-tight">Ranking de Vendas</h3>
-                <p className="text-slate-400 text-sm font-medium">Performance por usuário</p>
+                <p className="text-slate-400 text-sm font-medium">Líderes de fechamento no período</p>
               </div>
             </div>
 
@@ -250,11 +340,11 @@ export const Dashboard = () => {
               {stats.ranking.map((user, index) => (
                 <div key={user.id} className="flex items-center gap-4">
                   <div className="relative">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center font-black text-slate-500 border-2 border-white shadow-sm">
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center font-black text-indigo-600 border-2 border-white shadow-sm overflow-hidden">
                       {user.name.charAt(0).toUpperCase()}
                     </div>
                     {index === 0 && (
-                      <div className="absolute -top-1 -right-1 bg-amber-400 text-white w-5 h-5 rounded-full flex items-center justify-center shadow-md">
+                      <div className="absolute -top-1 -right-1 bg-amber-400 text-white w-5 h-5 rounded-full flex items-center justify-center shadow-md animate-bounce">
                         <Award size={10} />
                       </div>
                     )}
@@ -264,17 +354,20 @@ export const Dashboard = () => {
                       <span className="font-bold text-slate-900 truncate">{user.name}</span>
                       <span className="font-black text-indigo-600 text-sm">R$ {user.wonValue.toLocaleString('pt-BR')}</span>
                     </div>
-                    <div className="w-full bg-slate-50 h-2 rounded-full overflow-hidden">
-                      <div 
-                        className="bg-indigo-500 h-full rounded-full transition-all duration-1000" 
-                        style={{ width: `${(user.wonValue / (stats.ranking[0]?.wonValue || 1)) * 100}%` }}
-                      ></div>
+                    <div className="flex items-center gap-2">
+                       <div className="flex-1 bg-slate-50 h-2 rounded-full overflow-hidden">
+                        <div 
+                          className="bg-indigo-500 h-full rounded-full transition-all duration-1000 ease-out" 
+                          style={{ width: `${(user.wonValue / (stats.ranking[0]?.wonValue || 1)) * 100}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-[10px] font-black text-slate-400">{user.wonCount} v</span>
                     </div>
                   </div>
                 </div>
               ))}
               {stats.ranking.length === 0 && (
-                <p className="text-center py-10 text-slate-400 font-medium">Nenhum dado de venda ainda.</p>
+                <p className="text-center py-10 text-slate-400 font-medium">Sem vendas concluídas neste período.</p>
               )}
             </div>
           </div>
@@ -291,8 +384,8 @@ export const Dashboard = () => {
                   <Activity size={20} />
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Distribuição do Funil</h3>
-                  <p className="text-slate-400 text-sm font-medium">Identifique gargalos no processo</p>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Potencial do Funil</h3>
+                  <p className="text-slate-400 text-sm font-medium">Distribuição atual por estágio</p>
                 </div>
               </div>
             </div>
@@ -304,7 +397,7 @@ export const Dashboard = () => {
                   <YAxis 
                     dataKey="name" 
                     type="category" 
-                    width={100} 
+                    width={110} 
                     axisLine={false} 
                     tickLine={false}
                     tick={{ fill: '#475569', fontSize: 11, fontWeight: 800 }}
@@ -328,12 +421,12 @@ export const Dashboard = () => {
                   <Plus size={20} />
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Atividades Recentes</h3>
-                  <p className="text-slate-400 text-sm font-medium">Novas negociações criadas por você</p>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Negociações no Período</h3>
+                  <p className="text-slate-400 text-sm font-medium">Últimos leads captados ou criados</p>
                 </div>
               </div>
-              <button className="text-indigo-600 font-bold text-sm hover:underline flex items-center gap-1">
-                Ver tudo <ChevronRight size={16} />
+              <button className="text-indigo-600 font-black text-xs uppercase tracking-widest hover:underline flex items-center gap-1">
+                Ver tudo <ChevronRight size={14} />
               </button>
             </div>
 
@@ -341,11 +434,11 @@ export const Dashboard = () => {
               {stats.recentLeads.map(lead => (
                 <div key={lead.id} className="flex items-center justify-between group cursor-pointer">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all">
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all shadow-sm">
                       <Briefcase size={18} />
                     </div>
                     <div>
-                      <h4 className="font-bold text-slate-900 leading-tight">{lead.title}</h4>
+                      <h4 className="font-bold text-slate-900 leading-tight group-hover:text-indigo-600 transition-colors">{lead.title}</h4>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{lead.company || 'Sem empresa'}</span>
                       </div>
@@ -362,7 +455,12 @@ export const Dashboard = () => {
                 </div>
               ))}
               {stats.recentLeads.length === 0 && (
-                <p className="text-center py-10 text-slate-400 font-medium">Nenhuma atividade recente.</p>
+                <div className="py-10 flex flex-col items-center justify-center gap-3">
+                  <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
+                    <Filter size={24} />
+                  </div>
+                  <p className="text-center text-slate-400 font-bold text-xs uppercase tracking-widest">Sem atividades neste filtro.</p>
+                </div>
               )}
             </div>
           </div>
@@ -385,21 +483,20 @@ interface MetricCardProps {
 }
 
 const MetricCard = ({ title, value, icon, color, trend, trendUp, subtitle }: MetricCardProps) => (
-  <div className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-xl shadow-slate-200/40 relative overflow-hidden group transition-all hover:-translate-y-1">
+  <div className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-xl shadow-slate-200/40 relative overflow-hidden group transition-all hover:-translate-y-1 hover:shadow-indigo-100">
     <div className="flex items-center justify-between mb-4">
-      <div className={`w-14 h-14 ${color} text-white rounded-2xl flex items-center justify-center shadow-lg shadow-${color.split('-')[1]}-200`}>
+      <div className={`w-14 h-14 ${color} text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100`}>
         {icon}
       </div>
       {trend && (
-        <div className={`flex items-center px-3 py-1 rounded-full text-xs font-black ${trendUp ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-          {trendUp ? <ArrowUpRight size={14} className="mr-0.5" /> : <ArrowDownRight size={14} className="mr-0.5" />}
+        <div className={`flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${trendUp ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
           {trend}
         </div>
       )}
     </div>
     <div className="mt-6">
-      <h3 className="text-slate-400 text-xs font-black uppercase tracking-widest mb-1.5">{title}</h3>
-      <div className="text-3xl font-black text-slate-900 tracking-tight">{value}</div>
+      <h3 className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1.5">{title}</h3>
+      <div className="text-3xl font-black text-slate-900 tracking-tight group-hover:text-indigo-600 transition-colors">{value}</div>
       {subtitle && <p className="text-slate-400 text-[10px] font-bold mt-1 uppercase tracking-tighter">{subtitle}</p>}
     </div>
     <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full translate-x-16 -translate-y-16 opacity-0 group-hover:opacity-100 transition-opacity"></div>
