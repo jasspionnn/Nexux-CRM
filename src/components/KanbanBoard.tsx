@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, Check, Filter, X, 
   Calendar, Clock, Target, CheckCircle2, 
@@ -25,6 +25,18 @@ export const KanbanBoard = ({ onNavigate }: any) => {
   const [filterUsers, setFilterUsers] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<StatusFilter>('all');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(e.target as Node)) {
+        setShowUserDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   
   // Date Filters
   const [filterCreation, setFilterCreation] = useState({ start: '', end: '' });
@@ -257,25 +269,40 @@ export const KanbanBoard = ({ onNavigate }: any) => {
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
             </div>
 
-            <div className="min-w-[180px] relative group">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+            <div className="min-w-[180px] relative" ref={userDropdownRef}>
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
                 <User size={14} />
               </div>
-              <div className="w-full flex items-center justify-between pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 hover:border-slate-300 transition-all cursor-pointer group/user">
+              <button
+                type="button"
+                onClick={() => setShowUserDropdown(prev => !prev)}
+                className={`w-full flex items-center justify-between pl-9 pr-3 py-2.5 bg-white border rounded-xl text-[11px] font-bold text-slate-700 hover:border-slate-300 transition-all cursor-pointer ${
+                  filterUsers.length > 0 ? 'border-indigo-400 text-indigo-700 bg-indigo-50' : 'border-slate-200'
+                }`}
+              >
                 <span className="truncate">
-                  {filterUsers.length === 0 ? "Todos os usuários" : `${filterUsers.length} selecionados`}
+                  {filterUsers.length === 0 ? "Todos os usuários" : `${filterUsers.length} selecionado(s)`}
                 </span>
-                <ChevronDown size={14} className="text-slate-300 transition-transform group-hover/user:rotate-180" />
-                
-                <div className="absolute top-[calc(100%+8px)] left-0 w-64 bg-white border border-slate-100 rounded-2xl shadow-2xl p-2 z-[60] hidden group-hover/user:block animate-in fade-in zoom-in-95 duration-200">
+                <ChevronDown size={14} className={`text-slate-300 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showUserDropdown && (
+                <div className="absolute top-[calc(100%+8px)] left-0 w-64 bg-white border border-slate-100 rounded-2xl shadow-2xl p-2 z-[60]">
                   <div className="max-h-60 overflow-y-auto space-y-1 no-scrollbar">
+                    {users.length === 0 && (
+                      <p className="text-[11px] text-slate-400 text-center py-3">Nenhum usuário encontrado</p>
+                    )}
                     {users.map(user => (
-                      <div 
-                        key={user.id} 
-                        onClick={(e) => { e.stopPropagation(); toggleUserFilter(user.id); }}
-                        className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all ${filterUsers.includes(String(user.id)) ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50'}`}
+                      <div
+                        key={user.id}
+                        onMouseDown={(e) => { e.preventDefault(); toggleUserFilter(user.id); }}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer ${
+                          filterUsers.includes(String(user.id)) ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50'
+                        }`}
                       >
-                         <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${filterUsers.includes(String(user.id)) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'}`}>
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${
+                          filterUsers.includes(String(user.id)) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'
+                        }`}>
                           {filterUsers.includes(String(user.id)) && <Check size={10} className="text-white" />}
                         </div>
                         <span className="text-[11px] font-bold">{user.name}</span>
@@ -283,7 +310,7 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                     ))}
                   </div>
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="min-w-[160px] relative">
