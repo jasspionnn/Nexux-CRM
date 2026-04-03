@@ -378,6 +378,12 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                 type="number"
                 onSave={(val: string) => updateLead({ value: Number(val) })} 
               />
+              <EditableField 
+                label="VALOR (R$)" 
+                value={lead.value} 
+                type="number"
+                onSave={(val: string) => updateLead({ value: Number(val) })} 
+              />
               <EditableSelectField
                 label="RESPONSÁVEL"
                 value={lead.assigned_user_id}
@@ -386,10 +392,20 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
               />
               <EditableField 
                 label="PROBABILIDADE (%)" 
-                value={lead.probability} 
+                value={lead.probability || 0} 
                 type="number"
                 onSave={(val: string) => updateLead({ probability: Number(val) })} 
               />
+              <EditableField 
+                label="PREVISÃO DE FECHAMENTO" 
+                value={lead.closing_forecast_at || ''} 
+                type="date"
+                onSave={(val: string) => updateLead({ closing_forecast_at: val })} 
+              />
+              <div className="pt-2 border-t border-gray-100">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">CRIADO EM</p>
+                <p className="text-sm font-bold text-gray-600">{new Date(lead.created_at).toLocaleDateString('pt-BR')}</p>
+              </div>
             </div>
           </div>
 

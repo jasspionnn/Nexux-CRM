@@ -121,11 +121,25 @@ app.get('/migrate-db', async (c) => {
           assigned_user_id TEXT,
           custom_values TEXT,
           created_at TEXT DEFAULT (datetime('now')),
+          last_contact_at TEXT,
+          next_task_at TEXT,
+          closed_at TEXT,
+          closing_forecast_at TEXT,
           FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
           FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE,
           FOREIGN KEY (stage_id) REFERENCES stages(id) ON DELETE CASCADE
       );
     `).run();
+
+    // Migration for existing tables
+    try {
+      await c.env.DB.prepare('ALTER TABLE leads ADD COLUMN last_contact_at TEXT').run();
+      await c.env.DB.prepare('ALTER TABLE leads ADD COLUMN next_task_at TEXT').run();
+      await c.env.DB.prepare('ALTER TABLE leads ADD COLUMN closed_at TEXT').run();
+      await c.env.DB.prepare('ALTER TABLE leads ADD COLUMN closing_forecast_at TEXT').run();
+    } catch (e) {
+      // Columns probably exist
+    }
 
     await c.env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS custom_fields (
@@ -697,7 +711,7 @@ app.put('/leads/:id', async (c) => {
   const fields = [];
   const values = [];
   
-  const allowedFields = ['title', 'company', 'value', 'contact_name', 'contact_email', 'contact_phone', 'stage_id', 'assigned_user_id', 'probability', 'tags', 'custom_values'];
+  const allowedFields = ['title', 'company', 'value', 'contact_name', 'contact_email', 'contact_phone', 'stage_id', 'assigned_user_id', 'probability', 'tags', 'custom_values', 'closed_at', 'closing_forecast_at'];
   
   for (const key of Object.keys(body)) {
     if (allowedFields.includes(key)) {
@@ -732,6 +746,9 @@ app.post('/leads/:id/notes', async (c) => {
     .bind(id, leadId, body.content, body.author_name || 'Usuário')
     .run();
     
+  // Sync last_contact_at to leads table
+  await c.env.DB.prepare('UPDATE leads SET last_contact_at = datetime(\'now\') WHERE id = ?').bind(leadId).run();
+    
   const newNote = await c.env.DB.prepare('SELECT * FROM notes WHERE id = ?').bind(id).first();
   return c.json(newNote);
 });
@@ -764,6 +781,11 @@ app.post('/tasks', async (c) => {
   await c.env.DB.prepare('INSERT INTO tasks (id, lead_id, title, due_date, completed, type) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(id, body.lead_id, body.title, body.due_date, body.completed ? 1 : 0, body.type || 'task')
     .run();
+    
+  // Sync next_task_at to leads table
+  if (body.lead_id && !body.completed && body.due_date) {
+    await c.env.DB.prepare('UPDATE leads SET next_task_at = ? WHERE id = ? AND (next_task_at IS NULL OR next_task_at > ?)').bind(body.due_date, body.lead_id, body.due_date).run();
+  }
     
   const newTask = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(id).first();
   return c.json(newTask);

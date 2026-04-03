@@ -1,5 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, MoreHorizontal, Check } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Plus, MoreHorizontal, Check, Filter, X, 
+  Calendar, Clock, Target, CheckCircle2, 
+  ArrowRight, Search, RotateCcw
+} from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 export const KanbanBoard = ({ onNavigate }: any) => {
@@ -8,6 +12,14 @@ export const KanbanBoard = ({ onNavigate }: any) => {
   const [activeFunnelId, setActiveFunnelId] = useState<string>('');
   const [leads, setLeads] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // --- Filter State ---
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterCreation, setFilterCreation] = useState({ start: '', end: '' });
+  const [filterLastContact, setFilterLastContact] = useState({ start: '', end: '' });
+  const [filterNextTask, setFilterNextTask] = useState({ start: '', end: '' });
+  const [filterClosed, setFilterClosed] = useState({ start: '', end: '' });
+  const [filterForecast, setFilterForecast] = useState({ start: '', end: '' });
 
   useEffect(() => {
     fetchData();
@@ -29,14 +41,10 @@ export const KanbanBoard = ({ onNavigate }: any) => {
         if (funnelsData.length > 0 && !activeFunnelId) {
           setActiveFunnelId(funnelsData[0].id);
         }
-      } else {
-        console.error('Funnels data is not an array:', funnelsData);
       }
       
       if (Array.isArray(leadsData)) {
         setLeads(leadsData);
-      } else {
-        console.error('Leads data is not an array:', leadsData);
       }
     } catch (error) {
       console.error(error);
@@ -47,6 +55,59 @@ export const KanbanBoard = ({ onNavigate }: any) => {
 
   const activeFunnel = funnels.find(f => f.id === activeFunnelId);
   const stages = activeFunnel?.stages || [];
+
+  // --- Filtering Logic ---
+  const isDateInRange = (dateStr: string | null, range: { start: string, end: string }) => {
+    if (!range.start && !range.end) return true;
+    if (!dateStr) return false;
+    
+    const date = new Date(dateStr);
+    date.setHours(0, 0, 0, 0);
+    
+    if (range.start) {
+      const start = new Date(range.start);
+      start.setHours(0, 0, 0, 0);
+      if (date < start) return false;
+    }
+    
+    if (range.end) {
+      const end = new Date(range.end);
+      end.setHours(23, 59, 59, 999);
+      if (date > end) return false;
+    }
+    
+    return true;
+  };
+
+  const filteredLeads = useMemo(() => {
+    return leads.filter(lead => {
+      // 1. Funnel match
+      if (lead.funnel_id !== activeFunnelId) return false;
+      
+      // 2. Date Filters
+      if (!isDateInRange(lead.created_at, filterCreation)) return false;
+      if (!isDateInRange(lead.last_contact_at, filterLastContact)) return false;
+      if (!isDateInRange(lead.next_task_at, filterNextTask)) return false;
+      if (!isDateInRange(lead.closed_at, filterClosed)) return false;
+      if (!isDateInRange(lead.closing_forecast_at, filterForecast)) return false;
+      
+      return true;
+    });
+  }, [leads, activeFunnelId, filterCreation, filterLastContact, filterNextTask, filterClosed, filterForecast]);
+
+  const hasActiveFilters = filterCreation.start || filterCreation.end || 
+                          filterLastContact.start || filterLastContact.end ||
+                          filterNextTask.start || filterNextTask.end ||
+                          filterClosed.start || filterClosed.end ||
+                          filterForecast.start || filterForecast.end;
+
+  const resetFilters = () => {
+    setFilterCreation({ start: '', end: '' });
+    setFilterLastContact({ start: '', end: '' });
+    setFilterNextTask({ start: '', end: '' });
+    setFilterClosed({ start: '', end: '' });
+    setFilterForecast({ start: '', end: '' });
+  };
 
   const handleCreateLead = async (stageId: string) => {
     const newLead = {
@@ -64,9 +125,9 @@ export const KanbanBoard = ({ onNavigate }: any) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newLead)
       });
-      const createdLead = await res.json();
-      setLeads([createdLead, ...leads]);
-      onNavigate('lead-detail', createdLead.id);
+      const data = await res.json();
+      setLeads([...leads, data]);
+      onNavigate('lead-detail', data.id);
     } catch (error) {
       console.error(error);
     }
@@ -76,37 +137,31 @@ export const KanbanBoard = ({ onNavigate }: any) => {
     e.dataTransfer.setData('leadId', leadId);
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-
   const handleDrop = async (e: React.DragEvent, stageId: string) => {
-    e.preventDefault();
     const leadId = e.dataTransfer.getData('leadId');
-    if (!leadId) return;
+    const lead = leads.find(l => l.id === leadId);
+    if (!lead || lead.stage_id === stageId) return;
 
-    // Optimistic update
-    const updatedLeads = leads.map(lead => {
-      if (lead.id === leadId) {
-        return { ...lead, stage_id: stageId };
-      }
-      return lead;
-    });
-    setLeads(updatedLeads);
+    // Optimistic Update
+    const oldLeads = [...leads];
+    const isWon = stageId === activeFunnel?.default_won_stage_id;
+    const isLost = stageId === activeFunnel?.default_lost_stage_id;
+    const closed_at = (isWon || isLost) ? new Date().toISOString() : lead.closed_at;
 
-    // API call
+    setLeads(leads.map(l => l.id === leadId ? { ...l, stage_id: stageId, closed_at } : l));
+
     try {
       const res = await fetch(`/api/leads/${leadId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stage_id: stageId })
+        body: JSON.stringify({ 
+          stage_id: stageId,
+          closed_at: closed_at
+        })
       });
-      if (!res.ok) {
-        throw new Error('Failed to update lead stage');
-      }
+      if (!res.ok) throw new Error('Failed');
     } catch (error) {
-      console.error('Failed to update lead stage:', error);
-      // Revert on error
+      setLeads(oldLeads);
       fetchData();
     }
   };
@@ -116,66 +171,83 @@ export const KanbanBoard = ({ onNavigate }: any) => {
   }
 
   return (
-    <div className="h-full flex flex-col bg-slate-50">
-      <div className="px-6 py-4 border-b border-gray-200 bg-white flex justify-between items-center shrink-0">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Pipeline de Vendas</h1>
-          <div className="flex items-center gap-4 mt-1">
-            <p className="text-sm text-slate-500">Gerencie suas negociações e acompanhe o funil</p>
-            {funnels.length > 1 && (
-              <select 
-                value={activeFunnelId} 
-                onChange={(e) => setActiveFunnelId(e.target.value)}
-                className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white text-slate-900"
-              >
-                {funnels.map(f => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
-            )}
+    <div className="h-full flex relative bg-slate-50 overflow-hidden">
+      
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="px-6 py-4 border-b border-gray-200 bg-white flex justify-between items-center shrink-0">
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">Pipeline de Vendas</h1>
+              <div className="flex items-center gap-3 mt-1">
+                {funnels.length > 0 && (
+                  <select 
+                    value={activeFunnelId} 
+                    onChange={(e) => setActiveFunnelId(e.target.value)}
+                    className="text-xs font-black uppercase tracking-widest border-2 border-slate-100 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 active:scale-95 transition-all bg-slate-50 text-indigo-600"
+                  >
+                    {funnels.map(f => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                )}
+                <span className="text-xs font-bold text-slate-400">
+                  {filteredLeads.length} leads no total
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition-all border shadow-sm ${
+                showFilters || hasActiveFilters 
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-600' 
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <Filter size={18} />
+              Filtros {hasActiveFilters && <span className="w-5 h-5 bg-indigo-600 text-white rounded-full text-[10px] flex items-center justify-center ml-1 animate-in zoom-in">!</span>}
+            </button>
+            <button className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">
+              <Plus size={18} />
+              Novo Lead
+            </button>
           </div>
         </div>
-        <button 
-          onClick={() => stages.length > 0 && handleCreateLead(stages[0].id)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
-          disabled={stages.length === 0}
-        >
-          <Plus size={18} />
-          Nova Negociação
-        </button>
-      </div>
 
-      <div className="flex-1 overflow-x-auto p-6">
-        <div className="flex gap-6 h-full items-start">
-          {stages.length === 0 ? (
-            <div className="w-full h-full flex items-center justify-center text-gray-500">
-              Este funil não possui etapas. Adicione etapas nas configurações.
-            </div>
-          ) : (
-            stages.map((stage: any) => {
-              const stageLeads = leads.filter(l => l.stage_id === stage.id);
+        {/* Kanban Content */}
+        <div className="flex-1 overflow-x-auto overflow-y-hidden p-6">
+          <div className="flex gap-6 h-full items-start min-w-max">
+            {stages.map((stage: any) => {
+              const stageLeads = filteredLeads.filter(l => l.stage_id === stage.id);
               const totalValue = stageLeads.reduce((sum, l) => sum + (l.value || 0), 0);
-              
+
               return (
                 <div 
                   key={stage.id} 
-                  className="w-80 shrink-0 flex flex-col max-h-full"
-                  onDragOver={handleDragOver}
+                  className="w-80 flex flex-col h-full rounded-2xl bg-slate-100/50 border border-slate-200/60 p-2"
+                  onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => handleDrop(e, stage.id)}
                 >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color || '#3b82f6' }}></div>
-                      <h3 className="font-bold text-slate-700">{stage.name}</h3>
-                      <span className="text-xs font-semibold text-slate-400 bg-slate-200 px-2 py-0.5 rounded-full">{stageLeads.length}</span>
+                  <div className="p-3 mb-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: stage.color || '#6366f1' }}></div>
+                        <h3 className="font-black text-slate-800 uppercase tracking-widest text-[11px] truncate max-w-[140px]">{stage.name}</h3>
+                        <span className="bg-white px-2 py-0.5 rounded-full text-[10px] font-black text-slate-400 border border-slate-200">{stageLeads.length}</span>
+                      </div>
+                      <button className="text-slate-400 hover:text-slate-600 transition-colors">
+                        <MoreHorizontal size={16} />
+                      </button>
                     </div>
-                    <button className="text-slate-400 hover:text-slate-600"><MoreHorizontal size={16} /></button>
+                    <div className="text-sm font-black text-slate-600 tracking-tight">
+                      R$ {totalValue.toLocaleString('pt-BR')}
+                    </div>
                   </div>
-                  <div className="text-sm font-medium text-slate-500 mb-3">
-                    R$ {totalValue.toLocaleString('pt-BR')}
-                  </div>
-                  
-                  <div className="flex-1 overflow-y-auto space-y-3 pb-2">
+
+                  <div className="flex-1 overflow-y-auto space-y-3 pb-2 custom-scrollbar px-1">
                     {stageLeads.map(lead => {
                       const isWon = lead.stage_id === activeFunnel?.default_won_stage_id;
                       
@@ -184,57 +256,156 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                           key={lead.id} 
                           draggable
                           onDragStart={(e) => handleDragStart(e, lead.id)}
-                          className={`p-4 rounded-xl border transition-all cursor-pointer ${
+                          className={`p-4 rounded-xl border transition-all cursor-pointer group relative ${
                             isWon 
-                              ? 'bg-green-50/50 border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.15)] hover:shadow-green-100 ring-2 ring-green-500/20' 
-                              : 'bg-white border-gray-200 shadow-sm hover:shadow-md'
+                              ? 'bg-green-50/50 border-green-500 shadow-[0_4px_12px_rgba(34,197,94,0.1)] ring-2 ring-green-500/10' 
+                              : 'bg-white border-slate-200 shadow-sm hover:shadow-md hover:-translate-y-0.5'
                           }`} 
                           onClick={() => onNavigate('lead-detail', lead.id)}
                         >
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-bold text-indigo-600 truncate mr-2">{lead.company || 'Sem empresa'}</div>
+                            <div className="text-[10px] font-black text-indigo-400 uppercase tracking-widest truncate mr-2">{lead.company || 'Sem empresa'}</div>
                             {isWon && (
-                              <span className="flex items-center gap-1 px-2 py-0.5 bg-green-500 text-white rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm">
+                              <span className="flex items-center gap-1 px-2 py-0.5 bg-green-500 text-white rounded-full text-[8px] font-black uppercase tracking-widest shadow-sm">
                                 <Check size={8} />
                                 Vendido
                               </span>
                             )}
                           </div>
                           
-                          <h4 className={`font-bold mb-2 ${isWon ? 'text-green-900' : 'text-slate-900'}`}>{lead.title}</h4>
+                          <h4 className={`font-bold mb-2 leading-tight ${isWon ? 'text-green-900' : 'text-slate-900'}`}>{lead.title}</h4>
                           
-                          <div className="text-sm font-semibold text-slate-700 mb-3">
-                            R$ {(lead.value || 0).toLocaleString('pt-BR')}
-                          </div>
-                          
-                          <div className="flex items-center justify-between">
-                            <div className="text-xs text-slate-500">
-                              {lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR') : 'Hoje'}
+                          <div className="flex items-center justify-between mt-4">
+                            <div className="font-black text-slate-800 text-sm tracking-tight">
+                              R$ {(lead.value || 0).toLocaleString('pt-BR')}
                             </div>
-                            {lead.assigned_user_id && (
-                              <div className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-white text-[10px] font-bold">
-                                {lead.assigned_user_name ? lead.assigned_user_name.charAt(0).toUpperCase() : 'U'}
-                              </div>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {lead.next_task_at && (
+                                <div className="text-orange-500" title={`Tarefa em ${new Date(lead.next_task_at).toLocaleDateString()}`}>
+                                  <Clock size={12} />
+                                </div>
+                              )}
+                              {lead.assigned_user_id && (
+                                <div className="w-5 h-5 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center text-[10px] font-black border border-orange-200">
+                                  {lead.assigned_user_name ? lead.assigned_user_name.charAt(0).toUpperCase() : 'U'}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
                     })}
+                    
+                    <button 
+                      onClick={() => handleCreateLead(stage.id)}
+                      className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 hover:border-indigo-300 hover:text-indigo-500 hover:bg-indigo-50/30 transition-all flex items-center justify-center gap-2 font-bold text-xs"
+                    >
+                      <Plus size={14} />
+                      Nova Negociação
+                    </button>
                   </div>
-                  
-                  <button 
-                    onClick={() => handleCreateLead(stage.id)}
-                    className="mt-3 flex items-center justify-center gap-2 w-full py-2 border-2 border-dashed border-gray-300 rounded-xl text-slate-500 hover:text-slate-700 hover:border-gray-400 hover:bg-gray-50 transition-all font-medium text-sm"
-                  >
-                    <Plus size={16} />
-                    Adicionar
-                  </button>
                 </div>
               );
-            })
-          )}
+            })}
+          </div>
         </div>
       </div>
+
+      {/* Filter Drawer */}
+      <div className={`fixed inset-y-0 right-0 w-80 bg-white shadow-2xl z-50 border-l border-slate-200 transition-transform duration-300 ease-in-out ${showFilters ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="h-full flex flex-col p-6 overflow-y-auto">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              <Filter size={20} className="text-indigo-600" />
+              Filtros Avançados
+            </h2>
+            <button onClick={() => setShowFilters(false)} className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-50 rounded-lg">
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="space-y-8">
+            <FilterDateSection 
+              title="Data de Criação" 
+              icon={<Calendar size={14} />}
+              value={filterCreation} 
+              onChange={setFilterCreation} 
+            />
+            <FilterDateSection 
+              title="Último Contato" 
+              icon={<Calendar size={14} />}
+              value={filterLastContact} 
+              onChange={setFilterLastContact} 
+            />
+            <FilterDateSection 
+              title="Próxima Tarefa" 
+              icon={<Clock size={14} />}
+              value={filterNextTask} 
+              onChange={setFilterNextTask} 
+            />
+            <FilterDateSection 
+              title="Data de Fechamento" 
+              icon={<Target size={14} />}
+              value={filterClosed} 
+              onChange={setFilterClosed} 
+            />
+            <FilterDateSection 
+              title="Previsão de Fechamento" 
+              icon={<Target size={14} />}
+              value={filterForecast} 
+              onChange={setFilterForecast} 
+            />
+          </div>
+
+          <div className="mt-auto pt-8 flex gap-3">
+            <button 
+              onClick={resetFilters}
+              className="flex-1 px-4 py-3 border border-slate-200 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+            >
+              <RotateCcw size={14} />
+              Limpar
+            </button>
+            <button 
+              onClick={() => setShowFilters(false)}
+              className="flex-1 px-4 py-3 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+            >
+              Aplicar
+            </button>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 };
+
+const FilterDateSection = ({ title, icon, value, onChange }: any) => (
+  <div className="animate-in fade-in slide-in-from-right-4 duration-500">
+    <div className="flex items-center gap-2 mb-3">
+      <div className="w-6 h-6 bg-slate-50 text-slate-400 rounded-md flex items-center justify-center border border-slate-100">
+        {icon}
+      </div>
+      <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{title}</h3>
+    </div>
+    <div className="space-y-2 bg-slate-50 p-3 rounded-2xl border border-slate-100 group hover:border-indigo-100 transition-all">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-bold text-slate-400 uppercase w-6">De</span>
+        <input 
+          type="date" 
+          value={value.start} 
+          onChange={(e) => onChange({ ...value, start: e.target.value })}
+          className="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] font-bold text-slate-400 uppercase w-6">Até</span>
+        <input 
+          type="date" 
+          value={value.end} 
+          onChange={(e) => onChange({ ...value, end: e.target.value })}
+          className="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20"
+        />
+      </div>
+    </div>
+  </div>
+);
