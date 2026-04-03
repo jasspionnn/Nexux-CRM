@@ -25,7 +25,7 @@ const EditableField = ({ label, value, onSave, type = "text" }: any) => {
             type={type}
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            className="w-full text-sm font-bold text-gray-900 border-b border-indigo-500 focus:outline-none bg-transparent"
+            className="w-full text-sm font-bold text-slate-900 border-b border-indigo-500 focus:outline-none bg-white px-1"
             autoFocus
             onKeyDown={(e) => e.key === 'Enter' && handleSave()}
           />
@@ -73,7 +73,7 @@ const EditableSelectField = ({ label, value, options, onSave }: any) => {
           <select
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            className="w-full text-sm font-bold text-gray-900 border-b border-indigo-500 focus:outline-none bg-transparent"
+            className="w-full text-sm font-bold text-slate-900 border-b border-indigo-500 focus:outline-none bg-white px-1"
             autoFocus
           >
             <option value="">Selecione...</option>
@@ -349,7 +349,7 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
                 placeholder="Descreva o andamento da negociação..."
-                className="w-full h-24 resize-none border-none focus:ring-0 p-2 text-gray-700 placeholder-gray-400 outline-none"
+                className="w-full h-24 resize-none border-none focus:ring-0 p-2 text-slate-700 placeholder-slate-400 outline-none bg-white font-medium shadow-inner rounded-xl"
               />
               <div className="absolute bottom-4 right-4">
                 <button 

@@ -126,7 +126,7 @@ export const KanbanBoard = ({ onNavigate }: any) => {
               <select 
                 value={activeFunnelId} 
                 onChange={(e) => setActiveFunnelId(e.target.value)}
-                className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white text-slate-900"
               >
                 {funnels.map(f => (
                   <option key={f.id} value={f.id}>{f.name}</option>
