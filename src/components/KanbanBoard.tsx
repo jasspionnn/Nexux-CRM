@@ -312,7 +312,7 @@ export const KanbanBoard = ({ onNavigate }: any) => {
       </div>
 
       {/* Filter Drawer */}
-      <div className={`fixed inset-y-0 right-0 w-80 bg-white shadow-2xl z-50 border-l border-slate-200 transition-transform duration-300 ease-in-out ${showFilters ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`fixed inset-y-0 right-0 w-[400px] bg-white shadow-2xl z-50 border-l border-slate-200 transition-transform duration-300 ease-in-out ${showFilters ? 'translate-x-0' : 'translate-x-[400px]'}`}>
         <div className="h-full flex flex-col p-6 overflow-y-auto">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">

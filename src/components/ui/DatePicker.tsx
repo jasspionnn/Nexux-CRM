@@ -224,7 +224,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label }
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-[320px] bg-white border border-slate-200 rounded-2xl shadow-2xl z-[100] animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
+        <div className="absolute top-full right-0 mt-2 w-[320px] bg-white border border-slate-200 rounded-2xl shadow-2xl z-[100] animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
           {view === 'presets' ? (
             <div className="p-2 space-y-1">
               <PresetItem label="Hoje" onClick={() => handlePresetClick('today')} />
