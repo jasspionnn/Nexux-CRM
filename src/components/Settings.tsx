@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, SlidersHorizontal, Zap, Shield, CreditCard, Plus, ChevronRight, Trash2, GripVertical, Check, X, Edit2, Copy, ExternalLink, Info } from 'lucide-react';
+import { 
+  Layers, SlidersHorizontal, Zap, Shield, CreditCard, Plus, ChevronRight, Trash2, GripVertical, 
+  Check, X, Edit2, Copy, ExternalLink, Info, Hash, Type, Calendar, List, Users, User, 
+  MoreVertical, ShieldCheck, Activity 
+} from 'lucide-react';
 
 const COLORS = [
   'bg-blue-300', 'bg-green-300', 'bg-yellow-300', 'bg-red-300',
@@ -378,101 +382,133 @@ export const Settings = () => {
   );
 
   const renderCamposTab = () => (
-    <div className="p-8 flex-1 overflow-y-auto">
+    <div className="p-8 flex-1 overflow-y-auto bg-slate-50/50">
       <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900">Campos Personalizados</h2>
-            <p className="text-slate-500 text-sm mt-1">Gerencie os campos adicionais para leads e empresas.</p>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tight">Campos Personalizados</h2>
+            <p className="text-slate-500 text-sm mt-1">Crie e gerencie campos extras para leads, empresas e negociações.</p>
           </div>
           <button 
             onClick={handleAddCustomField}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:-translate-y-0.5 active:translate-y-0"
           >
-            <Plus size={16} />
+            <Plus size={18} />
             Novo Campo
           </button>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-200/50 overflow-hidden">
           <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Nome do Campo</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Tipo</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Contexto & Funil</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Opções de Seleção</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Ações</th>
+            <thead>
+              <tr className="bg-slate-50/80 border-b border-slate-200">
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Identificação do Campo</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Configuração do Tipo</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Contexto & Destino</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
-              {customFields.map(field => (
-                <tr key={field.id} className="hover:bg-slate-50">
-                  <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-900">
-                    <input 
-                      type="text" 
-                      value={field.name}
-                      onChange={(e) => handleUpdateCustomField(field.id, { name: e.target.value })}
-                      className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full font-bold"
-                      placeholder="Nome do Campo"
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-slate-600">
-                    <select 
-                      value={field.type}
-                      onChange={(e) => handleUpdateCustomField(field.id, { type: e.target.value })}
-                      className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-600 font-medium"
-                    >
-                      <option>Texto</option>
-                      <option>Número</option>
-                      <option>Seleção</option>
-                      <option>Data</option>
-                    </select>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-slate-600 space-y-1">
-                    <select 
-                      value={field.context}
-                      onChange={(e) => handleUpdateCustomField(field.id, { context: e.target.value })}
-                      className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-600 block w-full text-sm font-medium"
-                    >
-                      <option>Lead</option>
-                      <option>Empresa</option>
-                      <option>Negociação</option>
-                    </select>
-                    <select 
-                      value={field.funnel_id || ''}
-                      onChange={(e) => handleUpdateCustomField(field.id, { funnel_id: e.target.value })}
-                      className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-400 block w-full text-xs"
-                    >
-                      <option value="">Aplicar à todos os Funis</option>
-                      {funnels.map(f => (
-                        <option key={f.id} value={f.id}>{f.name}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-slate-600 w-64">
-                    <input 
-                      type="text" 
-                      value={field.options || ''}
-                      placeholder={field.type === 'Seleção' ? "Opção A, Opção B, ..." : "Apenas para o tipo Seleção"}
-                      disabled={field.type !== 'Seleção'}
-                      onChange={(e) => handleUpdateCustomField(field.id, { options: e.target.value })}
-                      className="bg-transparent border border-gray-200 rounded px-2 py-1 focus:border-blue-500 outline-none w-full text-sm disabled:opacity-30 disabled:bg-gray-50"
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <button 
-                      onClick={() => handleDeleteCustomField(field.id)}
-                      className="text-slate-400 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-slate-100">
+              {customFields.map(field => {
+                const TypeIcon = field.type === 'Número' ? Hash : field.type === 'Data' ? Calendar : field.type === 'Seleção' ? List : Type;
+                
+                return (
+                  <tr key={field.id} className="hover:bg-slate-50/50 transition-colors group">
+                    <td className="px-8 py-6">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                          <TypeIcon size={20} />
+                        </div>
+                        <div className="flex-1">
+                          <input 
+                            type="text" 
+                            value={field.name}
+                            onChange={(e) => handleUpdateCustomField(field.id, { name: e.target.value })}
+                            className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full font-bold text-slate-900 placeholder:text-slate-300"
+                            placeholder="Ex: CPF do Cliente"
+                          />
+                          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter mt-0.5">ID: {field.id.slice(0,8)}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-8 py-6">
+                      <div className="space-y-2">
+                        <select 
+                          value={field.type}
+                          onChange={(e) => handleUpdateCustomField(field.id, { type: e.target.value })}
+                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none w-full"
+                        >
+                          <option>Texto</option>
+                          <option>Número</option>
+                          <option>Seleção</option>
+                          <option>Data</option>
+                        </select>
+                        {field.type === 'Seleção' && (
+                          <input 
+                            type="text" 
+                            value={field.options || ''}
+                            placeholder="Opção A, Opção B..."
+                            onChange={(e) => handleUpdateCustomField(field.id, { options: e.target.value })}
+                            className="w-full bg-indigo-50/50 border border-indigo-100 rounded-lg px-3 py-1.5 text-[11px] font-medium text-indigo-700 placeholder:text-indigo-300 focus:ring-1 focus:ring-indigo-500 outline-none"
+                          />
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-8 py-6 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tight ${
+                          field.context === 'Lead' ? 'bg-blue-100 text-blue-700' : 
+                          field.context === 'Empresa' ? 'bg-amber-100 text-amber-700' : 'bg-purple-100 text-purple-700'
+                        }`}>
+                          {field.context}
+                        </span>
+                        <select 
+                          value={field.context}
+                          onChange={(e) => handleUpdateCustomField(field.id, { context: e.target.value })}
+                          className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-400 text-[10px] font-bold uppercase tracking-widest cursor-pointer hover:text-slate-600"
+                        >
+                          <option>Lead</option>
+                          <option>Empresa</option>
+                          <option>Negociação</option>
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                         <Layers size={12} className="text-slate-300" />
+                         <select 
+                          value={field.funnel_id || ''}
+                          onChange={(e) => handleUpdateCustomField(field.id, { funnel_id: e.target.value })}
+                          className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-500 text-xs font-medium cursor-pointer hover:text-slate-700"
+                        >
+                          <option value="">Todos os Funis</option>
+                          {funnels.map(f => (
+                            <option key={f.id} value={f.id}>{f.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </td>
+                    <td className="px-8 py-6 text-right">
+                      <button 
+                        onClick={() => handleDeleteCustomField(field.id)}
+                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                        title="Excluir Campo"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
               {customFields.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500">Nenhum campo personalizado configurado.</td>
+                  <td colSpan={4} className="px-8 py-16 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center text-slate-200">
+                        <SlidersHorizontal size={32} />
+                      </div>
+                      <p className="text-slate-400 font-medium tracking-tight">Nenhum campo personalizado ainda.</p>
+                      <button onClick={handleAddCustomField} className="text-indigo-600 text-sm font-bold hover:underline">Criar meu primeiro campo</button>
+                    </div>
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -483,63 +519,76 @@ export const Settings = () => {
   );
 
   const renderWebhooksTab = () => (
-    <div className="p-8 flex-1 overflow-y-auto">
+    <div className="p-8 flex-1 overflow-y-auto bg-slate-50/50">
       <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900">Webhooks</h2>
-            <p className="text-slate-500 text-sm mt-1">Integre o CRM com outras ferramentas via webhooks.</p>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tight">Webhooks de Entrada</h2>
+            <p className="text-slate-500 text-sm mt-1">Conecte ferramentas externas e capture leads automaticamente.</p>
           </div>
           <button 
             onClick={handleAddWebhook}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:-translate-y-0.5 active:translate-y-0"
           >
-            <Plus size={16} />
+            <Plus size={18} />
             Novo Webhook
           </button>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-6">
           {webhooks.map(webhook => {
             const webhookUrl = `${window.location.origin}/api/webhooks/incoming/${webhook.id}`;
             const targetFunnel = funnels.find(f => f.id === (webhook.funnel_id || (funnels.length > 0 ? funnels[0].id : '')));
             
             return (
-              <div key={webhook.id} className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-3">
+              <div key={webhook.id} className="bg-white border border-slate-200 rounded-2xl p-8 shadow-xl shadow-slate-200/40 relative overflow-hidden group transition-all hover:border-indigo-200">
+                {webhook.active && (
+                  <div className="absolute top-0 left-0 w-1 h-full bg-green-500 group-hover:w-2 transition-all"></div>
+                )}
+                
+                <div className="flex items-start justify-between gap-6 mb-8">
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-3 h-3 rounded-full ${webhook.active ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)] animate-pulse' : 'bg-slate-300'}`}></div>
                       <input 
                         type="text" 
                         value={webhook.name}
                         onChange={(e) => handleUpdateWebhook(webhook.id, { name: e.target.value })}
-                        className="font-bold text-lg text-slate-900 bg-transparent border-none p-0 focus:ring-0 outline-none w-1/2"
-                        placeholder="Nome do Webhook (Ex: Leads Facebook)"
+                        className="font-black text-2xl text-slate-900 bg-transparent border-none p-0 focus:ring-0 outline-none w-full placeholder:text-slate-200"
+                        placeholder="Ex: Landing Page Campanha"
                       />
-                      <button 
-                        onClick={() => handleUpdateWebhook(webhook.id, { active: !webhook.active })}
-                        className={`px-2.5 py-1 rounded-full text-xs font-bold ${webhook.active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}
-                      >
-                        {webhook.active ? 'Ativo' : 'Inativo'}
-                      </button>
                     </div>
-                    <p className="text-slate-500 text-sm">Use a URL abaixo para enviar leads externos para o seu CRM.</p>
+                    <p className="text-slate-500 text-sm font-medium">Configure o destino dos dados recebidos por este canal.</p>
                   </div>
-                  <button 
-                    onClick={() => handleDeleteWebhook(webhook.id)}
-                    className="text-slate-400 hover:text-red-500 transition-colors"
-                  >
-                    <Trash2 size={20} />
-                  </button>
+                  
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => handleUpdateWebhook(webhook.id, { active: !webhook.active })}
+                      className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+                        webhook.active ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-slate-100 text-slate-400 border border-slate-200'
+                      }`}
+                    >
+                      {webhook.active ? 'Rodando Live' : 'Pausado'}
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteWebhook(webhook.id)}
+                      className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Funil de Destino</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 pb-8 border-b border-slate-100 font-sans">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <Layers size={14} />
+                      Funil de Destino
+                    </div>
                     <select
                       value={webhook.funnel_id || ''}
                       onChange={(e) => handleUpdateWebhook(webhook.id, { funnel_id: e.target.value, stage_id: null })}
-                      className="w-full bg-slate-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none hover:bg-white transition-all appearance-none cursor-pointer"
                     >
                       <option value="">Selecione um Funil</option>
                       {funnels.map(f => (
@@ -547,12 +596,15 @@ export const Settings = () => {
                       ))}
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Etapa Inicial</label>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <Zap size={14} />
+                      Etapa Inicial
+                    </div>
                     <select
                       value={webhook.stage_id || ''}
                       onChange={(e) => handleUpdateWebhook(webhook.id, { stage_id: e.target.value })}
-                      className="w-full bg-slate-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none hover:bg-white transition-all appearance-none cursor-pointer"
                     >
                       <option value="">Selecione uma Etapa</option>
                       {targetFunnel?.stages?.map((s: any) => (
@@ -562,36 +614,51 @@ export const Settings = () => {
                   </div>
                 </div>
 
-                <div className="bg-slate-900 rounded-xl p-4 flex items-center justify-between gap-4 group">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-blue-400 text-[10px] font-bold uppercase tracking-widest">URL do Webhook (POST)</span>
-                      <Zap size={10} className="text-blue-400" />
+                <div className="space-y-3">
+                   <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <ExternalLink size={14} />
+                      Endpoint de Integração (POST)
                     </div>
-                    <code className="text-slate-300 text-xs font-mono block truncate">{webhookUrl}</code>
+                  <div className="bg-slate-900 rounded-2xl p-5 flex items-center justify-between gap-6 group/url shadow-inner">
+                    <div className="flex-1 min-w-0">
+                      <code className="text-indigo-300 text-sm font-mono block truncate selection:bg-indigo-500 selection:text-white">{webhookUrl}</code>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(webhookUrl);
+                        alert('Endpoint copiado! Use-o para enviar dados via POST.');
+                      }}
+                      className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-900/20 active:scale-95"
+                    >
+                      <Copy size={16} />
+                      Copiar URL
+                    </button>
                   </div>
-                  <button 
-                    onClick={() => {
-                      navigator.clipboard.writeText(webhookUrl);
-                      alert('URL copiada para a área de transferência!');
-                    }}
-                    className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition-colors shrink-0"
-                  >
-                    <Copy size={14} />
-                    Copiar
-                  </button>
                 </div>
                 
-                <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-100 italic">
-                  <Info size={14} />
-                  <span>Dica: O CRM detecta automaticamente campos como nome, e-mail e telefone no seu JSON.</span>
+                <div className="mt-8 flex items-center gap-4 text-xs font-medium text-slate-500 bg-slate-100/50 p-4 rounded-xl border border-dashed border-slate-200">
+                  <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                    <Info size={16} />
+                  </div>
+                  <span className="flex-1 italic">Dica: Envie qualquer JSON. O sistema extrai automaticamente campos como **nome**, **email** e **telefone**.</span>
                 </div>
               </div>
             );
           })}
+          
           {webhooks.length === 0 && (
-            <div className="text-center py-12 bg-white border border-gray-200 rounded-xl text-slate-500">
-              Nenhum webhook configurado.
+            <div className="text-center py-24 bg-white border border-dashed border-slate-200 rounded-3xl">
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-20 h-20 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-400">
+                  <Zap size={40} />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900">Nenhum Webhook Ativo</h3>
+                <p className="text-slate-400 max-w-xs mx-auto text-sm">Integre fontes externas enviando dados via POST para o Nexus.</p>
+                <button onClick={handleAddWebhook} className="mt-2 flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl font-bold text-sm hover:bg-slate-800 transition-all">
+                  <Plus size={18} />
+                  Começar Agora
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -600,81 +667,126 @@ export const Settings = () => {
   );
 
   const renderEquipesTab = () => (
-    <div className="p-8 flex-1 overflow-y-auto">
+    <div className="p-8 flex-1 overflow-y-auto bg-slate-50/50">
       <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900">Equipes e Acessos</h2>
-            <p className="text-slate-500 text-sm mt-1">Gerencie os usuários e permissões da sua conta.</p>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tight">Equipe e Acessos</h2>
+            <p className="text-slate-500 text-sm mt-1">Gerencie quem tem acesso à sua conta e quais as permissões.</p>
           </div>
           <button 
             onClick={handleAddTeamMember}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:-translate-y-0.5 active:translate-y-0"
           >
-            <Plus size={16} />
-            Convidar Usuário
+            <Plus size={18} />
+            Convidar Membro
           </button>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-200/50 overflow-hidden">
           <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Usuário</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Permissão</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Ações</th>
+            <thead>
+              <tr className="bg-slate-50/80 border-b border-slate-200">
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Identificação do Membro</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nível de Acesso</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado Atual</th>
+                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
-              {teamMembers.map(member => (
-                <tr key={member.id} className="hover:bg-slate-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="font-bold text-slate-900">
-                      <input 
-                        type="text" 
-                        value={member.name}
-                        onChange={(e) => handleUpdateTeamMember(member.id, { name: e.target.value })}
-                        className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full"
-                      />
-                    </div>
-                    <div className="text-sm text-slate-500">
-                      <input 
-                        type="text" 
-                        value={member.email}
-                        onChange={(e) => handleUpdateTeamMember(member.id, { email: e.target.value })}
-                        className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full text-sm"
-                      />
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-slate-600">
-                    <select 
-                      value={member.role}
-                      onChange={(e) => handleUpdateTeamMember(member.id, { role: e.target.value })}
-                      className="bg-transparent border-none p-0 focus:ring-0 outline-none text-slate-600 font-medium"
-                    >
-                      <option>Admin</option>
-                      <option>Gerente</option>
-                      <option>Usuário</option>
-                    </select>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${member.status === 'Ativo' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                      {member.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <button 
-                      onClick={() => handleDeleteTeamMember(member.id)}
-                      className="text-slate-400 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-slate-100">
+              {teamMembers.map((member, idx) => {
+                const colors = ['bg-indigo-500', 'bg-blue-500', 'bg-purple-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500'];
+                const color = colors[idx % colors.length];
+                const initials = member.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+                
+                return (
+                  <tr key={member.id} className="hover:bg-slate-50/50 transition-colors group">
+                    <td className="px-8 py-6">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-full ${color} flex items-center justify-center text-white font-black text-sm shadow-inner`}>
+                          {initials}
+                        </div>
+                        <div className="flex-1 space-y-0.5">
+                          <input 
+                            type="text" 
+                            value={member.name}
+                            onChange={(e) => handleUpdateTeamMember(member.id, { name: e.target.value })}
+                            className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full font-bold text-slate-900"
+                            placeholder="Nome Completo"
+                          />
+                          <input 
+                            type="text" 
+                            value={member.email}
+                            onChange={(e) => handleUpdateTeamMember(member.id, { email: e.target.value })}
+                            className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full text-xs font-medium text-slate-400 hover:text-indigo-600 transition-colors"
+                            placeholder="email@empresa.com"
+                          />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-8 py-6">
+                       <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2">
+                          <Shield size={12} className={
+                            member.role === 'Admin' ? 'text-indigo-600' : 
+                            member.role === 'Gerente' ? 'text-blue-600' : 'text-slate-400'
+                          } />
+                          <span className={`text-[10px] font-black tracking-widest uppercase ${
+                            member.role === 'Admin' ? 'text-indigo-600' : 
+                            member.role === 'Gerente' ? 'text-blue-600' : 'text-slate-400'
+                          }`}>
+                            {member.role}
+                          </span>
+                        </div>
+                        <select 
+                          value={member.role}
+                          onChange={(e) => handleUpdateTeamMember(member.id, { role: e.target.value })}
+                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-[11px] font-bold text-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer"
+                        >
+                          <option>Admin</option>
+                          <option>Gerente</option>
+                          <option>Usuário</option>
+                        </select>
+                      </div>
+                    </td>
+                    <td className="px-8 py-6">
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-1.5 h-1.5 rounded-full ${member.status === 'Ativo' ? 'bg-green-500' : 'bg-amber-500'}`}></div>
+                          <span className={`text-[10px] font-black tracking-widest uppercase ${member.status === 'Ativo' ? 'text-green-600' : 'text-amber-600'}`}>
+                            {member.status}
+                          </span>
+                        </div>
+                        <select 
+                          value={member.status}
+                          onChange={(e) => handleUpdateTeamMember(member.id, { status: e.target.value })}
+                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-[11px] font-bold text-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer"
+                        >
+                          <option>Ativo</option>
+                          <option>Pendente</option>
+                          <option>Inativo</option>
+                        </select>
+                      </div>
+                    </td>
+                    <td className="px-8 py-6 text-right">
+                      <button 
+                        onClick={() => handleDeleteTeamMember(member.id)}
+                        className="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                        title="Remover Acesso"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          {teamMembers.length === 0 && (
+            <div className="p-16 text-center text-slate-400 font-medium">
+              Não há outros membros na equipe.
+            </div>
+          )}
         </div>
       </div>
     </div>
