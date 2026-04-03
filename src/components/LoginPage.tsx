@@ -28,20 +28,31 @@ export const LoginPage = () => {
     login_quote_role: 'Head of Sales, TechCorp'
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      // Dummy logic based on email to test 
-      const role = email.includes('nexus') ? UserRole.NEXUS_ADMIN : (email.includes('admin') ? UserRole.MANAGER : UserRole.USER);
-      login({ 
-        id: '1', 
-        name: email.split('@')[0], 
-        email, 
-        role
+    
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
       });
-    }, 1000);
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao realizar login');
+      }
+
+      login(data);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

@@ -1082,4 +1082,33 @@ app.post('/public/register', async (c) => {
   }
 });
 
+app.post('/login', async (c) => {
+  try {
+    const { email, password } = await c.req.json();
+    
+    if (!email || !password) {
+      return c.json({ error: 'Email e senha são obrigatórios' }, 400);
+    }
+
+    const user: any = await c.env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
+    
+    if (!user) {
+      return c.json({ error: 'Usuário não encontrado' }, 401);
+    }
+
+    // Direct comparison for now as requested. 
+    // In a production app, we would use hashing.
+    if (user.password !== password) {
+      return c.json({ error: 'Senha incorreta' }, 401);
+    }
+
+    // Return user data without password
+    const { password: _, ...userWithoutPassword } = user;
+    return c.json(userWithoutPassword);
+  } catch (error: any) {
+    console.error('Login error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
 export const onRequest = handle(app);
