@@ -196,9 +196,9 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
   const currentStageIndex = stages.findIndex((s: any) => s.id === lead.stage_id);
 
   return (
-    <div className="flex flex-col h-full bg-white overflow-hidden">
-      {/* Top Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
+    <div className="flex flex-col min-h-full bg-white relative">
+      {/* Top Header - Sticky */}
+      <div className="sticky top-0 z-20 bg-white flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="text-gray-400 hover:text-gray-600 transition-colors">
             <ArrowLeft size={24} />
@@ -230,8 +230,8 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
         </div>
       </div>
 
-      {/* Stages Bar */}
-      <div className="flex w-full px-6 py-4 border-b border-gray-100 shrink-0 overflow-x-auto hide-scrollbar">
+      {/* Stages Bar - Sticky below Header */}
+      <div className="sticky top-[86px] z-10 bg-white flex w-full px-6 py-4 border-b border-gray-100 shrink-0 overflow-x-auto hide-scrollbar">
         {stages.map((stage: any, index: number) => {
           const isFirst = index === 0;
           const isLast = index === stages.length - 1;
@@ -262,10 +262,10 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
         })}
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
-        <div className="w-80 bg-slate-50 border-r border-gray-200 p-6 overflow-y-auto shrink-0 flex flex-col gap-8">
+      {/* Main Content Area - Flows naturally */}
+      <div className="flex flex-1">
+        {/* Left Sidebar - No independent scroll */}
+        <div className="w-80 bg-slate-50 border-r border-gray-200 p-6 shrink-0 flex flex-col gap-8">
           <button className="w-full flex items-center justify-center gap-2 py-3.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors shadow-sm">
             <Layers size={18} />
             ENCAMINHAR LEAD
@@ -335,8 +335,8 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
           </div>
         </div>
 
-        {/* Right Content */}
-        <div className="flex-1 p-8 overflow-y-auto bg-white">
+        {/* Right Content - No independent scroll */}
+        <div className="flex-1 p-8 bg-white">
           <div className="max-w-4xl mx-auto">
             <div className="flex items-center gap-2 text-gray-900 mb-6">
               <MessageSquare size={20} className="text-indigo-600" />
