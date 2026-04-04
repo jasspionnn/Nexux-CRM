@@ -983,14 +983,14 @@ app.get('/bot-chat-history/:phone', async (c) => {
 // Nexus Admin (Super Admin) Endpoints
 app.get('/admin/stats', async (c) => {
   try {
-    const totalAccounts = await c.env.DB.prepare('SELECT count(*) as count FROM accounts').first();
-    const activeAccounts = await c.env.DB.prepare('SELECT count(*) as count FROM accounts WHERE status = "active"').first();
-    const totalUsers = await c.env.DB.prepare('SELECT count(*) as count FROM users').first();
-    
+    const totalAccounts = await c.env.DB.prepare('SELECT count(*) as count FROM accounts WHERE id != ?').bind('acc_nexus').first();
+    const activeAccounts = await c.env.DB.prepare('SELECT count(*) as count FROM accounts WHERE status = "active" AND id != ?').bind('acc_nexus').first();
+    const totalUsers = await c.env.DB.prepare('SELECT count(*) as count FROM users WHERE role != ?').bind('NEXUS_ADMIN').first();
+
     // MRR approx
-    const proCount = await c.env.DB.prepare('SELECT count(*) as count FROM accounts WHERE plan = "pro" AND status = "active"').first();
-    const starterCount = await c.env.DB.prepare('SELECT count(*) as count FROM accounts WHERE plan = "starter" AND status = "active"').first();
-    
+    const proCount = await c.env.DB.prepare('SELECT count(*) as count FROM accounts WHERE plan = "pro" AND status = "active" AND id != ?').bind('acc_nexus').first();
+    const starterCount = await c.env.DB.prepare('SELECT count(*) as count FROM accounts WHERE plan = "starter" AND status = "active" AND id != ?').bind('acc_nexus').first();
+
     const mrr = (Number(proCount?.count || 0) * 199) + (Number(starterCount?.count || 0) * 49);
 
     return c.json({
@@ -1005,7 +1005,7 @@ app.get('/admin/stats', async (c) => {
 });
 
 app.get('/admin/accounts', async (c) => {
-  const { results } = await c.env.DB.prepare('SELECT * FROM accounts ORDER BY created_at DESC').all();
+  const { results } = await c.env.DB.prepare('SELECT * FROM accounts WHERE id != ? ORDER BY created_at DESC').bind('acc_nexus').all();
   return c.json(results);
 });
 
@@ -1039,6 +1039,9 @@ app.post('/admin/accounts', async (c) => {
 
 app.put('/admin/accounts/:id/status', async (c) => {
   const id = c.req.param('id');
+  if (id === 'acc_nexus') {
+    return c.json({ error: 'Não é possível modificar a conta Nexus' }, 403);
+  }
   const body = await c.req.json();
   await c.env.DB.prepare('UPDATE accounts SET status = ? WHERE id = ?').bind(body.status, id).run();
   return c.json({ success: true, status: body.status });

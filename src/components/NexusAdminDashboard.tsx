@@ -243,7 +243,7 @@ export const NexusAdminDashboard = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {accounts.map((acc) => (
+                      {accounts.filter(acc => acc.id !== 'acc_nexus').map((acc) => (
                         <tr key={acc.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-6 py-5">
                             <div className="flex items-center gap-3">
