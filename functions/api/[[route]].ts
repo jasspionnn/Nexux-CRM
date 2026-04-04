@@ -69,6 +69,32 @@ app.get('/seed-db', async (c) => {
   }
 });
 
+app.get('/seed-nexus-admin', async (c) => {
+  try {
+    // Criar conta Nexus se não existir
+    await c.env.DB.prepare(`
+      INSERT INTO accounts (id, company_name, owner_name, email, status, plan, created_at)
+      VALUES ('acc_nexus', 'Nexus CRM', 'Admin Nexus', 'adminnexus@nexus.com', 'active', 'enterprise', datetime('now'))
+      ON CONFLICT(id) DO UPDATE SET email = 'adminnexus@nexus.com'
+    `).run();
+
+    // Criar usuário admin do Nexus
+    await c.env.DB.prepare(`
+      INSERT INTO users (id, account_id, name, email, password, role, status, joined_at)
+      VALUES ('u_nexus_admin', 'acc_nexus', 'Administrador Nexus', 'adminnexus@nexus.com', '123', 'NEXUS_ADMIN', 'active', datetime('now'))
+      ON CONFLICT(id) DO UPDATE SET email = 'adminnexus@nexus.com', password = '123', account_id = 'acc_nexus'
+    `).run();
+
+    // Verificar se foi criado corretamente
+    const user = await c.env.DB.prepare('SELECT id, account_id, name, email, role FROM users WHERE email = ?').bind('adminnexus@nexus.com').first();
+
+    return c.json({ success: true, user });
+  } catch (error: any) {
+    console.error('Seed Nexus Admin error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
 app.get('/migrate-db', async (c) => {
   try {
     // We can't easily run the entire schema.sql here because D1 prepare().run() only executes one statement at a time.
