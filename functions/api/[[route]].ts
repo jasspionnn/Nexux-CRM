@@ -1395,10 +1395,11 @@ app.post('/tracking/events', async (c) => {
       }
 
       if (formData && formData.fid) {
-        const formName = typeof formData.fid === 'string' ? formData.fid : String(formData.fid);
+        const formName = typeof formData.fid === 'string' ? formData.fid.trim() : String(formData.fid).trim();
         const fields = formData.fields || {};
         const fieldNames = Object.keys(fields).map(k => ({ name: k, type: detectFieldName(k) }));
 
+        // Check if form already exists by EXACT name match
         const existing: any = await c.env.DB.prepare(
           'SELECT id FROM tracking_forms WHERE account_id = ? AND name = ?'
         ).bind(settings.account_id, formName).first();
@@ -1415,6 +1416,8 @@ app.post('/tracking/events', async (c) => {
             JSON.stringify(fieldNames)
           ).run();
           console.log('[TRACKING] Auto-registered form:', formName, fieldNames.map((f: any) => f.name).join(', '));
+        } else if (existing) {
+          console.log('[TRACKING] Form already exists:', formName, '(skipping)');
         }
       }
     } catch (e: any) {
