@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   GitBranch, Plus, Play, Pause, Trash2, Edit2, Zap, Clock,
   Mail, Tag, ArrowRight, ChevronRight, Eye, X, Save, Loader2,
-  MoveUp, UserPlus, FileText, Globe, AlertCircle, GripVertical, ChevronDown
+  MoveUp, UserPlus, FileText, Globe, AlertCircle, GripVertical
 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
@@ -21,7 +21,6 @@ interface FlowNode {
   config: Record<string, any>;
   x: number;
   y: number;
-  parentId: string | null; // The node this is connected FROM
 }
 
 interface Automation {
@@ -64,11 +63,9 @@ const DELAY_NODE = { type: 'delay' as const, label: 'Esperar', icon: Clock, colo
 const ALL_NODES = [...TRIGGERS, ...CONDITIONS, ...ACTIONS, DELAY_NODE];
 const findCat = (t: string) => ALL_NODES.find(n => n.type === t) || { type: t, label: t, icon: Zap, color: 'bg-gray-500', desc: '' };
 
-// Layout: nodes placed left-to-right, new nodes go to the right of parent
 const NODE_W = 280;
 const NODE_H = 120;
-const GAP_X = 100;
-const GAP_Y = 60;
+const LINKER_W = 60;
 
 // ==================== MAIN ====================
 
@@ -139,7 +136,6 @@ const FieldLabel: React.FC<{ label: string; hint?: string; children: React.React
 
 const ConfigPanel: React.FC<{ node: FlowNode; onConfigChange: (nodeId: string, c: Record<string, any>) => void; stages: any[]; users: any[] }> = React.memo(({ node, onConfigChange, stages, users }) => {
   const ic = "w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 bg-white";
-  const sc = ic;
   const set = (key: string, val: any) => onConfigChange(node.id, { [key]: val });
   const t = node.nodeType;
 
@@ -147,22 +143,22 @@ const ConfigPanel: React.FC<{ node: FlowNode; onConfigChange: (nodeId: string, c
     <div className="px-3 pt-3 pb-2 border-t border-slate-100 space-y-2.5">
       {t === 'new_lead' && <p className="text-xs text-slate-500 flex items-center gap-2"><Zap size={14} className="text-emerald-500" />Dispara quando um novo lead é criado.</p>}
       {t === 'stage_change' && (<>
-        <FieldLabel label="Origem" hint="Qualquer se vazio"><select value={node.config.from_stage_id || ''} onChange={e => set('from_stage_id', e.target.value)} className={sc}><option value="">Qualquer</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>
+        <FieldLabel label="Origem"><select value={node.config.from_stage_id || ''} onChange={e => set('from_stage_id', e.target.value)} className={ic}><option value="">Qualquer</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>
         <div className="flex justify-center text-slate-300"><ArrowRight size={16} className="rotate-90" /></div>
-        <FieldLabel label="Destino" hint="Qualquer se vazio"><select value={node.config.to_stage_id || ''} onChange={e => set('to_stage_id', e.target.value)} className={sc}><option value="">Qualquer</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>
+        <FieldLabel label="Destino"><select value={node.config.to_stage_id || ''} onChange={e => set('to_stage_id', e.target.value)} className={ic}><option value="">Qualquer</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>
       </>)}
       {t === 'page_visit' && <FieldLabel label="URL contém"><input type="text" value={node.config.url_pattern || ''} onChange={e => set('url_pattern', e.target.value)} placeholder="/precos" className={ic} /></FieldLabel>}
       {t === 'value_gt' && <FieldLabel label="Valor &gt;"><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">R$</span><input type="number" value={node.config.value || ''} onChange={e => set('value', +e.target.value || 0)} placeholder="0" className={`${ic} pl-9`} /></div></FieldLabel>}
       {t === 'value_lt' && <FieldLabel label="Valor &lt;"><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">R$</span><input type="number" value={node.config.value || ''} onChange={e => set('value', +e.target.value || 0)} placeholder="0" className={`${ic} pl-9`} /></div></FieldLabel>}
       {(t === 'has_tag' || t === 'not_has_tag') && <FieldLabel label="Tag"><input type="text" value={node.config.tag || ''} onChange={e => set('tag', e.target.value)} placeholder="enterprise" className={ic} /></FieldLabel>}
-      {t === 'stage_is' && <FieldLabel label="Estágio"><select value={node.config.stage_id || ''} onChange={e => set('stage_id', e.target.value)} className={sc}><option value="">Selecione</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>}
+      {t === 'stage_is' && <FieldLabel label="Estágio"><select value={node.config.stage_id || ''} onChange={e => set('stage_id', e.target.value)} className={ic}><option value="">Selecione</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>}
       {t === 'email_contains' && <FieldLabel label="Email contém"><input type="text" value={node.config.text || ''} onChange={e => set('text', e.target.value)} placeholder="@empresa.com" className={ic} /></FieldLabel>}
       {t === 'probability_gt' && <FieldLabel label="Probabilidade &gt;"><div className="relative"><input type="number" value={node.config.probability || ''} onChange={e => set('probability', +e.target.value || 0)} placeholder="50" min={0} max={100} className={`${ic} pr-8`} /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span></div></FieldLabel>}
-      {t === 'move_stage' && <FieldLabel label="Mover para"><select value={node.config.to_stage_id || ''} onChange={e => set('to_stage_id', e.target.value)} className={sc}><option value="">Selecione</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>}
+      {t === 'move_stage' && <FieldLabel label="Mover para"><select value={node.config.to_stage_id || ''} onChange={e => set('to_stage_id', e.target.value)} className={ic}><option value="">Selecione</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>}
       {t === 'create_task' && (<>
         <FieldLabel label="Título"><input type="text" value={node.config.title || ''} onChange={e => set('title', e.target.value)} placeholder="Ligar para lead" className={ic} /></FieldLabel>
         <FieldLabel label="Data limite"><input type="date" value={node.config.due_date || ''} onChange={e => set('due_date', e.target.value)} className={ic} /></FieldLabel>
-        <FieldLabel label="Atribuir a"><select value={node.config.assigned_user_id || ''} onChange={e => set('assigned_user_id', e.target.value)} className={sc}><option value="">Selecione</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></FieldLabel>
+        <FieldLabel label="Atribuir a"><select value={node.config.assigned_user_id || ''} onChange={e => set('assigned_user_id', e.target.value)} className={ic}><option value="">Selecione</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></FieldLabel>
       </>)}
       {(t === 'add_tag' || t === 'remove_tag') && <FieldLabel label="Tag"><input type="text" value={node.config.tag || ''} onChange={e => set('tag', e.target.value)} placeholder="cliente" className={ic} /></FieldLabel>}
       {t === 'send_email' && (<>
@@ -171,65 +167,19 @@ const ConfigPanel: React.FC<{ node: FlowNode; onConfigChange: (nodeId: string, c
       </>)}
       {t === 'send_webhook' && (<>
         <FieldLabel label="URL"><input type="url" value={node.config.url || ''} onChange={e => set('url', e.target.value)} placeholder="https://api.exemplo.com" className={ic} /></FieldLabel>
-        <FieldLabel label="Método"><select value={node.config.method || 'POST'} onChange={e => set('method', e.target.value)} className={sc}><option>POST</option><option>GET</option><option>PUT</option><option>DELETE</option></select></FieldLabel>
+        <FieldLabel label="Método"><select value={node.config.method || 'POST'} onChange={e => set('method', e.target.value)} className={ic}><option>POST</option><option>GET</option><option>PUT</option><option>DELETE</option></select></FieldLabel>
       </>)}
       {t === 'create_note' && <FieldLabel label="Nota"><textarea value={node.config.content || ''} onChange={e => set('content', e.target.value)} placeholder="Lead qualificado..." rows={2} className={`${ic} resize-none`} /></FieldLabel>}
-      {t === 'assign_user' && <FieldLabel label="Usuário"><select value={node.config.user_id || ''} onChange={e => set('user_id', e.target.value)} className={sc}><option value="">Selecione</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></FieldLabel>}
+      {t === 'assign_user' && <FieldLabel label="Usuário"><select value={node.config.user_id || ''} onChange={e => set('user_id', e.target.value)} className={ic}><option value="">Selecione</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></FieldLabel>}
       {t === 'delay' && (
         <div className="flex items-end gap-2">
           <div className="flex-1"><FieldLabel label="Duração"><input type="number" value={node.config.duration || ''} onChange={e => set('duration', +e.target.value || 0)} placeholder="30" min={1} className={ic} /></FieldLabel></div>
-          <select value={node.config.unit || 'minutes'} onChange={e => set('unit', e.target.value)} className={`${sc} flex-1 mt-4`}><option value="minutes">Minutos</option><option value="hours">Horas</option><option value="days">Dias</option></select>
+          <select value={node.config.unit || 'minutes'} onChange={e => set('unit', e.target.value)} className={`${ic} flex-1 mt-4`}><option value="minutes">Minutos</option><option value="hours">Horas</option><option value="days">Dias</option></select>
         </div>
       )}
     </div>
   );
-}, (prev, next) => prev.node === next.node && prev.onConfigChange === next.onConfigChange && prev.stages === next.stages && prev.users === next.users);
-
-// ==================== NODE CARD ====================
-
-const NodeCard: React.FC<{
-  node: FlowNode;
-  selId: string | null;
-  onConfigChange: (id: string, c: Record<string, any>) => void;
-  stages: any[];
-  users: any[];
-  onConnect: (parentId: string) => void;
-  onRemove: (id: string) => void;
-  onSelect: (id: string | null) => void;
-  onDragStart: (id: string, e: React.MouseEvent) => void;
-}> = React.memo(({ node, selId, onConfigChange, stages, users, onConnect, onRemove, onSelect, onDragStart }) => {
-  const cat = findCat(node.nodeType);
-  const Icon = cat.icon;
-  const isSel = selId === node.id;
-  const h = isSel ? NODE_H + 120 : NODE_H;
-
-  return (
-    <div className="absolute select-none" style={{ left: node.x, top: node.y, width: NODE_W, zIndex: isSel ? 30 : 10 }}>
-      <div className={`bg-white border-2 rounded-xl shadow-md overflow-hidden transition-all ${isSel ? 'border-teal-500 shadow-lg ring-1 ring-teal-200' : 'border-slate-200'}`}>
-        {/* Header + drag */}
-        <div className="flex items-center gap-2.5 px-3" style={{ height: 52 }} onMouseDown={e => onDragStart(node.id, e)} onClick={() => onSelect(isSel ? null : node.id)}>
-          <GripVertical size={16} className="text-slate-300 shrink-0" />
-          <div className={`w-8 h-8 rounded-lg ${cat.color} flex items-center justify-center text-white shrink-0 shadow-sm`}><Icon size={16} /></div>
-          <div className="flex-1 min-w-0"><p className="text-sm font-bold text-slate-900 truncate">{node.label}</p><p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">{node.type}</p></div>
-          <button onClick={e => { e.stopPropagation(); onRemove(node.id); }} className="p-1 text-slate-300 hover:text-red-500 rounded shrink-0"><X size={14} /></button>
-        </div>
-
-        {/* Config */}
-        {isSel && <ConfigPanel node={node} onConfigChange={onConfigChange} stages={stages} users={users} />}
-
-        {/* Footer */}
-        <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between" style={{ height: 38 }}>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{node.type === 'trigger' ? '🚀 Gatilho' : node.type === 'condition' ? '🔍 Condição' : node.type === 'delay' ? '⏱ Tempo' : '⚡ Ação'}</span>
-          <button onClick={e => { e.stopPropagation(); onConnect(node.id); }}
-            className="w-7 h-7 rounded-full bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center shadow-md transition-all hover:scale-110"
-            title="Adicionar próximo bloco">
-            <Plus size={16} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-});
+}, (prev, next) => prev.node === next.node && prev.onConfigChange === next.onConfigChange);
 
 // ==================== BUILDER ====================
 
@@ -237,14 +187,14 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
   const [name, setName] = useState(automation.name || '');
   const [description, setDescription] = useState(automation.description || '');
   const [nodes, setNodes] = useState<FlowNode[]>(automation.nodes || []);
-  const [selId, setSelId] = useState<string | null>(null);
-  const [connectMenuId, setConnectMenuId] = useState<string | null>(null);
+  const [selId, setSelId] = useState<number | null>(null);
+  const [addMenuIdx, setAddMenuIdx] = useState<number | null>(null); // index in the chain
   const [saving, setSaving] = useState(false);
   const [stages, setStages] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [autos, setAutos] = useState<Automation[]>([]);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
+  const dragRef = useRef<{ idx: number; sx: number; sy: number; ox: number; oy: number } | null>(null);
   const panRef = useRef<{ active: boolean; sx: number; sy: number; sl: number; st: number } | null>(null);
 
   // Load data
@@ -259,7 +209,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
     })();
   }, [accountId]);
 
-  // Pan on empty area
+  // Pan + drag
   const onCanvasDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('[data-node]') || (e.target as HTMLElement).closest('[data-ui]')) return;
     if (!canvasRef.current) return;
@@ -275,7 +225,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
       }
       if (dragRef.current) {
         const d = dragRef.current;
-        setNodes(ns => ns.map(n => n.id === d.id ? { ...n, x: Math.max(0, d.ox + (e.clientX - d.sx)), y: Math.max(0, d.oy + (e.clientY - d.sy)) } : n));
+        setNodes(ns => ns.map((n, i) => i === d.idx ? { ...n, x: Math.max(0, d.ox + e.clientX - d.sx), y: Math.max(0, d.oy + e.clientY - d.sy) } : n));
       }
     };
     const up = () => { panRef.current = null; dragRef.current = null; if (canvasRef.current) canvasRef.current.style.cursor = ''; };
@@ -287,46 +237,56 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
   // Scroll to nodes on load
   useEffect(() => {
     if (nodes.length > 0 && canvasRef.current) {
-      const minX = Math.min(...nodes.map(n => n.x));
-      const minY = Math.min(...nodes.map(n => n.y));
-      canvasRef.current.scrollTo({ left: Math.max(0, minX - 100), top: Math.max(0, minY - 60), behavior: 'instant' as any });
+      canvasRef.current.scrollTo({ left: Math.max(0, nodes[0].x - 80), top: Math.max(0, nodes[0].y - 40), behavior: 'instant' as any });
     }
   }, [nodes.length]);
 
-  const dragStart = useCallback((id: string, e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    const n = nodes.find(x => x.id === id);
-    if (!n) return;
-    dragRef.current = { id, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y };
+  const addNode = useCallback((cat: any, type: NodeType) => {
+    const lastNode = nodes.length > 0 ? nodes[nodes.length - 1] : null;
+    const nn: FlowNode = {
+      id: crypto.randomUUID(),
+      type,
+      nodeType: cat.type,
+      label: cat.label,
+      config: {},
+      x: lastNode ? lastNode.x + NODE_W + LINKER_W : 80,
+      y: lastNode ? lastNode.y : 80,
+    };
+    setNodes(prev => [...prev, nn]);
+    setAddMenuIdx(null);
   }, [nodes]);
 
   const onConfigChange = useCallback((nodeId: string, c: Record<string, any>) => {
     setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, config: { ...n.config, ...c } } : n));
   }, []);
 
-  const removeNode = useCallback((id: string) => {
-    setNodes(prev => prev.filter(n => n.id !== id));
+  const removeNode = useCallback((idx: number) => {
+    setNodes(prev => prev.filter((_, i) => i !== idx));
     setSelId(null);
+    setAddMenuIdx(null);
   }, []);
 
-  const addNode = useCallback((parentId: string, cat: any, type: NodeType) => {
-    const parent = nodes.find(n => n.id === parentId);
-    if (!parent) return;
-
-    // Count existing children of this parent to stack vertically
-    const siblings = nodes.filter(n => n.parentId === parentId);
-    const x = parent.x + NODE_W + GAP_X;
-    const y = siblings.length === 0 ? parent.y : parent.y + NODE_H + GAP_Y;
-
-    const nn: FlowNode = { id: crypto.randomUUID(), type, nodeType: cat.type, label: cat.label, config: {}, x, y, parentId };
-    setNodes(prev => [...prev, nn]);
-    setConnectMenuId(null);
+  const insertNode = useCallback((afterIdx: number, cat: any, type: NodeType) => {
+    const after = nodes[afterIdx];
+    if (!after) return;
+    const nn: FlowNode = {
+      id: crypto.randomUUID(),
+      type,
+      nodeType: cat.type,
+      label: cat.label,
+      config: {},
+      x: after.x + NODE_W + LINKER_W,
+      y: after.y,
+    };
+    // Shift all nodes after
+    setNodes(prev => {
+      const shifted = prev.map((n, i) => i > afterIdx ? { ...n, x: n.x + NODE_W + LINKER_W } : n);
+      const result = [...shifted];
+      result.splice(afterIdx + 1, 0, nn);
+      return result;
+    });
+    setAddMenuIdx(null);
   }, [nodes]);
-
-  const addFirstNode = useCallback((cat: any, type: NodeType) => {
-    const nn: FlowNode = { id: crypto.randomUUID(), type, nodeType: cat.type, label: cat.label, config: {}, x: 100, y: 100, parentId: null };
-    setNodes(prev => [...prev, nn]);
-  }, []);
 
   const doSave = async () => {
     if (!name.trim()) { alert('Dê um nome ao fluxo'); return; }
@@ -336,12 +296,55 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
       const res = await fetch(exists ? `/api/automations/${automation.id}` : '/api/automations', {
         method: exists ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: automation.id, name, description, is_active: 1, trigger_type: nodes.find(n => n.type === 'trigger')?.nodeType || '', trigger_config: nodes.find(n => n.type === 'trigger')?.config || {}, nodes, connections: nodes.map(n => ({ id: crypto.randomUUID(), from: n.parentId || '', to: n.id })).filter(c => c.from), created_at: automation.created_at || '', account_id: accountId })
+        body: JSON.stringify({ id: automation.id, name, description, is_active: 1, trigger_type: nodes.find(n => n.type === 'trigger')?.nodeType || '', trigger_config: nodes.find(n => n.type === 'trigger')?.config || {}, nodes, connections: nodes.map((n, i) => i > 0 ? { from: nodes[i-1].id, to: n.id } : null).filter(Boolean), created_at: automation.created_at || '', account_id: accountId })
       });
       if (!res.ok) { const err = await res.json(); alert('Erro: ' + (err.error || 'Erro desconhecido')); return; }
       onClose(); onRefresh();
     } catch (e) { console.error(e); alert('Erro ao salvar'); }
     setSaving(false);
+  };
+
+  // Build chain visual: nodes + linker "+" buttons
+  const renderChain = () => {
+    const elements: React.ReactNode[] = [];
+
+    nodes.forEach((node, idx) => {
+      const cat = findCat(node.nodeType);
+      const Icon = cat.icon;
+      const isSel = selId === idx;
+      const isLast = idx === nodes.length - 1;
+
+      // Node card
+      elements.push(
+        <div key={node.id} className="absolute select-none" style={{ left: node.x, top: node.y, width: NODE_W, zIndex: isSel ? 30 : 10 }} data-node>
+          <div className={`bg-white border-2 rounded-xl shadow-md overflow-hidden transition-all ${isSel ? 'border-teal-500 shadow-lg ring-1 ring-teal-200' : 'border-slate-200'}`}>
+            <div className="flex items-center gap-2.5 px-3" style={{ height: 52 }} onMouseDown={e => { e.preventDefault(); e.stopPropagation(); dragRef.current = { idx, sx: e.clientX, sy: e.clientY, ox: node.x, oy: node.y }; }} onClick={() => { setSelId(isSel ? null : idx); setAddMenuIdx(null); }}>
+              <GripVertical size={16} className="text-slate-300 shrink-0" />
+              <div className={`w-8 h-8 rounded-lg ${cat.color} flex items-center justify-center text-white shrink-0 shadow-sm`}><Icon size={16} /></div>
+              <div className="flex-1 min-w-0"><p className="text-sm font-bold text-slate-900 truncate">{node.label}</p><p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">{node.type}</p></div>
+              <button onClick={e => { e.stopPropagation(); removeNode(idx); }} className="p-1 text-slate-300 hover:text-red-500 rounded shrink-0"><X size={14} /></button>
+            </div>
+            {isSel && <ConfigPanel node={node} onConfigChange={onConfigChange} stages={stages} users={users} />}
+            <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between" style={{ height: 38 }}>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{idx === 0 ? '🚀 Gatilho' : node.type === 'condition' ? '🔍 Condição' : node.type === 'delay' ? '⏱ Tempo' : '⚡ Ação'}</span>
+            </div>
+          </div>
+        </div>
+      );
+
+      // Linker "+" after node
+      if (isLast) {
+        elements.push(
+          <div key={`linker-${idx}`} className="absolute flex items-center justify-center" style={{ left: node.x + NODE_W, top: node.y + 10, width: LINKER_W, height: 40, zIndex: 20 }} data-ui>
+            <div className="w-7 h-7 bg-teal-600 hover:bg-teal-700 rounded-full flex items-center justify-center text-white cursor-pointer shadow-md hover:scale-110 transition-all" onClick={() => setAddMenuIdx(addMenuIdx === idx ? null : idx)}>
+              <Plus size={16} />
+            </div>
+          </div>
+        );
+      }
+    });
+
+    return elements;
   };
 
   return (
@@ -353,15 +356,14 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
           <div className="flex-1"><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nome do fluxo..." className="text-lg font-bold text-slate-900 border-none focus:outline-none bg-transparent w-full" /><input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição..." className="text-xs text-slate-500 border-none focus:outline-none bg-transparent w-full" /></div>
         </div>
         <div className="flex items-center gap-2">
-          {nodes.length === 0 && <span className="text-sm text-slate-400 mr-2">Adicione um gatilho para começar →</span>}
+          {nodes.length === 0 && <span className="text-sm text-slate-400 mr-2">Escolha um gatilho para começar →</span>}
           <button onClick={doSave} disabled={saving || !nodes.length} className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-sm disabled:opacity-50">{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}Salvar</button>
         </div>
       </div>
 
       {/* Canvas */}
       <div ref={canvasRef} className="flex-1 overflow-auto relative" onMouseDown={onCanvasDown}>
-        <div style={{ width: 4000, height: 3000, position: 'relative' }}>
-          {/* Grid */}
+        <div style={{ width: 5000, height: 3000, position: 'relative' }}>
           <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:20px_20px]" />
 
           {/* Empty state */}
@@ -371,9 +373,9 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
                 <GitBranch className="mx-auto text-slate-300 mb-4" size={48} />
                 <p className="text-slate-400 font-bold text-lg">Fluxo vazio</p>
                 <p className="text-sm text-slate-400 mt-2 mb-6">Escolha um gatilho para começar.</p>
-                <div className="flex flex-wrap justify-center gap-2 max-w-lg">
+                <div className="flex flex-wrap justify-center gap-2 max-w-xl">
                   {TRIGGERS.map(n => { const Icon = n.icon; return (
-                    <button key={n.type} onClick={() => addFirstNode(n, 'trigger')} className="flex items-center gap-2 px-4 py-3 bg-white border-2 border-slate-200 rounded-xl hover:border-emerald-400 hover:shadow-md transition-all">
+                    <button key={n.type} onClick={() => addNode(n, 'trigger')} className="flex items-center gap-2 px-4 py-3 bg-white border-2 border-slate-200 rounded-xl hover:border-emerald-400 hover:shadow-md transition-all">
                       <div className={`w-7 h-7 rounded-lg ${n.color} flex items-center justify-center text-white`}><Icon size={14} /></div>
                       <span className="text-sm font-bold text-slate-700">{n.label}</span>
                     </button>
@@ -383,42 +385,40 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
             </div>
           )}
 
-          {/* Nodes */}
-          {nodes.map(node => (
-            <React.Fragment key={node.id}>
-              <NodeCard node={node} selId={selId} onConfigChange={onConfigChange} stages={stages} users={users}
-                onConnect={(id) => setConnectMenuId(connectMenuId === id ? null : id)}
-                onRemove={removeNode} onSelect={(id) => { setSelId(id); setConnectMenuId(null); }} onDragStart={dragStart} />
+          {/* Chain */}
+          {renderChain()}
 
-              {/* Connect menu popup */}
-              {connectMenuId === node.id && (
-                <div className="absolute bg-white rounded-xl shadow-2xl border border-slate-200 p-3 z-50" style={{ left: node.x + NODE_W + 10, top: node.y + 40, width: 260 }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-slate-500 uppercase">Adicionar bloco</span>
-                    <button onClick={() => setConnectMenuId(null)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
-                  </div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Condições</p>
-                  <div className="space-y-1 mb-3">{CONDITIONS.map(n => { const Icon = n.icon; return (
-                    <button key={n.type} onClick={() => addNode(node.id, n, 'condition')} className="w-full flex items-center gap-2 px-2 py-2 rounded-lg border border-slate-200 hover:border-amber-400 hover:bg-amber-50 transition-all text-left">
-                      <div className={`w-6 h-6 rounded ${n.color} flex items-center justify-center text-white shrink-0`}><Icon size={12} /></div>
-                      <span className="text-xs font-bold text-slate-700 truncate">{n.label}</span>
-                    </button>
-                  );})}</div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Ações</p>
-                  <div className="space-y-1 mb-3">{ACTIONS.map(n => { const Icon = n.icon; return (
-                    <button key={n.type} onClick={() => addNode(node.id, n, 'action')} className="w-full flex items-center gap-2 px-2 py-2 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-all text-left">
-                      <div className={`w-6 h-6 rounded ${n.color} flex items-center justify-center text-white shrink-0`}><Icon size={12} /></div>
-                      <span className="text-xs font-bold text-slate-700 truncate">{n.label}</span>
-                    </button>
-                  );})}</div>
-                  <button onClick={() => addNode(node.id, DELAY_NODE, 'delay')} className="w-full flex items-center gap-2 px-2 py-2 rounded-lg border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all text-left">
-                    <div className={`w-6 h-6 rounded ${DELAY_NODE.color} flex items-center justify-center text-white shrink-0`}><DELAY_NODE.icon size={12} /></div>
-                    <span className="text-xs font-bold text-slate-700 truncate">{DELAY_NODE.label}</span>
-                  </button>
+          {/* Add menu popup */}
+          {addMenuIdx !== null && (() => {
+            const node = nodes[addMenuIdx];
+            if (!node) return null;
+            return (
+              <div className="absolute bg-white rounded-xl shadow-2xl border border-slate-200 p-3 z-50" style={{ left: node.x + NODE_W + LINKER_W + 10, top: node.y - 20, width: 280 }} data-ui>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-slate-500 uppercase">Adicionar próximo bloco</span>
+                  <button onClick={() => setAddMenuIdx(null)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
                 </div>
-              )}
-            </React.Fragment>
-          ))}
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Condições</p>
+                <div className="space-y-1 mb-3">{CONDITIONS.map(n => { const Icon = n.icon; return (
+                  <button key={n.type} onClick={() => insertNode(addMenuIdx, n, 'condition')} className="w-full flex items-center gap-2 px-2 py-2 rounded-lg border border-slate-200 hover:border-amber-400 hover:bg-amber-50 transition-all text-left">
+                    <div className={`w-6 h-6 rounded ${n.color} flex items-center justify-center text-white shrink-0`}><Icon size={12} /></div>
+                    <span className="text-xs font-bold text-slate-700 truncate">{n.label}</span>
+                  </button>
+                );})}</div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Ações</p>
+                <div className="space-y-1 mb-3">{ACTIONS.map(n => { const Icon = n.icon; return (
+                  <button key={n.type} onClick={() => insertNode(addMenuIdx, n, 'action')} className="w-full flex items-center gap-2 px-2 py-2 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-all text-left">
+                    <div className={`w-6 h-6 rounded ${n.color} flex items-center justify-center text-white shrink-0`}><Icon size={12} /></div>
+                    <span className="text-xs font-bold text-slate-700 truncate">{n.label}</span>
+                  </button>
+                );})}</div>
+                <button onClick={() => insertNode(addMenuIdx, DELAY_NODE, 'delay')} className="w-full flex items-center gap-2 px-2 py-2 rounded-lg border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all text-left">
+                  <div className={`w-6 h-6 rounded ${DELAY_NODE.color} flex items-center justify-center text-white shrink-0`}><DELAY_NODE.icon size={12} /></div>
+                  <span className="text-xs font-bold text-slate-700 truncate">{DELAY_NODE.label}</span>
+                </button>
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
