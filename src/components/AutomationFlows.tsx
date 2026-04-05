@@ -266,7 +266,6 @@ const Builder: React.FC<{ automation: Automation; onSave: (d: any) => void; onCa
     const maxY = nodes.length ? Math.max(...nodes.map(n => n.y + nodeH(n))) + 80 : 60;
     const nn: FlowNode = { id: crypto.randomUUID(), type, nodeType: cat.type, label: cat.label, config: {}, x: 60, y: maxY };
     setNodes(prev => [...prev, nn]);
-    setShowCat(false);
   }, [nodes]);
 
   const updateCfg = useCallback((id: string, c: Record<string, any>) => {
