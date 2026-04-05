@@ -1200,6 +1200,15 @@ app.post('/public/register', async (c) => {
 
 // ==================== TRACKING ENDPOINTS ====================
 
+function detectFieldName(name: string): string {
+  const lk = name.toLowerCase();
+  if (lk.includes('email') || lk.includes('mail')) return 'email';
+  if (lk.includes('phone') || lk.includes('tel') || lk.includes('whatsapp') || lk.includes('celular')) return 'phone';
+  if (lk.includes('name') || lk.includes('nome')) return 'name';
+  if (lk.includes('company') || lk.includes('empresa')) return 'company';
+  return 'text';
+}
+
 // CORS headers for all tracking endpoints
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1373,6 +1382,33 @@ app.post('/tracking/events', async (c) => {
     ).run();
 
     console.log('[TRACKING] Event saved:', eventId);
+
+    // Auto-register form if it's a form event with a new form_id
+    if (event_type === 'form' && body.form_data && body.form_data.fid) {
+      const formId = body.form_data.fid;
+      const fields = body.form_data.fields || {};
+      const fieldNames = Object.keys(fields).map(k => ({ name: k, type: detectFieldName(k) }));
+
+      // Check if form already registered
+      const existing: any = await c.env.DB.prepare(
+        'SELECT id FROM tracking_forms WHERE account_id = ? AND name = ?'
+      ).bind(settings.account_id, formId).first();
+
+      if (!existing && fieldNames.length > 0) {
+        await c.env.DB.prepare(
+          'INSERT INTO tracking_forms (id, account_id, name, url_pattern, form_selector, fields, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)'
+        ).bind(
+          crypto.randomUUID(),
+          settings.account_id,
+          formId,
+          url || null,
+          null,
+          JSON.stringify(fieldNames)
+        ).run();
+        console.log('[TRACKING] Auto-registered form:', formId);
+      }
+    }
+
     return new Response(JSON.stringify({ success: true, id: eventId }), {
       status: 200,
       headers: {
