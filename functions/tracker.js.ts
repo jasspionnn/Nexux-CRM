@@ -27,27 +27,29 @@ export const onRequestGet = async () => {
       },
       _pv:function(){T._send('pageview',{url:w.location.href,ref:document.referrer||null,title:document.title});},
       _forms:function(){
+        var convKeywords=['email','phone','tel','whatsapp','nome','name','cpf','celular'];
         document.addEventListener('submit',function(e){
           var f=e.target;
           if(!f||f.tagName!=='FORM')return;
           var fd={};
+          var hasConv=false;
           for(var i=0;i<f.elements.length;i++){
             var el=f.elements[i];
             if(el.name&&el.type!=='submit'&&el.type!=='button'&&el.type!=='hidden'){
               if(el.type==='checkbox'||el.type==='radio'){if(el.checked)fd[el.name]=el.value;}
               else{fd[el.name]=el.value;}
+              var lk=(el.name+(el.placeholder||'')+(el.getAttribute('aria-label')||'')).toLowerCase();
+              for(var j=0;j<convKeywords.length;j++){if(lk.indexOf(convKeywords[j])!==-1){hasConv=true;break;}}
             }
           }
           T._send('form',{url:w.location.href,ref:document.referrer||null,form_data:{fid:f.id||'unknown',action:f.action||f.getAttribute('action')||'no-action',fields:fd}});
+          if(hasConv){T._send('conversion',{en:'lead_capturado',d:{form:f.id||'unknown',fields:Object.keys(fd).join(',')}});}
         },true);
       },
       _clicks:function(){
         document.addEventListener('click',function(e){
           var el=e.target.closest('[data-track-conversion]');
-          if(el){
-            var name=el.getAttribute('data-track-conversion')||'click_conversion';
-            T._send('conversion',{en:name,d:{label:el.textContent||'',tag:el.tagName}});
-          }
+          if(el){T._send('conversion',{en:el.getAttribute('data-track-conversion')||'click_conversion',d:{label:el.textContent||'',tag:el.tagName}});}
         },true);
       }
     };
