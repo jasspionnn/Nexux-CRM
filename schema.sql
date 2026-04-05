@@ -185,6 +185,19 @@ CREATE TABLE IF NOT EXISTS tracking_events (
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 
+-- Formulários rastreados (mapeamento de campos)
+CREATE TABLE IF NOT EXISTS tracking_forms (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    url_pattern TEXT,
+    form_selector TEXT,
+    fields TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
 -- Segmentações de Leads
 CREATE TABLE IF NOT EXISTS segments (
     id TEXT PRIMARY KEY,

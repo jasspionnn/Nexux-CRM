@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, MousePointer, Target, Copy, Check, RefreshCw, Code, TrendingUp, Calendar } from 'lucide-react';
+import { Eye, MousePointer, Target, Copy, Check, RefreshCw, Code, TrendingUp, Calendar, Plus, Trash2, Edit2, X, Save, FormInput } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 export const SiteTracking = () => {
@@ -10,7 +10,14 @@ export const SiteTracking = () => {
   const [events, setEvents] = useState<any[]>([]);
   const [copied, setCopied] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'events'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'forms'>('overview');
+
+  const [trackingForms, setTrackingForms] = useState<any[]>([]);
+  const [showFormBuilder, setShowFormBuilder] = useState(false);
+  const [editingForm, setEditingForm] = useState<any>(null);
+  const [formName, setFormName] = useState('');
+  const [formUrl, setFormUrl] = useState('');
+  const [formFields, setFormFields] = useState<{name: string; type: string}[]>([]);
 
   const accountId = currentUser?.account_id || 'acc_demo';
 
@@ -24,31 +31,19 @@ export const SiteTracking = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [trackingRes, statsRes, eventsRes] = await Promise.all([
+      const [trackingRes, statsRes, eventsRes, formsRes] = await Promise.all([
         fetch(`/api/tracking?account_id=${accountId}`),
         fetch(`/api/tracking/stats?account_id=${accountId}`),
-        fetch(`/api/tracking/events?account_id=${accountId}&limit=50`)
+        fetch(`/api/tracking/events?account_id=${accountId}&limit=50`),
+        fetch(`/api/tracking-forms?account_id=${accountId}`)
       ]);
 
-      if (trackingRes.ok) {
-        const trackingData = await trackingRes.json();
-        setTrackingId(trackingData.tracking_id);
-      }
-
-      if (statsRes.ok) {
-        const statsData = await statsRes.json();
-        setStats(statsData);
-      }
-
-      if (eventsRes.ok) {
-        const eventsData = await eventsRes.json();
-        if (Array.isArray(eventsData)) setEvents(eventsData);
-      }
-    } catch (error) {
-      console.error('Failed to fetch marketing data:', error);
-    } finally {
-      setIsLoading(false);
-    }
+      if (trackingRes.ok) setTrackingId((await trackingRes.json()).tracking_id);
+      if (statsRes.ok) setStats(await statsRes.json());
+      if (eventsRes.ok) { const d = await eventsRes.json(); if (Array.isArray(d)) setEvents(d); }
+      if (formsRes.ok) { const d = await formsRes.json(); if (Array.isArray(d)) setTrackingForms(d); }
+    } catch (error) { console.error('Failed to fetch marketing data:', error); }
+    setIsLoading(false);
   };
 
   const handleRegenerateId = async () => {
@@ -81,6 +76,50 @@ export const SiteTracking = () => {
     await navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Form CRUD handlers
+  const openFormBuilder = (form?: any) => {
+    if (form) {
+      setEditingForm(form);
+      setFormName(form.name);
+      setFormUrl(form.url_pattern || '');
+      setFormFields(form.fields || []);
+    } else {
+      setEditingForm(null);
+      setFormName('');
+      setFormUrl('');
+      setFormFields([]);
+    }
+    setShowFormBuilder(true);
+  };
+
+  const addField = () => setFormFields([...formFields, { name: '', type: 'text' }]);
+
+  const removeField = (idx: number) => setFormFields(formFields.filter((_, i) => i !== idx));
+
+  const updateField = (idx: number, key: string, val: string) => {
+    setFormFields(formFields.map((f, i) => i === idx ? { ...f, [key]: val } : f));
+  };
+
+  const handleSaveForm = async () => {
+    if (!formName.trim()) { alert('Dê um nome ao formulário'); return; }
+    try {
+      const method = editingForm ? 'PUT' : 'POST';
+      const url = editingForm ? `/api/tracking-forms/${editingForm.id}` : '/api/tracking-forms';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_id: accountId, name: formName, url_pattern: formUrl, fields: formFields })
+      });
+      if (res.ok) { setShowFormBuilder(false); fetchData(); }
+      else { const err = await res.json(); alert('Erro: ' + (err.error || 'Erro desconhecido')); }
+    } catch (e) { console.error(e); alert('Erro ao salvar'); }
+  };
+
+  const handleDeleteForm = async (id: string) => {
+    if (!confirm('Excluir este formulário?')) return;
+    try { await fetch(`/api/tracking-forms/${id}`, { method: 'DELETE' }); fetchData(); } catch (e) { /* */ }
   };
 
   const getTrackerCode = () => {
@@ -239,18 +278,9 @@ export const SiteTracking = () => {
             <div className="flex items-center gap-4">
               <h3 className="text-lg font-bold text-slate-900">Eventos Recentes</h3>
               <div className="flex rounded-lg bg-slate-100 p-1">
-                <button
-                  onClick={() => setActiveTab('overview')}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === 'overview' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  Visão Geral
-                </button>
-                <button
-                  onClick={() => setActiveTab('events')}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === 'events' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  Todos os Eventos
-                </button>
+                <button onClick={() => setActiveTab('overview')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === 'overview' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Visão Geral</button>
+                <button onClick={() => setActiveTab('events')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === 'events' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Eventos</button>
+                <button onClick={() => setActiveTab('forms')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${activeTab === 'forms' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Formulários</button>
               </div>
             </div>
             <button
@@ -325,6 +355,83 @@ export const SiteTracking = () => {
             </div>
           )}
         </div>
+
+        {/* Formulários Tab */}
+        {activeTab === 'forms' && (
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden mt-6">
+            <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-slate-50/50">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Formulários Rastreados</h3>
+                <p className="text-sm text-slate-500">Cadastre os formulários do seu site para capturar leads automaticamente.</p>
+              </div>
+              <button onClick={() => openFormBuilder()} className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-sm"><Plus size={16} />Novo Formulário</button>
+            </div>
+
+            {!showFormBuilder && trackingForms.length === 0 ? (
+              <div className="p-12 text-center">
+                <FormInput className="mx-auto text-slate-300 mb-4" size={48} />
+                <p className="text-slate-400 font-bold text-lg">Nenhum formulário cadastrado</p>
+                <p className="text-sm text-slate-400 mt-2 mb-6">Cadastre o formulário do seu site para começar a capturar leads.</p>
+                <button onClick={() => openFormBuilder()} className="inline-flex items-center gap-2 px-5 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold"><Plus size={20} />Cadastrar Formulário</button>
+              </div>
+            ) : showFormBuilder ? (
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h4 className="text-lg font-bold text-slate-900">{editingForm ? 'Editar Formulário' : 'Novo Formulário'}</h4>
+                  <button onClick={() => setShowFormBuilder(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+                </div>
+                <div className="space-y-4 max-w-2xl">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Nome do formulário *</label>
+                    <input type="text" value={formName} onChange={e => setFormName(e.target.value)} placeholder="Ex: Formulário de Contato" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">URL da página (opcional)</label>
+                    <input type="text" value={formUrl} onChange={e => setFormUrl(e.target.value)} placeholder="Ex: /contato, /cadastro" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white" />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-bold text-slate-700">Campos para capturar</label>
+                      <button onClick={addField} className="flex items-center gap-1 text-xs font-bold text-teal-600 hover:text-teal-700"><Plus size={14} />Adicionar campo</button>
+                    </div>
+                    <div className="space-y-2">
+                      {formFields.map((f, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <input type="text" value={f.name} onChange={e => updateField(idx, 'name', e.target.value)} placeholder="Nome do campo (ex: email)" className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white" />
+                          <select value={f.type} onChange={e => updateField(idx, 'type', e.target.value)} className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white">
+                            <option value="text">Texto</option><option value="email">Email</option><option value="phone">Telefone</option><option value="name">Nome</option><option value="company">Empresa</option><option value="other">Outro</option>
+                          </select>
+                          <button onClick={() => removeField(idx)} className="p-2 text-slate-400 hover:text-red-500"><Trash2 size={16} /></button>
+                        </div>
+                      ))}
+                      {formFields.length === 0 && <p className="text-sm text-slate-400 text-center py-4">Nenhum campo adicionado. Adicione os campos que deseja capturar.</p>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 pt-4 border-t border-slate-100">
+                    <button onClick={handleSaveForm} className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-sm"><Save size={16} />Salvar</button>
+                    <button onClick={() => setShowFormBuilder(false)} className="px-5 py-2.5 text-slate-500 hover:text-slate-700 font-bold text-sm">Cancelar</button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {trackingForms.map(form => (
+                  <div key={form.id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50">
+                    <div>
+                      <h4 className="font-bold text-slate-900">{form.name}</h4>
+                      {form.url_pattern && <p className="text-xs text-slate-500 mt-0.5">URL: {form.url_pattern}</p>}
+                      <p className="text-xs text-slate-400 mt-1">{(form.fields || []).length} campos: {(form.fields || []).map((f: any) => f.name).join(', ')}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openFormBuilder(form)} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-white"><Edit2 size={16} /></button>
+                      <button onClick={() => handleDeleteForm(form.id)} className="p-2 text-slate-400 hover:text-red-500 rounded-lg hover:bg-white"><Trash2 size={16} /></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
