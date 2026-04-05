@@ -1318,9 +1318,10 @@ app.post('/tracking/events', async (c) => {
       });
     }
 
-    console.log('[TRACKING] Received event:', JSON.stringify(body));
+    console.log('[TRACKING] Received body:', JSON.stringify(body).substring(0, 500));
 
     const { tracking_id, event_type, url, referrer, form_data, visitor_id } = body;
+    console.log('[TRACKING] event_type:', event_type, 'form_data:', JSON.stringify(form_data));
 
     if (!tracking_id) {
       console.error('[TRACKING] Missing tracking_id');
@@ -1383,10 +1384,11 @@ app.post('/tracking/events', async (c) => {
 
     console.log('[TRACKING] Event saved:', eventId);
 
-    // Auto-register form if it's a form event with a new form_id
-    if (event_type === 'form' && body.form_data && body.form_data.fid) {
-      const formId = body.form_data.fid;
-      const fields = body.form_data.fields || {};
+    // Auto-register form if event has form_data (works for both 'form' and 'conversion' events)
+    var formData = body.form_data;
+    if (formData && formData.fid) {
+      const formId = formData.fid;
+      const fields = formData.fields || {};
       const fieldNames = Object.keys(fields).map(k => ({ name: k, type: detectFieldName(k) }));
 
       // Check if form already registered
@@ -1405,7 +1407,7 @@ app.post('/tracking/events', async (c) => {
           null,
           JSON.stringify(fieldNames)
         ).run();
-        console.log('[TRACKING] Auto-registered form:', formId);
+        console.log('[TRACKING] Auto-registered form:', formId, 'with fields:', fieldNames.map(f => f.name).join(', '));
       }
     }
 
