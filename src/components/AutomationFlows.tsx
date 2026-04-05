@@ -186,7 +186,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
-  const panRef = useRef<{ active: boolean; sx: number; sy: number; px: number; py: number } | null>(null);
+  const panRef = useRef<{ active: boolean; sx: number; sy: number; sxScroll: number; syScroll: number } | null>(null);
 
   // Load stages/users
   useEffect(() => {
@@ -209,6 +209,32 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
     }
   }, [nodes.length]);
 
+  // Pan on empty area (drag)
+  const onCanvasDown = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-node]')) return;
+    if (!canvasRef.current) return;
+    panRef.current = { active: true, sx: e.clientX, sy: e.clientY, sxScroll: canvasRef.current.scrollLeft, syScroll: canvasRef.current.scrollTop };
+    canvasRef.current.style.cursor = 'grabbing';
+  }, []);
+
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      if (panRef.current?.active && canvasRef.current) {
+        canvasRef.current.scrollLeft = panRef.current.sxScroll - (e.clientX - panRef.current.sx);
+        canvasRef.current.scrollTop = panRef.current.syScroll - (e.clientY - panRef.current.sy);
+      }
+      if (dragRef.current) {
+        const d = dragRef.current;
+        setNodes(ns => ns.map(n => n.id === d.id ? { ...n, x: Math.max(0, d.ox + (e.clientX - d.sx) / zoom), y: Math.max(0, d.oy + (e.clientY - d.sy) / zoom) } : n));
+      }
+    };
+    const up = () => { panRef.current = null; dragRef.current = null; if (canvasRef.current) canvasRef.current.style.cursor = ''; };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, [zoom]);
+
   // Mouse tracking for connection preview
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -228,35 +254,14 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
-    const h = (e: WheelEvent) => { e.preventDefault(); setZoom(z => Math.min(Math.max(z + (e.deltaY > 0 ? -0.1 : 0.1), 0.3), 2)); };
+    const h = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom(z => Math.min(Math.max(z + delta, 0.3), 2));
+    };
     el.addEventListener('wheel', h, { passive: false });
     return () => el.removeEventListener('wheel', h);
   }, []);
-
-  // Canvas mouse: pan on empty area
-  const onCanvasDown = useCallback((e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    // Only pan if clicking on background (not a node or port)
-    if (target.closest('[data-node]')) return;
-    panRef.current = { active: true, sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y };
-    canvasRef.current!.style.cursor = 'grabbing';
-  }, [pan]);
-
-  useEffect(() => {
-    const move = (e: MouseEvent) => {
-      if (panRef.current?.active) {
-        setPan({ x: panRef.current.px + e.clientX - panRef.current.sx, y: panRef.current.py + e.clientY - panRef.current.sy });
-      }
-      if (dragRef.current) {
-        const d = dragRef.current;
-        setNodes(ns => ns.map(n => n.id === d.id ? { ...n, x: Math.max(0, d.ox + (e.clientX - d.sx) / zoom), y: Math.max(0, d.oy + (e.clientY - d.sy) / zoom) } : n));
-      }
-    };
-    const up = () => { panRef.current = null; dragRef.current = null; if (canvasRef.current) canvasRef.current.style.cursor = ''; };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-  }, [zoom]);
 
   const dragStart = useCallback((id: string, e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
