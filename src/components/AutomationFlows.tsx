@@ -289,6 +289,11 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
           <div className="flex-1"><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nome do fluxo..." className="text-lg font-bold text-slate-900 border-none focus:outline-none bg-transparent w-full" /><input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição..." className="text-xs text-slate-500 border-none focus:outline-none bg-transparent w-full" /></div>
         </div>
         <div className="flex items-center gap-2">
+          {nodes.length > 0 && (
+            <button onClick={() => setAddMenuIdx(addMenuIdx !== null ? null : nodes.length - 1)} className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-sm">
+              <Plus size={15} />Adicionar bloco
+            </button>
+          )}
           <button onClick={doSave} disabled={saving || !nodes.length} className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-sm disabled:opacity-50">{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}Salvar</button>
         </div>
       </div>
