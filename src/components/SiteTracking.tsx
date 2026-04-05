@@ -80,7 +80,7 @@ export const SiteTracking = () => {
     var t='${trackingId}';
     var e='${origin}';
     var s=document.createElement('script');
-    s.src=e+'/tracker.js?v=19';
+    s.src=e+'/tracker.js?v=20';
     s.onload=function(){NexuxTracker.init(t,e)};
     document.head.appendChild(s);
   })();

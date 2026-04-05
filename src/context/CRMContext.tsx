@@ -26,7 +26,7 @@ export const CRMProvider: React.FC<{children: React.ReactNode}> = ({ children })
   useEffect(() => {
     // Perform database migration and seeding once per browser environment
     // Use a version identifier to allow forcing a migration if the schema changes in the future
-    const db_version = 'v3';
+    const db_version = 'v4';
     if (localStorage.getItem(`nexus_db_initialized_${db_version}`)) return;
 
     const initializeDB = async () => {
