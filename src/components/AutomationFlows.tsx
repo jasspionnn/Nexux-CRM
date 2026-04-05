@@ -160,7 +160,7 @@ export const AutomationFlows = () => {
           )}
         </div></div>
       ) : (
-        <Builder automation={editing!} onClose={() => { setShowBuilder(false); setEditing(null); }} onRefresh={fetchAutos} accountId={aid} />
+        <Builder key={editing.id} automation={editing!} onClose={() => { setShowBuilder(false); setEditing(null); }} onRefresh={fetchAutos} accountId={aid} />
       )}
     </div>
   );
@@ -187,7 +187,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
   const panRef = useRef<{ active: boolean; sx: number; sy: number; px: number; py: number } | null>(null);
-  const initialized = useRef(false);
+  const autoFitDone = useRef<string | null>(null);
 
   // Load stages/users
   useEffect(() => {
@@ -201,25 +201,30 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
     })();
   }, [accountId]);
 
-  // Auto-fit viewport when opening existing automation with nodes
+  // Auto-fit when opening an automation with nodes
   useEffect(() => {
-    if (!initialized.current && nodes.length > 0 && canvasRef.current) {
-      initialized.current = true;
-      const minX = Math.min(...nodes.map(n => n.x));
-      const minY = Math.min(...nodes.map(n => n.y));
-      const maxX = Math.max(...nodes.map(n => n.x + NODE_W));
-      const maxY = Math.max(...nodes.map(n => n.y + nodeH(n)));
-      const contentW = maxX - minX + 100;
-      const contentH = maxY - minY + 100;
-      const rect = canvasRef.current.getBoundingClientRect();
-      const scale = Math.min(rect.width / contentW, rect.height / contentH, 1);
-      setZoom(scale);
-      setPan({
-        x: (rect.width - contentW * scale) / 2 - minX * scale,
-        y: (rect.height - contentH * scale) / 2 - minY * scale,
-      });
-    }
-  }, [nodes]);
+    if (nodes.length === 0) return;
+    if (autoFitDone.current === automation.id) return;
+    autoFitDone.current = automation.id;
+
+    const minX = Math.min(...nodes.map(n => n.x));
+    const minY = Math.min(...nodes.map(n => n.y));
+
+    // Reset everything and scroll to first node
+    setPan({ x: 0, y: 0 });
+    setZoom(1);
+
+    // Use rAF to ensure DOM is painted before scrolling
+    requestAnimationFrame(() => {
+      if (canvasRef.current) {
+        canvasRef.current.scrollTo({
+          left: Math.max(0, minX - 100),
+          top: Math.max(0, minY - 60),
+          behavior: 'instant' as any,
+        });
+      }
+    });
+  }, [nodes.length, automation.id]);
 
   // Mouse tracking for connection preview (in world coords)
   useEffect(() => {
