@@ -187,7 +187,6 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
   const panRef = useRef<{ active: boolean; sx: number; sy: number; px: number; py: number } | null>(null);
-  const autoFitDone = useRef<string | null>(null);
 
   // Load stages/users
   useEffect(() => {
@@ -201,34 +200,29 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
     })();
   }, [accountId]);
 
-  // Auto-fit: pan nodes into visible area on first load
+  // Scroll to first node on load
   useEffect(() => {
-    if (nodes.length === 0) return;
-    if (autoFitDone.current === automation.id) return;
-    autoFitDone.current = automation.id;
+    if (nodes.length > 0 && canvasRef.current) {
+      const minY = Math.min(...nodes.map(n => n.y));
+      const minX = Math.min(...nodes.map(n => n.x));
+      canvasRef.current.scrollTo({ left: Math.max(0, minX - 80), top: Math.max(0, minY - 40), behavior: 'instant' as any });
+    }
+  }, [nodes.length]);
 
-    const minX = Math.min(...nodes.map(n => n.x));
-    const minY = Math.min(...nodes.map(n => n.y));
-
-    // Pan to shift all nodes into visible area (100px from top-left)
-    setPan({ x: 100 - minX, y: 80 - minY });
-    setZoom(1);
-  }, [nodes.length, automation.id]);
-
-  // Mouse tracking for connection preview (in world coords)
+  // Mouse tracking for connection preview
   useEffect(() => {
     const h = (e: MouseEvent) => {
       if (connFrom && canvasRef.current) {
         const r = canvasRef.current.getBoundingClientRect();
         setMouse({
-          x: (e.clientX - r.left + canvasRef.current.scrollLeft - pan.x) / zoom,
-          y: (e.clientY - r.top + canvasRef.current.scrollTop - pan.y) / zoom,
+          x: e.clientX - r.left + canvasRef.current.scrollLeft,
+          y: e.clientY - r.top + canvasRef.current.scrollTop,
         });
       }
     };
     window.addEventListener('mousemove', h);
     return () => window.removeEventListener('mousemove', h);
-  }, [connFrom, zoom, pan]);
+  }, [connFrom]);
 
   // Wheel zoom
   useEffect(() => {
@@ -353,16 +347,16 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
             <span className="text-xs font-bold text-slate-600 w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
             <button onClick={() => setZoom(z => Math.min(z + 0.1, 2))} className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg"><ZoomIn size={18} /></button>
             <div className="w-px h-5 bg-slate-200" />
-            <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg" title="Reset"><Minus size={18} /></button>
+            <button onClick={() => { if (canvasRef.current) canvasRef.current.scrollTo(0, 0); }} className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg" title="Voltar ao topo"><Minus size={18} /></button>
           </div>
 
           {/* Scaled content */}
-          <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0', width: canvasW, height: canvasH, position: 'absolute', top: 0, left: 0, visibility: nodes.length > 0 ? 'visible' : 'visible' }}>
+          <div style={{ width: canvasW, height: canvasH, position: 'relative' }}>
             {/* Grid */}
             <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:20px_20px]" />
 
             {/* SVG connections */}
-            <svg className="absolute" width={canvasW} height={canvasH} style={{ pointerEvents: 'none' }}>
+            <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
               {connections.map(c => {
                 const path = connPath(nodes, c.from, c.to);
                 if (!path) return null;
