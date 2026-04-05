@@ -1,6 +1,6 @@
 export const onRequestGet = async () => {
   const script = `(function(w){
-    var T={id:null,b:null,v:null,
+    var T={id:null,b:null,v:null,lastForm:0,
       init:function(t,e){
         if(T.id)return;
         T.id=t;
@@ -28,6 +28,10 @@ export const onRequestGet = async () => {
         return out;
       },
       _sf:function(name,url,fields){
+        // Debounce: ignore if same form submitted within 2 seconds
+        var now=Date.now();
+        if(now-T.lastForm<2000){console.log('[NX] Form skipped (debounce)');return;}
+        T.lastForm=now;
         var hl=false,ck=['email','phone','tel','whatsapp','nome','name','cpf','celular','telefone','mail'];
         for(var k in fields){var lk=k.toLowerCase();for(var j=0;j<ck.length;j++){if(lk.indexOf(ck[j])!==-1){hl=true;break;}}}
         T._s('form',{url:url,ref:document.referrer||null,form_data:{fid:name,action:url,fields:fields,has_lead:hl}});
@@ -54,8 +58,11 @@ export const onRequestGet = async () => {
         document.addEventListener('submit',function(e){
           var f=e.target;
           if(!f||f.tagName!=='FORM')return;
+          // Prevent double capture from Elementor double-submit
           if(f._nx)return;
           f._nx=true;
+          // Also reset _nx after 3 seconds to allow next submission
+          setTimeout(function(){f._nx=false;},3000);
           var fd={},hl=false;
           var fname=T._getFName(f);
           for(var i=0;i<f.elements.length;i++){

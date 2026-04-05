@@ -418,6 +418,13 @@ app.get('/migrate-db', async (c) => {
       );
     `).run();
 
+    // Add UNIQUE constraint on (account_id, name) if not exists
+    try {
+      await c.env.DB.prepare(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_tracking_forms_account_name ON tracking_forms(account_id, name)'
+      ).run();
+    } catch (e) { /* index may already exist */ }
+
     // Segments table
     await c.env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS segments (
@@ -1405,17 +1412,26 @@ app.post('/tracking/events', async (c) => {
         ).bind(settings.account_id, formName).first();
 
         if (!existing && fieldNames.length > 0) {
-          await c.env.DB.prepare(
-            'INSERT INTO tracking_forms (id, account_id, name, url_pattern, form_selector, fields, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)'
-          ).bind(
-            crypto.randomUUID(),
-            settings.account_id,
-            formName,
-            (url || null),
-            null,
-            JSON.stringify(fieldNames)
-          ).run();
-          console.log('[TRACKING] Auto-registered form:', formName, fieldNames.map((f: any) => f.name).join(', '));
+          try {
+            await c.env.DB.prepare(
+              'INSERT INTO tracking_forms (id, account_id, name, url_pattern, form_selector, fields, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)'
+            ).bind(
+              crypto.randomUUID(),
+              settings.account_id,
+              formName,
+              (url || null),
+              null,
+              JSON.stringify(fieldNames)
+            ).run();
+            console.log('[TRACKING] Auto-registered form:', formName);
+          } catch (dbErr: any) {
+            // UNIQUE constraint violation - form already exists
+            if (dbErr.message && dbErr.message.includes('UNIQUE')) {
+              console.log('[TRACKING] Form already exists (unique constraint):', formName);
+            } else {
+              console.error('[TRACKING] DB error registering form:', dbErr.message);
+            }
+          }
         } else if (existing) {
           console.log('[TRACKING] Form already exists:', formName, '(skipping)');
         }
