@@ -162,3 +162,25 @@ CREATE TABLE IF NOT EXISTS global_settings (
     login_quote_author TEXT,
     login_quote_role TEXT
 );
+
+-- Configurações de Tracking por Conta
+CREATE TABLE IF NOT EXISTS tracking_settings (
+    account_id TEXT PRIMARY KEY,
+    tracking_id TEXT NOT NULL UNIQUE,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+-- Eventos de Tracking (pageviews, formulários, conversões)
+CREATE TABLE IF NOT EXISTS tracking_events (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    tracking_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    url TEXT,
+    referrer TEXT,
+    form_data TEXT,
+    visitor_id TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);

@@ -378,6 +378,31 @@ app.get('/migrate-db', async (c) => {
       `).run();
     } catch (e) { /* ignore if already seeded */ }
 
+    // Tracking tables
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS tracking_settings (
+          account_id TEXT PRIMARY KEY,
+          tracking_id TEXT NOT NULL UNIQUE,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS tracking_events (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          tracking_id TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          url TEXT,
+          referrer TEXT,
+          form_data TEXT,
+          visitor_id TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Migration error:', error);
@@ -1105,6 +1130,142 @@ app.post('/public/register', async (c) => {
       name: body.owner_name, 
       email: body.email, 
       role: 'ACCOUNT_ADMIN'
+    });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ==================== TRACKING ENDPOINTS ====================
+
+// Get tracking settings for current account
+app.get('/tracking', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+
+    let settings = await c.env.DB.prepare(
+      'SELECT * FROM tracking_settings WHERE account_id = ?'
+    ).bind(accountId).first();
+
+    // Create tracking_id if not exists
+    if (!settings) {
+      const trackingId = 'trk_' + crypto.randomUUID().substring(0, 12);
+      await c.env.DB.prepare(
+        'INSERT INTO tracking_settings (account_id, tracking_id) VALUES (?, ?)'
+      ).bind(accountId, trackingId).run();
+      settings = { account_id: accountId, tracking_id: trackingId };
+    }
+
+    return c.json(settings);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Regenerate tracking ID
+app.post('/tracking/regenerate', async (c) => {
+  try {
+    const body = await c.req.json();
+    const accountId = body.account_id || 'acc_demo';
+
+    const newTrackingId = 'trk_' + crypto.randomUUID().substring(0, 12);
+
+    await c.env.DB.prepare(
+      'INSERT INTO tracking_settings (account_id, tracking_id) VALUES (?, ?) ON CONFLICT(account_id) DO UPDATE SET tracking_id = ?'
+    ).bind(accountId, newTrackingId, newTrackingId).run();
+
+    return c.json({ tracking_id: newTrackingId });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Get tracking events
+app.get('/tracking/events', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+    const eventType = c.req.query('event_type');
+    const limit = parseInt(c.req.query('limit') || '100');
+
+    let query = 'SELECT * FROM tracking_events WHERE account_id = ?';
+    const params: any[] = [accountId];
+
+    if (eventType) {
+      query += ' AND event_type = ?';
+      params.push(eventType);
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT ?';
+    params.push(limit);
+
+    const result = await c.env.DB.prepare(query).bind(...params).all();
+    return c.json(result.results);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Public endpoint to receive tracking events from external sites
+app.post('/tracking/events', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { tracking_id, event_type, url, referrer, form_data, visitor_id } = body;
+
+    if (!tracking_id || !event_type) {
+      return c.json({ error: 'tracking_id and event_type are required' }, 400);
+    }
+
+    // Find account by tracking_id
+    const settings: any = await c.env.DB.prepare(
+      'SELECT account_id FROM tracking_settings WHERE tracking_id = ?'
+    ).bind(tracking_id).first();
+
+    if (!settings) {
+      return c.json({ error: 'Invalid tracking_id' }, 404);
+    }
+
+    const eventId = 'evt_' + crypto.randomUUID().substring(0, 12);
+
+    await c.env.DB.prepare(
+      'INSERT INTO tracking_events (id, account_id, tracking_id, event_type, url, referrer, form_data, visitor_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      eventId,
+      settings.account_id,
+      tracking_id,
+      event_type,
+      url || null,
+      referrer || null,
+      form_data ? JSON.stringify(form_data) : null,
+      visitor_id || null
+    ).run();
+
+    return c.json({ success: true, id: eventId });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Get tracking stats (counts by event type)
+app.get('/tracking/stats', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+
+    const pageviews = await c.env.DB.prepare(
+      "SELECT COUNT(*) as count FROM tracking_events WHERE account_id = ? AND event_type = 'pageview'"
+    ).bind(accountId).first() as any;
+
+    const forms = await c.env.DB.prepare(
+      "SELECT COUNT(*) as count FROM tracking_events WHERE account_id = ? AND event_type = 'form'"
+    ).bind(accountId).first() as any;
+
+    const conversions = await c.env.DB.prepare(
+      "SELECT COUNT(*) as count FROM tracking_events WHERE account_id = ? AND event_type = 'conversion'"
+    ).bind(accountId).first() as any;
+
+    return c.json({
+      pageviews: pageviews?.count || 0,
+      forms: forms?.count || 0,
+      conversions: conversions?.count || 0
     });
   } catch (error: any) {
     return c.json({ error: error.message }, 500);

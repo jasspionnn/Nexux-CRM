@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Trello, Users, CheckSquare, Bot, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Trello, Users, CheckSquare, Bot, Settings, LogOut, BarChart3 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 export const Sidebar = ({ currentView, onChangeView }: any) => {
@@ -10,6 +10,7 @@ export const Sidebar = ({ currentView, onChangeView }: any) => {
     { id: 'kanban', label: 'Pipeline (Kanban)', icon: Trello },
     { id: 'leads-db', label: 'Leads Database', icon: Users },
     { id: 'tasks', label: 'Tasks', icon: CheckSquare },
+    { id: 'marketing', label: 'Marketing', icon: BarChart3 },
     { id: 'ai-bot', label: 'AI & Bot Settings', icon: Bot },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];

@@ -30,6 +30,7 @@ export default defineConfig(({ mode }) => {
         }
       }
     },
+    publicDir: 'public',
     build: {
       outDir: 'dist',
       emptyOutDir: true,

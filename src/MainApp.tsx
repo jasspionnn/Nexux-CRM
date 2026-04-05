@@ -11,6 +11,7 @@ import { LoginPage } from './components/LoginPage';
 import { NexusAdminDashboard } from './components/NexusAdminDashboard';
 import { StrategicInsights } from './components/StrategicInsights';
 import { AIBotSettings } from './components/AIBotSettings';
+import { Marketing } from './components/Marketing';
 import { UserRole } from './types';
 import { Loader2 } from 'lucide-react';
 
@@ -82,12 +83,13 @@ const AppContent = () => {
       case 'kanban': return <KanbanBoard onNavigate={handleNavigate} />;
       case 'leads-db': return <LeadsDatabase onNavigate={handleNavigate} />;
       case 'tasks': return <TasksView onNavigate={handleNavigate} />;
+      case 'marketing': return <Marketing />;
       case 'ai-bot': return <AIBotSettings />;
       case 'settings': return <Settings />;
-      case 'lead-detail': 
-        return <LeadDetailPage 
-            leadId={viewData} 
-            onBack={() => handleNavigate('kanban')} 
+      case 'lead-detail':
+        return <LeadDetailPage
+            leadId={viewData}
+            onBack={() => handleNavigate('kanban')}
             onNavigate={handleNavigate}
         />;
       default: return <KanbanBoard onNavigate={handleNavigate} />;
