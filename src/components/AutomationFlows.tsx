@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   GitBranch, Plus, Play, Pause, Trash2, Edit2, Zap, Clock,
   Mail, Tag, ArrowRight, ChevronRight, Eye, X, Save, Loader2,
@@ -83,11 +83,6 @@ export const AutomationFlows = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
-  const [showCatalog, setShowCatalog] = useState(false);
-  const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
-  const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
-
-  const canvasRef = useRef<HTMLDivElement>(null);
 
   const accountId = currentUser?.account_id || 'acc_demo';
 
@@ -124,7 +119,6 @@ export const AutomationFlows = () => {
     };
     setEditingAutomation(newAutomation);
     setShowBuilder(true);
-    setShowCatalog(true);
   };
 
   const handleEditFlow = (automation: Automation) => {
@@ -134,7 +128,6 @@ export const AutomationFlows = () => {
       connections: automation.connections || [],
     });
     setShowBuilder(true);
-    setShowCatalog(false);
   };
 
   const handleDeleteFlow = async (id: string) => {
@@ -303,7 +296,6 @@ export const AutomationFlows = () => {
           </div>
         </div>
       ) : (
-        // ==================== BUILDER VIEW ====================
         <AutomationBuilder
           automation={editingAutomation!}
           onSave={handleSaveFlow}
@@ -332,11 +324,12 @@ const AutomationBuilder: React.FC<BuilderProps> = ({ automation, onSave, onCance
   const [showCatalog, setShowCatalog] = useState(nodes.length === 0);
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isSaving, setIsSaving] = useState(false);
-  const [funnels, setFunnels] = useState<any[]>([]);
   const [stages, setStages] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
-  const canvasRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const nodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   useEffect(() => {
     const fetchData = async () => {
@@ -347,7 +340,6 @@ const AutomationBuilder: React.FC<BuilderProps> = ({ automation, onSave, onCance
         ]);
         if (fRes.ok) {
           const fData = await fRes.json();
-          setFunnels(fData);
           setStages(fData.flatMap((f: any) => f.stages || []));
         }
         if (uRes.ok) setUsers(await uRes.json());
@@ -356,6 +348,17 @@ const AutomationBuilder: React.FC<BuilderProps> = ({ automation, onSave, onCance
     fetchData();
   }, [accountId]);
 
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (connectingFrom && containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setMousePos({ x: e.clientX - rect.left + containerRef.current.scrollLeft, y: e.clientY - rect.top + containerRef.current.scrollTop });
+      }
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, [connectingFrom]);
+
   const addNode = (nodeType: any, category: NodeType) => {
     const newNode: FlowNode = {
       id: crypto.randomUUID(),
@@ -363,9 +366,20 @@ const AutomationBuilder: React.FC<BuilderProps> = ({ automation, onSave, onCance
       nodeType: nodeType.type,
       label: nodeType.label,
       config: {},
-      position: { x: 300 + Math.random() * 200, y: 150 + nodes.length * 180 }
+      position: { x: 100, y: nodes.length * 220 + 80 }
     };
-    setNodes([...nodes, newNode]);
+
+    const newNodes = [...nodes, newNode];
+    let newConnections = [...connections];
+
+    // Auto-connect to last node
+    if (nodes.length > 0) {
+      const lastNode = nodes[nodes.length - 1];
+      newConnections.push({ id: crypto.randomUUID(), from: lastNode.id, to: newNode.id });
+    }
+
+    setNodes(newNodes);
+    setConnections(newConnections);
     setShowCatalog(false);
   };
 
@@ -379,157 +393,82 @@ const AutomationBuilder: React.FC<BuilderProps> = ({ automation, onSave, onCance
     setSelectedNode(null);
   };
 
-  const startConnection = (fromId: string) => {
-    setConnectingFrom(fromId);
-  };
-
-  const completeConnection = (toId: string) => {
-    if (!connectingFrom || connectingFrom === toId) return;
-    const exists = connections.find(c => c.from === connectingFrom && c.to === toId);
-    if (!exists) {
-      setConnections([...connections, { id: crypto.randomUUID(), from: connectingFrom, to: toId }]);
-    }
-    setConnectingFrom(null);
+  const removeConnection = (connId: string) => {
+    setConnections(connections.filter(c => c.id !== connId));
   };
 
   const handleSave = async () => {
     if (!name.trim()) { alert('Dê um nome ao fluxo'); return; }
     setIsSaving(true);
-    await onSave({
-      id: automation.id,
-      name,
-      description,
-      is_active: 1,
-      trigger_type: nodes.find(n => n.type === 'trigger')?.nodeType || '',
-      trigger_config: nodes.find(n => n.type === 'trigger')?.config || {},
-      nodes,
-      connections,
-      created_at: automation.created_at,
-    });
+    await onSave({ id: automation.id, name, description, is_active: 1, trigger_type: nodes.find(n => n.type === 'trigger')?.nodeType || '', trigger_config: nodes.find(n => n.type === 'trigger')?.config || {}, nodes, connections, created_at: automation.created_at });
     setIsSaving(false);
   };
 
   const getNodeIcon = (node: FlowNode) => {
-    const allNodes = [...TRIGGER_NODES, ...CONDITION_NODES, ...ACTION_NODES, DELAY_NODE];
-    const found = allNodes.find(n => n.type === node.nodeType);
-    return found?.icon || Zap;
+    const all = [...TRIGGER_NODES, ...CONDITION_NODES, ...ACTION_NODES, DELAY_NODE];
+    return all.find(n => n.type === node.nodeType)?.icon || Zap;
   };
 
   const getNodeColor = (node: FlowNode) => {
-    const allNodes = [...TRIGGER_NODES, ...CONDITION_NODES, ...ACTION_NODES, DELAY_NODE];
-    const found = allNodes.find(n => n.type === node.nodeType);
-    return found?.color || 'bg-gray-500';
+    const all = [...TRIGGER_NODES, ...CONDITION_NODES, ...ACTION_NODES, DELAY_NODE];
+    return all.find(n => n.type === node.nodeType)?.color || 'bg-gray-500';
   };
 
-  // Render node config panel
+  const getPortPos = (nodeId: string, side: 'right' | 'left') => {
+    const el = nodeRefs.current.get(nodeId);
+    if (!el || !containerRef.current) return { x: 200, y: 50 };
+    const cRect = containerRef.current.getBoundingClientRect();
+    const eRect = el.getBoundingClientRect();
+    return {
+      x: (side === 'right' ? eRect.right : eRect.left) - cRect.left + containerRef.current.scrollLeft,
+      y: eRect.top - cRect.top + eRect.height / 2 + containerRef.current.scrollTop
+    };
+  };
+
+  const connPath = (fromId: string, toId: string) => {
+    const a = getPortPos(fromId, 'right');
+    const b = getPortPos(toId, 'left');
+    const dx = Math.max(Math.abs(b.x - a.x) * 0.5, 60);
+    return `M${a.x},${a.y} C${a.x + dx},${a.y} ${b.x - dx},${b.y} ${b.x},${b.y}`;
+  };
+
   const renderNodeConfig = (node: FlowNode) => {
     return (
       <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
-        {/* Trigger config */}
-        {node.nodeType === 'new_lead' && (
-          <p className="text-xs text-slate-500">Dispara quando um novo lead é criado no CRM.</p>
-        )}
+        {node.nodeType === 'new_lead' && <p className="text-xs text-slate-500">Dispara quando um novo lead é criado no CRM.</p>}
 
         {node.nodeType === 'stage_change' && (
           <div className="space-y-2">
-            <select
-              value={node.config.from_stage_id || ''}
-              onChange={e => updateNodeConfig(node.id, { from_stage_id: e.target.value })}
-              className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-            >
+            <select value={node.config.from_stage_id || ''} onChange={e => updateNodeConfig(node.id, { from_stage_id: e.target.value })} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg">
               <option value="">De qualquer estágio →</option>
               {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            <select
-              value={node.config.to_stage_id || ''}
-              onChange={e => updateNodeConfig(node.id, { to_stage_id: e.target.value })}
-              className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-            >
+            <select value={node.config.to_stage_id || ''} onChange={e => updateNodeConfig(node.id, { to_stage_id: e.target.value })} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg">
               <option value="">Para qualquer estágio</option>
               {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
         )}
 
-        {node.nodeType === 'page_visit' && (
-          <input
-            type="text"
-            value={node.config.url_pattern || ''}
-            onChange={e => updateNodeConfig(node.id, { url_pattern: e.target.value })}
-            placeholder="URL contém..."
-            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-          />
-        )}
+        {node.nodeType === 'page_visit' && <input type="text" value={node.config.url_pattern || ''} onChange={e => updateNodeConfig(node.id, { url_pattern: e.target.value })} placeholder="URL contém..." className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />}
 
-        {node.nodeType === 'value_gt' && (
-          <input
-            type="number"
-            value={node.config.value || ''}
-            onChange={e => updateNodeConfig(node.id, { value: parseFloat(e.target.value) })}
-            placeholder="Valor > R$"
-            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-          />
-        )}
+        {(node.nodeType === 'value_gt' || node.nodeType === 'value_lt') && <input type="number" value={node.config.value || ''} onChange={e => updateNodeConfig(node.id, { value: parseFloat(e.target.value) })} placeholder={`Valor ${node.nodeType === 'value_gt' ? '>' : '<'} R$`} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />}
 
-        {node.nodeType === 'value_lt' && (
-          <input
-            type="number"
-            value={node.config.value || ''}
-            onChange={e => updateNodeConfig(node.id, { value: parseFloat(e.target.value) })}
-            placeholder="Valor < R$"
-            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-          />
-        )}
-
-        {(node.nodeType === 'has_tag' || node.nodeType === 'not_has_tag') && (
-          <input
-            type="text"
-            value={node.config.tag || ''}
-            onChange={e => updateNodeConfig(node.id, { tag: e.target.value })}
-            placeholder="Nome da tag..."
-            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-          />
-        )}
+        {(node.nodeType === 'has_tag' || node.nodeType === 'not_has_tag') && <input type="text" value={node.config.tag || ''} onChange={e => updateNodeConfig(node.id, { tag: e.target.value })} placeholder="Nome da tag..." className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />}
 
         {node.nodeType === 'stage_is' && (
-          <select
-            value={node.config.stage_id || ''}
-            onChange={e => updateNodeConfig(node.id, { stage_id: e.target.value })}
-            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-          >
+          <select value={node.config.stage_id || ''} onChange={e => updateNodeConfig(node.id, { stage_id: e.target.value })} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg">
             <option value="">Selecione o estágio...</option>
             {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         )}
 
-        {node.nodeType === 'email_contains' && (
-          <input
-            type="text"
-            value={node.config.text || ''}
-            onChange={e => updateNodeConfig(node.id, { text: e.target.value })}
-            placeholder="Email contém..."
-            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-          />
-        )}
+        {node.nodeType === 'email_contains' && <input type="text" value={node.config.text || ''} onChange={e => updateNodeConfig(node.id, { text: e.target.value })} placeholder="Email contém..." className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />}
 
-        {node.nodeType === 'probability_gt' && (
-          <input
-            type="number"
-            value={node.config.probability || ''}
-            onChange={e => updateNodeConfig(node.id, { probability: parseInt(e.target.value) })}
-            placeholder="Probabilidade > %"
-            min={0}
-            max={100}
-            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-          />
-        )}
+        {node.nodeType === 'probability_gt' && <input type="number" value={node.config.probability || ''} onChange={e => updateNodeConfig(node.id, { probability: parseInt(e.target.value) })} placeholder="Probabilidade > %" min={0} max={100} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />}
 
         {node.nodeType === 'move_stage' && (
-          <select
-            value={node.config.to_stage_id || ''}
-            onChange={e => updateNodeConfig(node.id, { to_stage_id: e.target.value })}
-            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-          >
+          <select value={node.config.to_stage_id || ''} onChange={e => updateNodeConfig(node.id, { to_stage_id: e.target.value })} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg">
             <option value="">Mover para estágio...</option>
             {stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
@@ -537,96 +476,37 @@ const AutomationBuilder: React.FC<BuilderProps> = ({ automation, onSave, onCance
 
         {node.nodeType === 'create_task' && (
           <div className="space-y-2">
-            <input
-              type="text"
-              value={node.config.title || ''}
-              onChange={e => updateNodeConfig(node.id, { title: e.target.value })}
-              placeholder="Título da tarefa..."
-              className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-            />
-            <input
-              type="date"
-              value={node.config.due_date || ''}
-              onChange={e => updateNodeConfig(node.id, { due_date: e.target.value })}
-              className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-            />
-            <select
-              value={node.config.assigned_user_id || ''}
-              onChange={e => updateNodeConfig(node.id, { assigned_user_id: e.target.value })}
-              className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-            >
+            <input type="text" value={node.config.title || ''} onChange={e => updateNodeConfig(node.id, { title: e.target.value })} placeholder="Título da tarefa..." className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />
+            <input type="date" value={node.config.due_date || ''} onChange={e => updateNodeConfig(node.id, { due_date: e.target.value })} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />
+            <select value={node.config.assigned_user_id || ''} onChange={e => updateNodeConfig(node.id, { assigned_user_id: e.target.value })} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg">
               <option value="">Atribuir a...</option>
               {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
         )}
 
-        {(node.nodeType === 'add_tag' || node.nodeType === 'remove_tag') && (
-          <input
-            type="text"
-            value={node.config.tag || ''}
-            onChange={e => updateNodeConfig(node.id, { tag: e.target.value })}
-            placeholder="Nome da tag..."
-            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-          />
-        )}
+        {(node.nodeType === 'add_tag' || node.nodeType === 'remove_tag') && <input type="text" value={node.config.tag || ''} onChange={e => updateNodeConfig(node.id, { tag: e.target.value })} placeholder="Nome da tag..." className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />}
 
         {node.nodeType === 'send_email' && (
           <div className="space-y-2">
-            <input
-              type="text"
-              value={node.config.subject || ''}
-              onChange={e => updateNodeConfig(node.id, { subject: e.target.value })}
-              placeholder="Assunto..."
-              className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-            />
-            <textarea
-              value={node.config.body || ''}
-              onChange={e => updateNodeConfig(node.id, { body: e.target.value })}
-              placeholder="Corpo do email..."
-              rows={3}
-              className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg resize-none"
-            />
+            <input type="text" value={node.config.subject || ''} onChange={e => updateNodeConfig(node.id, { subject: e.target.value })} placeholder="Assunto..." className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />
+            <textarea value={node.config.body || ''} onChange={e => updateNodeConfig(node.id, { body: e.target.value })} placeholder="Corpo do email..." rows={3} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg resize-none" />
           </div>
         )}
 
         {node.nodeType === 'send_webhook' && (
           <div className="space-y-2">
-            <input
-              type="url"
-              value={node.config.url || ''}
-              onChange={e => updateNodeConfig(node.id, { url: e.target.value })}
-              placeholder="https://..."
-              className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-            />
-            <select
-              value={node.config.method || 'POST'}
-              onChange={e => updateNodeConfig(node.id, { method: e.target.value })}
-              className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-            >
-              <option value="POST">POST</option>
-              <option value="GET">GET</option>
-              <option value="PUT">PUT</option>
+            <input type="url" value={node.config.url || ''} onChange={e => updateNodeConfig(node.id, { url: e.target.value })} placeholder="https://..." className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />
+            <select value={node.config.method || 'POST'} onChange={e => updateNodeConfig(node.id, { method: e.target.value })} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg">
+              <option value="POST">POST</option><option value="GET">GET</option><option value="PUT">PUT</option>
             </select>
           </div>
         )}
 
-        {node.nodeType === 'create_note' && (
-          <textarea
-            value={node.config.content || ''}
-            onChange={e => updateNodeConfig(node.id, { content: e.target.value })}
-            placeholder="Conteúdo da nota..."
-            rows={3}
-            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg resize-none"
-          />
-        )}
+        {node.nodeType === 'create_note' && <textarea value={node.config.content || ''} onChange={e => updateNodeConfig(node.id, { content: e.target.value })} placeholder="Conteúdo da nota..." rows={3} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg resize-none" />}
 
         {node.nodeType === 'assign_user' && (
-          <select
-            value={node.config.user_id || ''}
-            onChange={e => updateNodeConfig(node.id, { user_id: e.target.value })}
-            className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-          >
+          <select value={node.config.user_id || ''} onChange={e => updateNodeConfig(node.id, { user_id: e.target.value })} className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-lg">
             <option value="">Selecionar usuário...</option>
             {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
@@ -634,22 +514,9 @@ const AutomationBuilder: React.FC<BuilderProps> = ({ automation, onSave, onCance
 
         {node.nodeType === 'delay' && (
           <div className="flex items-center gap-2">
-            <input
-              type="number"
-              value={node.config.duration || ''}
-              onChange={e => updateNodeConfig(node.id, { duration: parseInt(e.target.value) })}
-              placeholder="Duração"
-              min={1}
-              className="w-20 px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-            />
-            <select
-              value={node.config.unit || 'minutes'}
-              onChange={e => updateNodeConfig(node.id, { unit: e.target.value })}
-              className="px-2 py-1.5 text-xs border border-slate-200 rounded-lg"
-            >
-              <option value="minutes">minutos</option>
-              <option value="hours">horas</option>
-              <option value="days">dias</option>
+            <input type="number" value={node.config.duration || ''} onChange={e => updateNodeConfig(node.id, { duration: parseInt(e.target.value) })} placeholder="Duração" min={1} className="w-20 px-2 py-1.5 text-xs border border-slate-200 rounded-lg" />
+            <select value={node.config.unit || 'minutes'} onChange={e => updateNodeConfig(node.id, { unit: e.target.value })} className="px-2 py-1.5 text-xs border border-slate-200 rounded-lg">
+              <option value="minutes">minutos</option><option value="hours">horas</option><option value="days">dias</option>
             </select>
           </div>
         )}
@@ -659,145 +526,70 @@ const AutomationBuilder: React.FC<BuilderProps> = ({ automation, onSave, onCance
 
   return (
     <div className="h-full flex flex-col bg-slate-50">
-      {/* Builder Header */}
+      {/* Header */}
       <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4 flex-1">
-          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600">
-            <X size={20} />
-          </button>
+          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
           <div className="flex-1">
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="Nome do fluxo..."
-              className="text-lg font-bold text-slate-900 border-none focus:outline-none bg-transparent w-full"
-            />
-            <input
-              type="text"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="Descrição (opcional)"
-              className="text-sm text-slate-500 border-none focus:outline-none bg-transparent w-full"
-            />
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nome do fluxo..." className="text-lg font-bold text-slate-900 border-none focus:outline-none bg-transparent w-full" />
+            <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição (opcional)" className="text-sm text-slate-500 border-none focus:outline-none bg-transparent w-full" />
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowCatalog(!showCatalog)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-colors"
-          >
-            <Plus size={16} />
-            Adicionar Bloco
+          <button onClick={() => setShowCatalog(!showCatalog)} className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-colors">
+            <Plus size={16} /> Adicionar Bloco
           </button>
-          <button
-            onClick={handleSave}
-            disabled={isSaving || nodes.length === 0}
-            className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold text-sm transition-colors disabled:opacity-50"
-          >
-            {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-            Salvar
+          <button onClick={handleSave} disabled={isSaving || nodes.length === 0} className="flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold text-sm transition-colors disabled:opacity-50">
+            {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Salvar
           </button>
         </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Node Catalog Sidebar */}
+        {/* Catalog */}
         {showCatalog && (
           <aside className="w-72 bg-white border-r border-slate-200 overflow-y-auto shrink-0">
             <div className="p-4">
               <h3 className="text-sm font-bold text-slate-700 mb-4">Blocos Disponíveis</h3>
-
               <div className="space-y-5">
-                {/* Triggers */}
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Gatilhos</p>
                   <div className="space-y-1.5">
-                    {TRIGGER_NODES.map(node => {
-                      const Icon = node.icon;
-                      return (
-                        <button
-                          key={node.type}
-                          onClick={() => addNode(node, 'trigger')}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 hover:border-teal-300 hover:bg-teal-50 transition-all text-left"
-                        >
-                          <div className={`w-8 h-8 rounded-lg ${node.color} flex items-center justify-center text-white shrink-0`}>
-                            <Icon size={16} />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-bold text-slate-700 truncate">{node.label}</p>
-                            <p className="text-[10px] text-slate-400 truncate">{node.description}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
+                    {TRIGGER_NODES.map(node => { const Icon = node.icon; return (
+                      <button key={node.type} onClick={() => addNode(node, 'trigger')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 hover:border-teal-300 hover:bg-teal-50 transition-all text-left">
+                        <div className={`w-8 h-8 rounded-lg ${node.color} flex items-center justify-center text-white shrink-0`}><Icon size={16} /></div>
+                        <div className="min-w-0"><p className="text-sm font-bold text-slate-700 truncate">{node.label}</p><p className="text-[10px] text-slate-400 truncate">{node.description}</p></div>
+                      </button>
+                    );})}
                   </div>
                 </div>
-
-                {/* Conditions */}
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Condições</p>
                   <div className="space-y-1.5">
-                    {CONDITION_NODES.map(node => {
-                      const Icon = node.icon;
-                      return (
-                        <button
-                          key={node.type}
-                          onClick={() => addNode(node, 'condition')}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 hover:border-amber-300 hover:bg-amber-50 transition-all text-left"
-                        >
-                          <div className={`w-8 h-8 rounded-lg ${node.color} flex items-center justify-center text-white shrink-0`}>
-                            <Icon size={16} />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-bold text-slate-700 truncate">{node.label}</p>
-                            <p className="text-[10px] text-slate-400 truncate">{node.description}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
+                    {CONDITION_NODES.map(node => { const Icon = node.icon; return (
+                      <button key={node.type} onClick={() => addNode(node, 'condition')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 hover:border-amber-300 hover:bg-amber-50 transition-all text-left">
+                        <div className={`w-8 h-8 rounded-lg ${node.color} flex items-center justify-center text-white shrink-0`}><Icon size={16} /></div>
+                        <div className="min-w-0"><p className="text-sm font-bold text-slate-700 truncate">{node.label}</p><p className="text-[10px] text-slate-400 truncate">{node.description}</p></div>
+                      </button>
+                    );})}
                   </div>
                 </div>
-
-                {/* Actions */}
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Ações</p>
                   <div className="space-y-1.5">
-                    {ACTION_NODES.map(node => {
-                      const Icon = node.icon;
-                      return (
-                        <button
-                          key={node.type}
-                          onClick={() => addNode(node, 'action')}
-                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-all text-left"
-                        >
-                          <div className={`w-8 h-8 rounded-lg ${node.color} flex items-center justify-center text-white shrink-0`}>
-                            <Icon size={16} />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-bold text-slate-700 truncate">{node.label}</p>
-                            <p className="text-[10px] text-slate-400 truncate">{node.description}</p>
-                          </div>
-                        </button>
-                      );
-                    })}
+                    {ACTION_NODES.map(node => { const Icon = node.icon; return (
+                      <button key={node.type} onClick={() => addNode(node, 'action')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-all text-left">
+                        <div className={`w-8 h-8 rounded-lg ${node.color} flex items-center justify-center text-white shrink-0`}><Icon size={16} /></div>
+                        <div className="min-w-0"><p className="text-sm font-bold text-slate-700 truncate">{node.label}</p><p className="text-[10px] text-slate-400 truncate">{node.description}</p></div>
+                      </button>
+                    );})}
                   </div>
                 </div>
-
-                {/* Delay */}
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Tempo</p>
-                  <button
-                    onClick={() => addNode(DELAY_NODE, 'delay')}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all text-left"
-                  >
-                    <div className={`w-8 h-8 rounded-lg ${DELAY_NODE.color} flex items-center justify-center text-white shrink-0`}>
-                      <DELAY_NODE.icon size={16} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-slate-700 truncate">{DELAY_NODE.label}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{DELAY_NODE.description}</p>
-                    </div>
+                  <button onClick={() => addNode(DELAY_NODE, 'delay')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all text-left">
+                    <div className={`w-8 h-8 rounded-lg ${DELAY_NODE.color} flex items-center justify-center text-white shrink-0`}><DELAY_NODE.icon size={16} /></div>
+                    <div className="min-w-0"><p className="text-sm font-bold text-slate-700 truncate">{DELAY_NODE.label}</p><p className="text-[10px] text-slate-400 truncate">{DELAY_NODE.description}</p></div>
                   </button>
                 </div>
               </div>
@@ -806,86 +598,116 @@ const AutomationBuilder: React.FC<BuilderProps> = ({ automation, onSave, onCance
         )}
 
         {/* Canvas */}
-        <div ref={canvasRef} className="flex-1 overflow-auto relative bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:20px_20px]">
+        <div ref={containerRef} className="flex-1 overflow-auto relative bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:20px_20px]">
           {nodes.length === 0 && !showCatalog && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="text-center">
                 <GitBranch className="mx-auto text-slate-300 mb-4" size={48} />
                 <p className="text-slate-400 font-bold text-lg">Fluxo vazio</p>
-                <p className="text-sm text-slate-400 mt-2 mb-6">Adicione blocos para começar a construir sua automação.</p>
-                <button
-                  onClick={() => setShowCatalog(true)}
-                  className="inline-flex items-center gap-2 px-5 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-colors"
-                >
-                  <Plus size={20} />
-                  Adicionar Primeiro Bloco
+                <p className="text-sm text-slate-400 mt-2 mb-6">Adicione blocos para começar.</p>
+                <button onClick={() => setShowCatalog(true)} className="inline-flex items-center gap-2 px-5 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-colors">
+                  <Plus size={20} /> Adicionar Primeiro Bloco
                 </button>
               </div>
             </div>
           )}
 
-          {/* Render Nodes */}
-          <div className="p-8 min-h-full">
+          {/* SVG connections */}
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 5 }}>
+            {/* Existing connections */}
+            {connections.map(conn => {
+              const fromNode = nodes.find(n => n.id === conn.from);
+              const toNode = nodes.find(n => n.id === conn.to);
+              if (!fromNode || !toNode) return null;
+              return (
+                <g key={conn.id}>
+                  {/* Thick invisible hit area */}
+                  <path d={connPath(conn.from, conn.to)} fill="none" stroke="transparent" strokeWidth={20} className="pointer-events-auto cursor-pointer" onClick={() => removeConnection(conn.id)} />
+                  {/* Visible line */}
+                  <path d={connPath(conn.from, conn.to)} fill="none" stroke="#94a3b8" strokeWidth={2} className="pointer-events-none" />
+                  {/* Arrow dot */}
+                  <circle cx={getPortPos(conn.to, 'left').x} cy={getPortPos(conn.to, 'left').y} r={4} fill="#94a3b8" className="pointer-events-none" />
+                </g>
+              );
+            })}
+
+            {/* Preview line */}
+            {connectingFrom && (
+              <path
+                d={`M${getPortPos(connectingFrom, 'right').x},${getPortPos(connectingFrom, 'right').y} C${getPortPos(connectingFrom, 'right').x + 80},${getPortPos(connectingFrom, 'right').y} ${mousePos.x - 80},${mousePos.y} ${mousePos.x},${mousePos.y}`}
+                fill="none" stroke="#0d9488" strokeWidth={2} strokeDasharray="6 4" className="pointer-events-none"
+              />
+            )}
+          </svg>
+
+          {/* Nodes */}
+          <div className="p-8 min-h-full relative" style={{ zIndex: 10 }}>
             {nodes.map((node, index) => {
               const Icon = getNodeIcon(node);
               const color = getNodeColor(node);
               const isSelected = selectedNode?.id === node.id;
-              const isIncoming = connections.some(c => c.to === node.id);
-              const isOutgoing = connections.some(c => c.from === node.id);
+              const isConnecting = connectingFrom === node.id;
 
               return (
-                <div key={node.id} className="relative mb-6" style={{ marginLeft: node.position.x }}>
-                  {/* Connection line from previous node */}
-                  {isIncoming && (
-                    <div className="absolute -top-6 left-1/2 w-0.5 h-6 bg-slate-300 -translate-x-1/2"></div>
+                <div key={node.id} className="relative mb-8" style={{ marginLeft: node.position.x, width: 340 }}>
+                  {/* Input port */}
+                  {index > 0 && (
+                    <div
+                      className={`absolute -left-[9px] top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-[3px] cursor-pointer transition-all z-20 ${
+                        connectingFrom ? 'bg-teal-400 border-teal-600 scale-125 animate-pulse' : 'bg-white border-slate-300 hover:border-teal-500 hover:scale-125'
+                      }`}
+                      onClick={() => {
+                        if (connectingFrom) {
+                          const exists = connections.find(c => c.from === connectingFrom && c.to === node.id);
+                          if (!exists) setConnections([...connections, { id: crypto.randomUUID(), from: connectingFrom, to: node.id }]);
+                          setConnectingFrom(null);
+                        }
+                      }}
+                    />
                   )}
 
                   <div
-                    className={`bg-white border-2 rounded-xl shadow-lg overflow-hidden transition-all cursor-pointer max-w-sm ${
+                    ref={el => { if (el) nodeRefs.current.set(node.id, el); }}
+                    className={`bg-white border-2 rounded-xl shadow-lg overflow-hidden transition-all ${
                       isSelected ? 'border-teal-500 shadow-teal-200' : 'border-slate-200 hover:border-slate-300'
-                    } ${connectingFrom && connectingFrom !== node.id ? 'ring-2 ring-teal-400 ring-opacity-50' : ''}`}
-                    onClick={() => {
-                      if (connectingFrom && connectingFrom !== node.id) {
-                        completeConnection(node.id);
-                      } else {
-                        setSelectedNode(isSelected ? null : node);
-                      }
-                    }}
+                    } ${connectingFrom && !isConnecting ? 'ring-2 ring-teal-400/30' : ''}`}
+                    onClick={() => { if (!connectingFrom) setSelectedNode(isSelected ? null : node); }}
                   >
                     <div className="px-4 py-3 flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-lg ${color} flex items-center justify-center text-white shrink-0`}>
-                        <Icon size={18} />
-                      </div>
+                      <div className={`w-10 h-10 rounded-lg ${color} flex items-center justify-center text-white shrink-0`}><Icon size={20} /></div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-slate-900 truncate">{node.label}</p>
                         <p className="text-[10px] text-slate-400 uppercase font-bold">{node.type}</p>
                       </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); startConnection(node.id); }}
-                        className="p-1.5 text-slate-400 hover:text-teal-600 transition-colors rounded-lg hover:bg-slate-100"
-                        title="Conectar"
-                      >
-                        <ArrowRight size={16} />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removeNode(node.id); }}
-                        className="p-1.5 text-slate-400 hover:text-red-500 transition-colors rounded-lg hover:bg-slate-100"
-                        title="Remover"
-                      >
-                        <X size={16} />
-                      </button>
+                      <button onClick={e => { e.stopPropagation(); removeNode(node.id); }} className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-slate-100"><X size={16} /></button>
                     </div>
 
                     {isSelected && renderNodeConfig(node)}
+
+                    {/* Output area */}
+                    <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400">
+                        {connections.some(c => c.from === node.id) ? '✓ Conectado' : 'Sem conexão'}
+                      </span>
+                      <button
+                        onClick={e => { e.stopPropagation(); setConnectingFrom(isConnecting ? null : node.id); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          isConnecting ? 'bg-teal-100 text-teal-700 ring-2 ring-teal-300 animate-pulse' : 'bg-teal-600 text-white hover:bg-teal-700'
+                        }`}
+                      >
+                        <ArrowRight size={14} />
+                        {isConnecting ? 'Clique no próximo bloco ↓' : 'Conectar →'}
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Connection output dot */}
+                  {/* Output port */}
                   <div
-                    className={`absolute -right-1.5 top-1/2 w-3 h-3 rounded-full border-2 -translate-y-1/2 cursor-crosshair transition-colors ${
-                      connectingFrom === node.id ? 'bg-teal-500 border-teal-600 scale-125' : 'bg-white border-slate-300 hover:border-teal-400'
+                    className={`absolute -right-[9px] top-[calc(50%-10px)] w-5 h-5 rounded-full border-[3px] cursor-pointer transition-all z-20 ${
+                      isConnecting ? 'bg-teal-500 border-teal-600 scale-125 animate-pulse' : 'bg-white border-slate-300 hover:border-teal-500 hover:scale-125'
                     }`}
-                    onClick={(e) => { e.stopPropagation(); startConnection(node.id); }}
-                  ></div>
+                    onClick={e => { e.stopPropagation(); setConnectingFrom(isConnecting ? null : node.id); }}
+                  />
                 </div>
               );
             })}
