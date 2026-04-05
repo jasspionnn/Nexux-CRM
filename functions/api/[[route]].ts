@@ -1390,22 +1390,22 @@ app.post('/tracking/events', async (c) => {
     if (!formData && event_type === 'conversion' && body.data && typeof body.data === 'object') {
       var d = body.data;
       if (d.fields && typeof d.fields === 'object') {
-        formData = { fid: d.fid || 'conv_' + (body.event_name || 'unknown'), action: url || '', fields: d.fields, has_lead: d.has_lead || false };
-      } else if (d.email || d.nome || d.name || d.phone) {
-        // Direct form fields in data object
-        formData = { fid: 'conv_' + (body.event_name || 'unknown'), action: url || '', fields: d, has_lead: true };
+        formData = { fid: d.fid || (body.event_name || 'unknown_form'), action: url || '', fields: d.fields, has_lead: d.has_lead || false };
+      } else if (d.email || d.nome || d.name || d.phone || d.cpf) {
+        // Direct form fields in data object - use event_name as form name
+        formData = { fid: body.event_name || 'unknown_form', action: url || '', fields: d, has_lead: true };
       }
     }
 
     if (formData && formData.fid) {
-      const formId = formData.fid;
+      const formName = formData.fid;
       const fields = formData.fields || {};
       const fieldNames = Object.keys(fields).map(k => ({ name: k, type: detectFieldName(k) }));
 
-      // Check if form already registered
+      // Check if form already registered by NAME (deduplication)
       const existing: any = await c.env.DB.prepare(
         'SELECT id FROM tracking_forms WHERE account_id = ? AND name = ?'
-      ).bind(settings.account_id, formId).first();
+      ).bind(settings.account_id, formName).first();
 
       if (!existing && fieldNames.length > 0) {
         await c.env.DB.prepare(
@@ -1413,12 +1413,12 @@ app.post('/tracking/events', async (c) => {
         ).bind(
           crypto.randomUUID(),
           settings.account_id,
-          formId,
+          formName,
           url || null,
           null,
           JSON.stringify(fieldNames)
         ).run();
-        console.log('[TRACKING] Auto-registered form:', formId, 'with fields:', fieldNames.map(f => f.name).join(', '));
+        console.log('[TRACKING] Auto-registered form:', formName, 'with fields:', fieldNames.map(f => f.name).join(', '));
       }
     }
 

@@ -12,7 +12,16 @@ export const onRequestGet = async () => {
         console.log('[NX] Ready',t);
       },
       track:function(n,d){
-        T._s('conversion',{en:n,d:d||{}});
+        d=d||{};
+        // If data has form fields, send as form event
+        if(d.fields&&Object.keys(d.fields).length>0){
+          T._s('form',{url:w.location.href,ref:document.referrer||null,form_data:{fid:d.fid||n,action:w.location.href,fields:d.fields,has_lead:d.has_lead||false}});
+        }else if(d.email||d.nome||d.name||d.phone||d.cpf){
+          // Direct form fields in data
+          T._s('form',{url:w.location.href,ref:document.referrer||null,form_data:{fid:n,action:w.location.href,fields:d,has_lead:true}});
+        }else{
+          T._s('conversion',{en:n,d:d});
+        }
       },
       _s:function(ty,d){
         if(!T.id)return;
@@ -20,7 +29,7 @@ export const onRequestGet = async () => {
         if(d.en)p.event_name=d.en;
         if(d.d)p.data=d.d;
         if(d.form_data)p.form_data=d.form_data;
-        console.log('[NX] Sent:',ty,d.form_data?d.form_data.fid:'');
+        console.log('[NX] Sent:',ty,d.form_data?d.form_data.fid:'',d.form_data?JSON.stringify(d.form_data.fields):'');
         fetch(T.b+'/api/tracking/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p),mode:'no-cors',credentials:'omit'}).catch(function(){});
       },
       _pv:function(){
@@ -43,8 +52,9 @@ export const onRequestGet = async () => {
             }
           }
           if(Object.keys(fd).length>0){
-            var fid=f.id||'form_'+T._h(f.action||w.location.pathname);
-            console.log('[NX] Form:',fid,fd);
+            // Use form NAME attribute as primary identifier, fallback to ID or hash
+            var fid=f.name||f.id||('form_'+T._h(f.action||w.location.pathname));
+            console.log('[NX] Form captured:',fid,JSON.stringify(fd));
             T._s('form',{url:w.location.href,ref:document.referrer||null,form_data:{fid:fid,action:f.action||w.location.href,fields:fd,has_lead:hl}});
           }
         },true);
