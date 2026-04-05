@@ -90,11 +90,17 @@ export const SiteTracking = () => {
     var t='${trackingId}';
     var e='${origin}';
     var s=document.createElement('script');
-    s.src=e+'/tracker.js?v=2';
+    s.src=e+'/tracker.js?v=3';
     s.onload=function(){NexuxTracker.init(t,e)};
     document.head.appendChild(s);
   })();
-<\/script>`;
+<\/script>
+
+<!-- Rastrear conversão manual ao clicar em botão: -->
+<!-- <button data-track-conversion="compra_realizada">Comprar</button> -->
+
+<!-- Rastrear conversão manual via JS: -->
+<!-- <script>NexuxTracker.track('compra',{valor:99.90})<\/script> -->`;
   };
 
   const formatDate = (dateStr: string) => {
