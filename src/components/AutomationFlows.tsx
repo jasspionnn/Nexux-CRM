@@ -201,31 +201,18 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
     })();
   }, [accountId]);
 
-  // Auto-fit when opening an automation with nodes
+  // Auto-fit: pan nodes into visible area on first load
   useEffect(() => {
     if (nodes.length === 0) return;
     if (autoFitDone.current === automation.id) return;
     autoFitDone.current = automation.id;
 
-    console.log('[auto-fit] Opening automation with', nodes.length, 'nodes');
-    nodes.forEach(n => console.log(`  Node: "${n.label}" at x:${n.x} y:${n.y}`));
-
     const minX = Math.min(...nodes.map(n => n.x));
     const minY = Math.min(...nodes.map(n => n.y));
 
-    setPan({ x: 0, y: 0 });
+    // Pan to shift all nodes into visible area (100px from top-left)
+    setPan({ x: 100 - minX, y: 80 - minY });
     setZoom(1);
-
-    requestAnimationFrame(() => {
-      if (canvasRef.current) {
-        console.log('[auto-fit] Scrolling to', Math.max(0, minX - 100), Math.max(0, minY - 60));
-        canvasRef.current.scrollTo({
-          left: Math.max(0, minX - 100),
-          top: Math.max(0, minY - 60),
-          behavior: 'instant' as any,
-        });
-      }
-    });
   }, [nodes.length, automation.id]);
 
   // Mouse tracking for connection preview (in world coords)
