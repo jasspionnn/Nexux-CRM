@@ -90,14 +90,11 @@ export const SiteTracking = () => {
     var t='${trackingId}';
     var e='${origin}';
     var s=document.createElement('script');
-    s.src=e+'/tracker.js';
+    s.src=e+'/tracker.js?v=2';
     s.onload=function(){NexuxTracker.init(t,e)};
     document.head.appendChild(s);
   })();
-<\/script>
-
-<!-- Testar conversão manual: -->
-<!-- <script>NexuxTracker.track('teste_compra',{valor:99.90})<\/script> -->`;
+<\/script>`;
   };
 
   const formatDate = (dateStr: string) => {
