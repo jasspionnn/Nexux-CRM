@@ -289,11 +289,26 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
           <div className="flex-1"><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nome do fluxo..." className="text-lg font-bold text-slate-900 border-none focus:outline-none bg-transparent w-full" /><input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição..." className="text-xs text-slate-500 border-none focus:outline-none bg-transparent w-full" /></div>
         </div>
         <div className="flex items-center gap-2">
-          {nodes.length > 0 && (
-            <button onClick={() => setAddMenuIdx(addMenuIdx !== null ? null : nodes.length - 1)} className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-sm">
+          <div className="relative">
+            <button onClick={() => setAddMenuIdx(addMenuIdx !== null ? null : (nodes.length > 0 ? nodes.length - 1 : -1))} className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-sm">
               <Plus size={15} />Adicionar bloco
             </button>
-          )}
+            {/* Empty state trigger menu */}
+            {addMenuIdx === -1 && (
+              <div className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-2xl border border-slate-200 p-3 z-50" style={{ width: 280 }}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-slate-500 uppercase">Escolha um gatilho</span>
+                  <button onClick={() => setAddMenuIdx(null)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
+                </div>
+                <div className="space-y-1">{TRIGGERS.map(n => { const Icon = n.icon; return (
+                  <button key={n.type} onClick={() => addNode(n, 'trigger')} className="w-full flex items-center gap-2 px-2 py-2 rounded-lg border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50 transition-all text-left">
+                    <div className={`w-6 h-6 rounded ${n.color} flex items-center justify-center text-white shrink-0`}><Icon size={12} /></div>
+                    <span className="text-xs font-bold text-slate-700 truncate">{n.label}</span>
+                  </button>
+                );})}</div>
+              </div>
+            )}
+          </div>
           <button onClick={doSave} disabled={saving || !nodes.length} className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-sm disabled:opacity-50">{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}Salvar</button>
         </div>
       </div>
@@ -379,8 +394,8 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
             );
           })}
 
-          {/* Add menu popup */}
-          {addMenuIdx !== null && nodes[addMenuIdx] && (() => {
+          {/* Add menu popup (for existing nodes) */}
+          {addMenuIdx !== null && addMenuIdx >= 0 && nodes[addMenuIdx] && (() => {
             const node = nodes[addMenuIdx];
             return (
               <div className="absolute bg-white rounded-xl shadow-2xl border border-slate-200 p-3 z-50" style={{ left: node.x + NODE_W + LINKER_GAP + 10, top: node.y - 10, width: 280 }} data-ui>
