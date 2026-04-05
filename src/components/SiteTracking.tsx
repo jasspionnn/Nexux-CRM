@@ -16,6 +16,9 @@ export const SiteTracking = () => {
 
   useEffect(() => {
     fetchData();
+    // Auto-refresh every 30s
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchData = async () => {

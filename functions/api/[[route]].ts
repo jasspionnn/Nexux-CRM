@@ -1253,7 +1253,15 @@ app.get('/tracking/events', async (c) => {
 });
 
 // Public endpoint to receive tracking events from external sites
+app.options('/tracking/events', async (c) => {
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', 'Content-Type');
+  return new Response(null, { status: 204 });
+});
+
 app.post('/tracking/events', async (c) => {
+  c.header('Access-Control-Allow-Origin', '*');
   try {
     const body = await c.req.json();
     const { tracking_id, event_type, url, referrer, form_data, visitor_id } = body;
@@ -1288,6 +1296,7 @@ app.post('/tracking/events', async (c) => {
 
     return c.json({ success: true, id: eventId });
   } catch (error: any) {
+    console.error('Tracking event error:', error.message);
     return c.json({ error: error.message }, 500);
   }
 });
