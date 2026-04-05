@@ -268,8 +268,8 @@ const Builder: React.FC<{ automation: Automation; onSave: (d: any) => void; onCa
     setNodes(prev => [...prev, nn]);
   }, [nodes]);
 
-  const updateCfg = useCallback((id: string, c: Record<string, any>) => {
-    setNodes(prev => prev.map(n => n.id === id ? { ...n, config: { ...n.config, ...c } } : n));
+  const onConfigChange = useCallback((nodeId: string, c: Record<string, any>) => {
+    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, config: { ...n.config, ...c } } : n));
   }, []);
 
   const removeNode = useCallback((id: string) => {
@@ -321,8 +321,8 @@ const Builder: React.FC<{ automation: Automation; onSave: (d: any) => void; onCa
 
         {/* Canvas */}
         <div ref={canvasRef} className="flex-1 overflow-auto relative" onMouseDown={onCanvasDown}>
-          {/* Zoom overlay controls - FIXED position so they always show */}
-          <div className="fixed bottom-6 left-72 flex items-center gap-1 bg-white rounded-xl shadow-xl border border-slate-200 p-1" style={{ zIndex: 60 }}>
+          {/* Zoom controls */}
+          <div className="fixed bottom-6 right-6 flex items-center gap-1 bg-white rounded-xl shadow-xl border border-slate-200 p-1" style={{ zIndex: 100 }}>
             <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.3))} className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg"><ZoomOut size={18} /></button>
             <span className="text-xs font-bold text-slate-600 w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
             <button onClick={() => setZoom(z => Math.min(z + 0.1, 2))} className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg"><ZoomIn size={18} /></button>
@@ -397,7 +397,7 @@ const Builder: React.FC<{ automation: Automation; onSave: (d: any) => void; onCa
                     </div>
 
                     {/* Config panel */}
-                    {isSel && <ConfigPanel node={node} setCfg={(c: Record<string, any>) => updateCfg(node.id, c)} stages={stages} users={users} />}
+                    {isSel && <ConfigPanel node={node} onConfigChange={onConfigChange} stages={stages} users={users} />}
 
                     {/* Footer */}
                     <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
@@ -427,15 +427,16 @@ const Builder: React.FC<{ automation: Automation; onSave: (d: any) => void; onCa
   );
 };
 
-// ==================== CONFIG PANEL (isolated to prevent input focus loss) ====================
+// ==================== CONFIG PANEL ====================
 
-const ConfigPanel: React.FC<{ node: FlowNode; setCfg: (c: Record<string, any>) => void; stages: any[]; users: any[] }> = React.memo(({ node, setCfg, stages, users }) => {
+const FieldLabel: React.FC<{ label: string; hint?: string; children: React.ReactNode }> = ({ label, hint, children }) => (
+  <div className="space-y-1"><label className="text-[11px] font-bold text-slate-600">{label}</label>{children}{hint && <p className="text-[10px] text-slate-400">{hint}</p>}</div>
+);
+
+const ConfigPanel: React.FC<{ node: FlowNode; onConfigChange: (nodeId: string, c: Record<string, any>) => void; stages: any[]; users: any[] }> = React.memo(({ node, onConfigChange, stages, users }) => {
   const ic = "w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 bg-white";
   const sc = ic;
-  const F: React.FC<{ label: string; hint?: string; children: React.ReactNode }> = ({ label, hint, children }) => (
-    <div className="space-y-1"><label className="text-[11px] font-bold text-slate-600">{label}</label>{children}{hint && <p className="text-[10px] text-slate-400">{hint}</p>}</div>
-  );
-
+  const set = (key: string, val: any) => onConfigChange(node.id, { [key]: val });
   const t = node.nodeType;
 
   return (
@@ -443,53 +444,55 @@ const ConfigPanel: React.FC<{ node: FlowNode; setCfg: (c: Record<string, any>) =
       {t === 'new_lead' && <p className="text-xs text-slate-500 flex items-center gap-2"><Zap size={14} className="text-emerald-500" />Dispara quando um novo lead é criado.</p>}
 
       {t === 'stage_change' && (<>
-        <F label="Origem" hint="Qualquer se vazio"><select value={node.config.from_stage_id || ''} onChange={e => setCfg({ from_stage_id: e.target.value })} className={sc}><option value="">Qualquer</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></F>
+        <FieldLabel label="Origem" hint="Qualquer se vazio"><select value={node.config.from_stage_id || ''} onChange={e => set('from_stage_id', e.target.value)} className={sc}><option value="">Qualquer</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>
         <div className="flex justify-center text-slate-300"><ArrowRight size={16} className="rotate-90" /></div>
-        <F label="Destino" hint="Qualquer se vazio"><select value={node.config.to_stage_id || ''} onChange={e => setCfg({ to_stage_id: e.target.value })} className={sc}><option value="">Qualquer</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></F>
+        <FieldLabel label="Destino" hint="Qualquer se vazio"><select value={node.config.to_stage_id || ''} onChange={e => set('to_stage_id', e.target.value)} className={sc}><option value="">Qualquer</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>
       </>)}
 
-      {t === 'page_visit' && <F label="URL contém"><input type="text" value={node.config.url_pattern || ''} onChange={e => setCfg({ url_pattern: e.target.value })} placeholder="/precos" className={ic} /></F>}
+      {t === 'page_visit' && <FieldLabel label="URL contém"><input key="url_pattern" type="text" value={node.config.url_pattern || ''} onChange={e => set('url_pattern', e.target.value)} placeholder="/precos" className={ic} /></FieldLabel>}
 
-      {t === 'value_gt' && <F label="Valor &gt;"><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">R$</span><input type="number" value={node.config.value || ''} onChange={e => setCfg({ value: +e.target.value || 0 })} placeholder="0" className={`${ic} pl-9`} /></div></F>}
-      {t === 'value_lt' && <F label="Valor &lt;"><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">R$</span><input type="number" value={node.config.value || ''} onChange={e => setCfg({ value: +e.target.value || 0 })} placeholder="0" className={`${ic} pl-9`} /></div></F>}
+      {t === 'value_gt' && <FieldLabel label="Valor &gt;"><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">R$</span><input key="value" type="number" value={node.config.value || ''} onChange={e => set('value', +e.target.value || 0)} placeholder="0" className={`${ic} pl-9`} /></div></FieldLabel>}
+      {t === 'value_lt' && <FieldLabel label="Valor &lt;"><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">R$</span><input key="value" type="number" value={node.config.value || ''} onChange={e => set('value', +e.target.value || 0)} placeholder="0" className={`${ic} pl-9`} /></div></FieldLabel>}
 
-      {(t === 'has_tag' || t === 'not_has_tag') && <F label="Tag"><input type="text" value={node.config.tag || ''} onChange={e => setCfg({ tag: e.target.value })} placeholder="enterprise" className={ic} /></F>}
-      {t === 'stage_is' && <F label="Estágio"><select value={node.config.stage_id || ''} onChange={e => setCfg({ stage_id: e.target.value })} className={sc}><option value="">Selecione</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></F>}
-      {t === 'email_contains' && <F label="Email contém"><input type="text" value={node.config.text || ''} onChange={e => setCfg({ text: e.target.value })} placeholder="@empresa.com" className={ic} /></F>}
-      {t === 'probability_gt' && <F label="Probabilidade &gt;"><div className="relative"><input type="number" value={node.config.probability || ''} onChange={e => setCfg({ probability: +e.target.value || 0 })} placeholder="50" min={0} max={100} className={`${ic} pr-8`} /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span></div></F>}
+      {(t === 'has_tag' || t === 'not_has_tag') && <FieldLabel label="Tag"><input key="tag" type="text" value={node.config.tag || ''} onChange={e => set('tag', e.target.value)} placeholder="enterprise" className={ic} /></FieldLabel>}
+      {t === 'stage_is' && <FieldLabel label="Estágio"><select key="stage_id" value={node.config.stage_id || ''} onChange={e => set('stage_id', e.target.value)} className={sc}><option value="">Selecione</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>}
+      {t === 'email_contains' && <FieldLabel label="Email contém"><input key="text" type="text" value={node.config.text || ''} onChange={e => set('text', e.target.value)} placeholder="@empresa.com" className={ic} /></FieldLabel>}
+      {t === 'probability_gt' && <FieldLabel label="Probabilidade &gt;"><div className="relative"><input key="probability" type="number" value={node.config.probability || ''} onChange={e => set('probability', +e.target.value || 0)} placeholder="50" min={0} max={100} className={`${ic} pr-8`} /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span></div></FieldLabel>}
 
-      {t === 'move_stage' && <F label="Mover para"><select value={node.config.to_stage_id || ''} onChange={e => setCfg({ to_stage_id: e.target.value })} className={sc}><option value="">Selecione</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></F>}
+      {t === 'move_stage' && <FieldLabel label="Mover para"><select key="to_stage_id" value={node.config.to_stage_id || ''} onChange={e => set('to_stage_id', e.target.value)} className={sc}><option value="">Selecione</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>}
 
       {t === 'create_task' && (<>
-        <F label="Título"><input type="text" value={node.config.title || ''} onChange={e => setCfg({ title: e.target.value })} placeholder="Ligar para lead" className={ic} /></F>
-        <F label="Data limite"><input type="date" value={node.config.due_date || ''} onChange={e => setCfg({ due_date: e.target.value })} className={ic} /></F>
-        <F label="Atribuir a"><select value={node.config.assigned_user_id || ''} onChange={e => setCfg({ assigned_user_id: e.target.value })} className={sc}><option value="">Selecione</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></F>
+        <FieldLabel label="Título"><input key="title" type="text" value={node.config.title || ''} onChange={e => set('title', e.target.value)} placeholder="Ligar para lead" className={ic} /></FieldLabel>
+        <FieldLabel label="Data limite"><input key="due_date" type="date" value={node.config.due_date || ''} onChange={e => set('due_date', e.target.value)} className={ic} /></FieldLabel>
+        <FieldLabel label="Atribuir a"><select key="assigned_user_id" value={node.config.assigned_user_id || ''} onChange={e => set('assigned_user_id', e.target.value)} className={sc}><option value="">Selecione</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></FieldLabel>
       </>)}
 
-      {(t === 'add_tag' || t === 'remove_tag') && <F label="Tag"><input type="text" value={node.config.tag || ''} onChange={e => setCfg({ tag: e.target.value })} placeholder="cliente" className={ic} /></F>}
+      {(t === 'add_tag' || t === 'remove_tag') && <FieldLabel label="Tag"><input key="tag" type="text" value={node.config.tag || ''} onChange={e => set('tag', e.target.value)} placeholder="cliente" className={ic} /></FieldLabel>}
 
       {t === 'send_email' && (<>
-        <F label="Assunto"><input type="text" value={node.config.subject || ''} onChange={e => setCfg({ subject: e.target.value })} placeholder="Bem-vindo!" className={ic} /></F>
-        <F label="Corpo"><textarea value={node.config.body || ''} onChange={e => setCfg({ body: e.target.value })} placeholder="Olá {{lead_name}}," rows={3} className={`${ic} resize-none font-mono text-xs`} /></F>
+        <FieldLabel label="Assunto"><input key="subject" type="text" value={node.config.subject || ''} onChange={e => set('subject', e.target.value)} placeholder="Bem-vindo!" className={ic} /></FieldLabel>
+        <FieldLabel label="Corpo"><textarea key="body" value={node.config.body || ''} onChange={e => set('body', e.target.value)} placeholder="Olá {{lead_name}}," rows={3} className={`${ic} resize-none font-mono text-xs`} /></FieldLabel>
       </>)}
 
       {t === 'send_webhook' && (<>
-        <F label="URL"><input type="url" value={node.config.url || ''} onChange={e => setCfg({ url: e.target.value })} placeholder="https://api.exemplo.com" className={ic} /></F>
-        <F label="Método"><select value={node.config.method || 'POST'} onChange={e => setCfg({ method: e.target.value })} className={sc}><option>POST</option><option>GET</option><option>PUT</option><option>DELETE</option></select></F>
+        <FieldLabel label="URL"><input key="url" type="url" value={node.config.url || ''} onChange={e => set('url', e.target.value)} placeholder="https://api.exemplo.com" className={ic} /></FieldLabel>
+        <FieldLabel label="Método"><select key="method" value={node.config.method || 'POST'} onChange={e => set('method', e.target.value)} className={sc}><option>POST</option><option>GET</option><option>PUT</option><option>DELETE</option></select></FieldLabel>
       </>)}
 
-      {t === 'create_note' && <F label="Nota"><textarea value={node.config.content || ''} onChange={e => setCfg({ content: e.target.value })} placeholder="Lead qualificado..." rows={2} className={`${ic} resize-none`} /></F>}
-      {t === 'assign_user' && <F label="Usuário"><select value={node.config.user_id || ''} onChange={e => setCfg({ user_id: e.target.value })} className={sc}><option value="">Selecione</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></F>}
+      {t === 'create_note' && <FieldLabel label="Nota"><textarea key="content" value={node.config.content || ''} onChange={e => set('content', e.target.value)} placeholder="Lead qualificado..." rows={2} className={`${ic} resize-none`} /></FieldLabel>}
+      {t === 'assign_user' && <FieldLabel label="Usuário"><select key="user_id" value={node.config.user_id || ''} onChange={e => set('user_id', e.target.value)} className={sc}><option value="">Selecione</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></FieldLabel>}
 
       {t === 'delay' && (
         <div className="flex items-end gap-2">
-          <div className="flex-1"><F label="Duração"><input type="number" value={node.config.duration || ''} onChange={e => setCfg({ duration: +e.target.value || 0 })} placeholder="30" min={1} className={ic} /></F></div>
-          <select value={node.config.unit || 'minutes'} onChange={e => setCfg({ unit: e.target.value })} className={`${sc} flex-1 mt-4`}><option value="minutes">Minutos</option><option value="hours">Horas</option><option value="days">Dias</option></select>
+          <div className="flex-1"><FieldLabel label="Duração"><input key="duration" type="number" value={node.config.duration || ''} onChange={e => set('duration', +e.target.value || 0)} placeholder="30" min={1} className={ic} /></FieldLabel></div>
+          <select key="unit" value={node.config.unit || 'minutes'} onChange={e => set('unit', e.target.value)} className={`${sc} flex-1 mt-4`}><option value="minutes">Minutos</option><option value="hours">Horas</option><option value="days">Dias</option></select>
         </div>
       )}
     </div>
   );
-}, (prev, next) => prev.node.id === next.node.id && prev.node.config === next.node.config);
+}, (prev, next) => {
+  return prev.node === next.node && prev.onConfigChange === next.onConfigChange && prev.stages === next.stages && prev.users === next.users;
+});
 
 const CatItem: React.FC<{ n: any; onClick: () => void }> = ({ n, onClick }) => {
   const Icon = n.icon;
