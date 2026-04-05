@@ -94,7 +94,10 @@ export const SiteTracking = () => {
     s.onload=function(){NexuxTracker.init(t,e)};
     document.head.appendChild(s);
   })();
-</script>`;
+<\/script>
+
+<!-- Testar conversão manual: -->
+<!-- <script>NexuxTracker.track('teste_compra',{valor:99.90})<\/script> -->`;
   };
 
   const formatDate = (dateStr: string) => {

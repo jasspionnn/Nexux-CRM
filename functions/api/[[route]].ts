@@ -1185,6 +1185,19 @@ app.post('/public/register', async (c) => {
 
 // ==================== TRACKING ENDPOINTS ====================
 
+// CORS headers for all tracking endpoints
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// Simple test endpoint to verify tracking is reachable
+app.get('/tracking/test', async (c) => {
+  c.header('Access-Control-Allow-Origin', '*');
+  return c.json({ ok: true, message: 'Tracking endpoint is reachable', timestamp: new Date().toISOString() });
+});
+
 // Get tracking settings for current account
 app.get('/tracking', async (c) => {
   try {
@@ -1256,18 +1269,35 @@ app.get('/tracking/events', async (c) => {
 app.options('/tracking/events', async (c) => {
   c.header('Access-Control-Allow-Origin', '*');
   c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  c.header('Access-Control-Allow-Headers', 'Content-Type');
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Accept');
   return new Response(null, { status: 204 });
 });
 
 app.post('/tracking/events', async (c) => {
   c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Accept');
+
   try {
-    const body = await c.req.json();
+    let body;
+    try {
+      body = await c.req.json();
+    } catch (e) {
+      console.error('[TRACKING] Failed to parse JSON body');
+      return c.json({ error: 'Invalid JSON' }, 400);
+    }
+
+    console.log('[TRACKING] Received event:', JSON.stringify(body));
+
     const { tracking_id, event_type, url, referrer, form_data, visitor_id } = body;
 
-    if (!tracking_id || !event_type) {
-      return c.json({ error: 'tracking_id and event_type are required' }, 400);
+    if (!tracking_id) {
+      console.error('[TRACKING] Missing tracking_id');
+      return c.json({ error: 'Missing tracking_id' }, 400);
+    }
+    if (!event_type) {
+      console.error('[TRACKING] Missing event_type');
+      return c.json({ error: 'Missing event_type' }, 400);
     }
 
     // Find account by tracking_id
@@ -1276,10 +1306,19 @@ app.post('/tracking/events', async (c) => {
     ).bind(tracking_id).first();
 
     if (!settings) {
-      return c.json({ error: 'Invalid tracking_id' }, 404);
+      console.error('[TRACKING] Invalid tracking_id:', tracking_id);
+      return c.json({ error: 'Invalid tracking_id: ' + tracking_id }, 404);
     }
 
+    console.log('[TRACKING] Found account:', settings.account_id);
+
     const eventId = 'evt_' + crypto.randomUUID().substring(0, 12);
+
+    // Parse form_data if it's a string
+    let formDataStr = null;
+    if (form_data) {
+      formDataStr = typeof form_data === 'string' ? form_data : JSON.stringify(form_data);
+    }
 
     await c.env.DB.prepare(
       'INSERT INTO tracking_events (id, account_id, tracking_id, event_type, url, referrer, form_data, visitor_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
@@ -1290,13 +1329,14 @@ app.post('/tracking/events', async (c) => {
       event_type,
       url || null,
       referrer || null,
-      form_data ? JSON.stringify(form_data) : null,
+      formDataStr,
       visitor_id || null
     ).run();
 
+    console.log('[TRACKING] Event saved:', eventId);
     return c.json({ success: true, id: eventId });
   } catch (error: any) {
-    console.error('Tracking event error:', error.message);
+    console.error('[TRACKING] Error:', error.message);
     return c.json({ error: error.message }, 500);
   }
 });
