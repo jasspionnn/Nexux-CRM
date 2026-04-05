@@ -1384,42 +1384,43 @@ app.post('/tracking/events', async (c) => {
 
     console.log('[TRACKING] Event saved:', eventId);
 
-    // Auto-register form if event has form_data (works for both 'form' and 'conversion' events)
-    var formData = body.form_data;
-    // Also check if conversion has form-like data in the 'data' field
-    if (!formData && event_type === 'conversion' && body.data && typeof body.data === 'object') {
-      var d = body.data;
-      if (d.fields && typeof d.fields === 'object') {
-        formData = { fid: d.fid || (body.event_name || 'unknown_form'), action: url || '', fields: d.fields, has_lead: d.has_lead || false };
-      } else if (d.email || d.nome || d.name || d.phone || d.cpf) {
-        // Direct form fields in data object - use event_name as form name
-        formData = { fid: body.event_name || 'unknown_form', action: url || '', fields: d, has_lead: true };
+    // Auto-register form if event has form_data
+    try {
+      var formData = body.form_data;
+      if (!formData && event_type === 'conversion' && body.data && typeof body.data === 'object') {
+        var d = body.data;
+        if (d.fields && typeof d.fields === 'object') {
+          formData = { fid: d.fid || (body.event_name || 'unknown_form'), action: url || '', fields: d.fields, has_lead: d.has_lead || false };
+        } else if (d.email || d.nome || d.name || d.phone || d.cpf) {
+          formData = { fid: body.event_name || 'unknown_form', action: url || '', fields: d, has_lead: true };
+        }
       }
-    }
 
-    if (formData && formData.fid) {
-      const formName = formData.fid;
-      const fields = formData.fields || {};
-      const fieldNames = Object.keys(fields).map(k => ({ name: k, type: detectFieldName(k) }));
+      if (formData && formData.fid) {
+        const formName = typeof formData.fid === 'string' ? formData.fid : String(formData.fid);
+        const fields = formData.fields || {};
+        const fieldNames = Object.keys(fields).map(k => ({ name: k, type: detectFieldName(k) }));
 
-      // Check if form already registered by NAME (deduplication)
-      const existing: any = await c.env.DB.prepare(
-        'SELECT id FROM tracking_forms WHERE account_id = ? AND name = ?'
-      ).bind(settings.account_id, formName).first();
+        const existing: any = await c.env.DB.prepare(
+          'SELECT id FROM tracking_forms WHERE account_id = ? AND name = ?'
+        ).bind(settings.account_id, formName).first();
 
-      if (!existing && fieldNames.length > 0) {
-        await c.env.DB.prepare(
-          'INSERT INTO tracking_forms (id, account_id, name, url_pattern, form_selector, fields, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)'
-        ).bind(
-          crypto.randomUUID(),
-          settings.account_id,
-          formName,
-          url || null,
-          null,
-          JSON.stringify(fieldNames)
-        ).run();
-        console.log('[TRACKING] Auto-registered form:', formName, 'with fields:', fieldNames.map(f => f.name).join(', '));
+        if (!existing && fieldNames.length > 0) {
+          await c.env.DB.prepare(
+            'INSERT INTO tracking_forms (id, account_id, name, url_pattern, form_selector, fields, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)'
+          ).bind(
+            crypto.randomUUID(),
+            settings.account_id,
+            formName,
+            (url || null),
+            null,
+            JSON.stringify(fieldNames)
+          ).run();
+          console.log('[TRACKING] Auto-registered form:', formName, fieldNames.map((f: any) => f.name).join(', '));
+        }
       }
+    } catch (e: any) {
+      console.error('[TRACKING] Auto-register form error:', e.message);
     }
 
     return new Response(JSON.stringify({ success: true, id: eventId }), {
