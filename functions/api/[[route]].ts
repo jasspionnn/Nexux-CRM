@@ -412,6 +412,7 @@ app.get('/migrate-db', async (c) => {
           url_pattern TEXT,
           form_selector TEXT,
           fields TEXT,
+          field_mapping TEXT,
           is_active INTEGER DEFAULT 1,
           created_at TEXT DEFAULT (datetime('now')),
           FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
@@ -1492,19 +1493,19 @@ app.get('/tracking-forms', async (c) => {
   try {
     const accountId = c.req.query('account_id') || 'acc_demo';
     const { results } = await c.env.DB.prepare('SELECT * FROM tracking_forms WHERE account_id = ? ORDER BY created_at DESC').bind(accountId).all();
-    return c.json(results.map((f: any) => ({ ...f, fields: f.fields ? JSON.parse(f.fields) : [] })));
+    return c.json(results.map((f: any) => ({ ...f, fields: f.fields ? JSON.parse(f.fields) : [], field_mapping: f.field_mapping ? JSON.parse(f.field_mapping) : {} })));
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });
 
 app.post('/tracking-forms', async (c) => {
   try {
     const body = await c.req.json();
-    const { account_id = 'acc_demo', name, url_pattern, form_selector, fields, is_active } = body;
+    const { account_id = 'acc_demo', name, url_pattern, form_selector, fields, field_mapping, is_active } = body;
     if (!name) return c.json({ error: 'name is required' }, 400);
     const id = crypto.randomUUID();
-    await c.env.DB.prepare('INSERT INTO tracking_forms (id, account_id, name, url_pattern, form_selector, fields, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, account_id, name, url_pattern || null, form_selector || null, JSON.stringify(fields || []), is_active ?? 1).run();
-    return c.json({ id, name, url_pattern, form_selector, fields: fields || [], is_active: is_active ?? 1 });
+    await c.env.DB.prepare('INSERT INTO tracking_forms (id, account_id, name, url_pattern, form_selector, fields, field_mapping, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, account_id, name, url_pattern || null, form_selector || null, JSON.stringify(fields || []), JSON.stringify(field_mapping || {}), is_active ?? 1).run();
+    return c.json({ id, name, url_pattern, form_selector, fields: fields || [], field_mapping: field_mapping || {}, is_active: is_active ?? 1 });
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });
 
@@ -1512,9 +1513,9 @@ app.put('/tracking-forms/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
-    const { name, url_pattern, form_selector, fields, is_active } = body;
-    await c.env.DB.prepare('UPDATE tracking_forms SET name = ?, url_pattern = ?, form_selector = ?, fields = ?, is_active = ? WHERE id = ?')
-      .bind(name, url_pattern || null, form_selector || null, JSON.stringify(fields || []), is_active ?? 1, id).run();
+    const { name, url_pattern, form_selector, fields, field_mapping, is_active } = body;
+    await c.env.DB.prepare('UPDATE tracking_forms SET name = ?, url_pattern = ?, form_selector = ?, fields = ?, field_mapping = ?, is_active = ? WHERE id = ?')
+      .bind(name, url_pattern || null, form_selector || null, JSON.stringify(fields || []), JSON.stringify(field_mapping || {}), is_active ?? 1, id).run();
     return c.json({ success: true });
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });

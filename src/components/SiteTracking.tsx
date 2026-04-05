@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, MousePointer, Target, Copy, Check, RefreshCw, Code, TrendingUp, Calendar, BarChart3, FormInput } from 'lucide-react';
+import { Eye, MousePointer, Target, Copy, Check, RefreshCw, Code, TrendingUp, Calendar, BarChart3, FormInput, X, ArrowRight, Save } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 export const SiteTracking = () => {
@@ -74,6 +74,49 @@ export const SiteTracking = () => {
     if (!confirm('Excluir este formulário rastreado?')) return;
     try { await fetch(`/api/tracking-forms/${id}`, { method: 'DELETE' }); fetchData(); }
     catch (e) { console.error(e); alert('Erro ao excluir'); }
+  };
+
+  // Field mapping
+  const CRM_FIELDS = [
+    { value: '', label: 'Ignorar' },
+    { value: 'contact_name', label: 'Nome do Contato' },
+    { value: 'contact_email', label: 'Email' },
+    { value: 'contact_phone', label: 'Telefone' },
+    { value: 'company', label: 'Empresa' },
+    { value: 'title', label: 'Título do Lead' },
+    { value: 'value', label: 'Valor' },
+    { value: 'tags', label: 'Tags' },
+  ];
+
+  const [mappingForm, setMappingForm] = useState<any>(null);
+  const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({});
+
+  const openMapping = async (form: any) => {
+    setMappingForm(form);
+    // Load existing mapping
+    try {
+      const mapping = form.field_mapping ? (typeof form.field_mapping === 'string' ? JSON.parse(form.field_mapping) : form.field_mapping) : {};
+      setFieldMapping(mapping);
+    } catch { setFieldMapping({}); }
+  };
+
+  const saveMapping = async () => {
+    if (!mappingForm) return;
+    try {
+      const res = await fetch(`/api/tracking-forms/${mappingForm.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: mappingForm.name,
+          url_pattern: mappingForm.url_pattern,
+          form_selector: mappingForm.form_selector,
+          fields: mappingForm.fields,
+          is_active: mappingForm.is_active,
+          field_mapping: fieldMapping,
+        })
+      });
+      if (res.ok) { setMappingForm(null); fetchData(); }
+    } catch (e) { console.error(e); alert('Erro ao salvar'); }
   };
 
   const formatDate = (dateStr: string) => {
@@ -243,12 +286,15 @@ export const SiteTracking = () => {
                 const convCount = formConversions[form.name] || 0;
                 const leadFields = fields.filter((f: any) => ['email','phone','name'].includes(f.type));
                 return (
-                  <div key={form.id} className="border border-slate-200 rounded-xl p-3 hover:border-teal-300 transition-colors group">
+                  <div key={form.id} className="border border-slate-200 rounded-xl p-3 hover:border-teal-300 transition-colors">
                     <div className="flex items-start justify-between mb-2">
-                      <h4 className="text-xs font-bold text-slate-900 truncate flex-1" title={form.name}>{form.name}</h4>
-                      <div className="flex items-center gap-1">
+                      <h4 className="text-xs font-bold text-slate-900 truncate flex-1 mr-2" title={form.name}>{form.name}</h4>
+                      <div className="flex items-center gap-1 shrink-0">
                         {convCount > 0 && <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded">{convCount} conv.</span>}
-                        <button onClick={() => handleDeleteForm(form.id)} className="p-1 text-slate-300 hover:text-red-500 rounded transition-colors opacity-0 group-hover:opacity-100">
+                        <button onClick={() => openMapping(form)} className="p-1 text-slate-300 hover:text-blue-500 rounded transition-colors" title="Combinar campos">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                        <button onClick={() => handleDeleteForm(form.id)} className="p-1 text-slate-300 hover:text-red-500 rounded transition-colors">
                           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                         </button>
                       </div>
@@ -272,6 +318,46 @@ export const SiteTracking = () => {
           )}
         </div>
       </div>
+
+      {/* Field Mapping Modal */}
+      {mappingForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setMappingForm(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Combinar Campos</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{mappingForm.name}</p>
+              </div>
+              <button onClick={() => setMappingForm(null)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="p-6 space-y-3 max-h-80 overflow-y-auto">
+              <p className="text-xs text-slate-500 mb-2">Mapeie os campos do formulário para os campos do CRM:</p>
+              {(mappingForm.fields || []).map((f: any) => (
+                <div key={f.name} className="flex items-center gap-3">
+                  <div className="w-24 text-right">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">{f.name}</span>
+                  </div>
+                  <ArrowRight size={14} className="text-slate-300 shrink-0" />
+                  <select
+                    value={fieldMapping[f.name] || ''}
+                    onChange={e => setFieldMapping(m => ({ ...m, [f.name]: e.target.value }))}
+                    className="flex-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                  >
+                    {CRM_FIELDS.map(cf => (
+                      <option key={cf.value} value={cf.value}>{cf.label}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+              {(mappingForm.fields || []).length === 0 && <p className="text-sm text-slate-400 text-center py-4">Nenhum campo detectado.</p>}
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/50">
+              <button onClick={() => setMappingForm(null)} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
+              <button onClick={saveMapping} className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-sm"><Save size={16} />Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
