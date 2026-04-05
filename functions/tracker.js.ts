@@ -15,14 +15,12 @@ export const onRequestGet = async () => {
         T._send('conversion',{en:name,d:data||{}});
       },
       _send:function(type,data){
-        if(!T.id){console.warn('[NX] No tracking ID');return;}
+        if(!T.id){return;}
         var p={tracking_id:T.id,event_type:type,url:data.url||w.location.href,referrer:data.ref||document.referrer||null,visitor_id:T.vid,ts:new Date().toISOString()};
         if(data.en)p.event_name=data.en;
         if(data.d)p.data=data.d;
         if(data.form_data)p.form_data=data.form_data;
-        fetch(T.url+'/api/tracking/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p),mode:'no-cors'})
-          .then(function(){console.log('[NX] Sent:',type);})
-          .catch(function(e){console.warn('[NX] Failed:',e);});
+        fetch(T.url+'/api/tracking/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p),mode:'no-cors',credentials:'omit'}).catch(function(){});
       },
       _pv:function(){T._send('pageview',{url:w.location.href,ref:document.referrer||null,title:document.title});},
       _forms:function(){
