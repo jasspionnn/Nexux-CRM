@@ -9,7 +9,8 @@
       "Bash(npm install)",
       "Bash(rm *)",
       "Bash(git clone *)",
-      "Bash(cp *)"
+      "Bash(cp *)",
+      "Bash(npx *)"
     ]
   },
   "$version": 3

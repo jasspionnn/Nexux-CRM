@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   GitBranch, Plus, Play, Pause, Trash2, Edit2, Zap, Clock,
   Mail, Tag, ArrowRight, ChevronRight, Eye, X, Save, Loader2,
-  MoveUp, UserPlus, FileText, Globe, AlertCircle, ZoomIn, ZoomOut, Minus
+  MoveUp, UserPlus, FileText, Globe, AlertCircle, GripVertical, ChevronDown
 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
@@ -21,24 +21,16 @@ interface FlowNode {
   config: Record<string, any>;
   x: number;
   y: number;
-}
-
-interface FlowConnection {
-  id: string;
-  from: string;
-  to: string;
+  parentId: string | null; // The node this is connected FROM
 }
 
 interface Automation {
   id: string; name: string; description: string; is_active: number;
   trigger_type: string; trigger_config: any;
-  nodes: FlowNode[]; connections: FlowConnection[]; created_at: string;
+  nodes: FlowNode[]; connections: any[]; created_at: string;
 }
 
 // ==================== CATALOG ====================
-
-const HEADER_H = 52;
-const NODE_W = 300;
 
 const TRIGGERS = [
   { type: 'new_lead' as TriggerType, label: 'Novo Lead', icon: UserPlus, color: 'bg-emerald-500', desc: 'Quando um novo lead é criado' },
@@ -72,38 +64,11 @@ const DELAY_NODE = { type: 'delay' as const, label: 'Esperar', icon: Clock, colo
 const ALL_NODES = [...TRIGGERS, ...CONDITIONS, ...ACTIONS, DELAY_NODE];
 const findCat = (t: string) => ALL_NODES.find(n => n.type === t) || { type: t, label: t, icon: Zap, color: 'bg-gray-500', desc: '' };
 
-function cfgHeight(node: FlowNode): number {
-  if (!node || Object.keys(node.config).length === 0) return 0;
-  const t = node.nodeType;
-  if (t === 'new_lead' || t === 'conversion' || t === 'form_submit') return 50;
-  if (['value_gt','value_lt','has_tag','not_has_tag','stage_is','email_contains','probability_gt','move_stage','delay','add_tag','remove_tag','assign_user','webhook','page_visit'].includes(t)) return 80;
-  if (t === 'stage_change') return 140;
-  if (t === 'create_task') return 170;
-  if (t === 'send_email') return 180;
-  if (t === 'send_webhook') return 120;
-  if (t === 'create_note') return 130;
-  return 70;
-}
-
-function nodeH(node: FlowNode): number {
-  const ch = cfgHeight(node);
-  return ch > 0 ? HEADER_H + ch + 40 : HEADER_H;
-}
-
-function portPos(node: FlowNode, side: 'out' | 'in'): { x: number; y: number } {
-  return { x: side === 'out' ? node.x + NODE_W : node.x, y: node.y + HEADER_H / 2 };
-}
-
-function bezier(a: { x: number; y: number }, b: { x: number; y: number }): string {
-  const dx = Math.max(Math.abs(b.x - a.x) * 0.4, 40);
-  return `M${a.x},${a.y} C${a.x + dx},${a.y} ${b.x - dx},${b.y} ${b.x},${b.y}`;
-}
-
-function connPath(nodes: FlowNode[], fid: string, tid: string): string {
-  const fn = nodes.find(n => n.id === fid), tn = nodes.find(n => n.id === tid);
-  if (!fn || !tn) return '';
-  return bezier(portPos(fn, 'out'), portPos(tn, 'in'));
-}
+// Layout: nodes placed left-to-right, new nodes go to the right of parent
+const NODE_W = 280;
+const NODE_H = 120;
+const GAP_X = 100;
+const GAP_Y = 60;
 
 // ==================== MAIN ====================
 
@@ -166,315 +131,6 @@ export const AutomationFlows = () => {
   );
 };
 
-// ==================== BUILDER ====================
-
-const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh: () => void; accountId: string }> = ({ automation, onClose, onRefresh, accountId }) => {
-  const [name, setName] = useState(automation.name || '');
-  const [description, setDescription] = useState(automation.description || '');
-  const [nodes, setNodes] = useState<FlowNode[]>(automation.nodes || []);
-  const [connections, setConnections] = useState<FlowConnection[]>(automation.connections || []);
-  const [showCat, setShowCat] = useState(nodes.length === 0);
-  const [selId, setSelId] = useState<string | null>(null);
-  const [connFrom, setConnFrom] = useState<string | null>(null);
-  const [mouse, setMouse] = useState({ x: 0, y: 0 });
-  const [saving, setSaving] = useState(false);
-  const [stages, setStages] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [autos, setAutos] = useState<Automation[]>([]);
-
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
-  const panRef = useRef<{ active: boolean; startX: number; startY: number; startScrollLeft: number; startScrollTop: number } | null>(null);
-
-  // Load stages/users
-  useEffect(() => {
-    (async () => {
-      try {
-        const [f, u, a] = await Promise.all([fetch('/api/funnels'), fetch(`/api/users?account_id=${accountId}`), fetch(`/api/automations?account_id=${accountId}`)]);
-        if (f.ok) { const d = await f.json(); setStages(d.flatMap((x: any) => x.stages || [])); }
-        if (u.ok) setUsers(await u.json());
-        if (a.ok) setAutos(await a.json());
-      } catch (e) { /* */ }
-    })();
-  }, [accountId]);
-
-  // Scroll to first node on load
-  useEffect(() => {
-    if (nodes.length > 0 && canvasRef.current) {
-      const minY = Math.min(...nodes.map(n => n.y));
-      const minX = Math.min(...nodes.map(n => n.x));
-      canvasRef.current.scrollTo({ left: Math.max(0, minX - 80), top: Math.max(0, minY - 40), behavior: 'instant' as any });
-    }
-  }, [nodes.length]);
-
-  useEffect(() => {
-    const move = (e: MouseEvent) => {
-      if (panRef.current?.active && canvasRef.current) {
-        canvasRef.current.scrollLeft = panRef.current.startScrollLeft - (e.clientX - panRef.current.startX);
-        canvasRef.current.scrollTop = panRef.current.startScrollTop - (e.clientY - panRef.current.startY);
-      }
-      if (dragRef.current) {
-        const d = dragRef.current;
-        setNodes(ns => ns.map(n => n.id === d.id ? { ...n, x: Math.max(0, d.ox + (e.clientX - d.sx) / zoom), y: Math.max(0, d.oy + (e.clientY - d.sy) / zoom) } : n));
-      }
-    };
-    const up = () => { panRef.current = null; dragRef.current = null; if (canvasRef.current) canvasRef.current.style.cursor = ''; };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-  }, [zoom]);
-
-  // Mouse tracking for connection preview
-  useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (connFrom && canvasRef.current) {
-        const r = canvasRef.current.getBoundingClientRect();
-        setMouse({
-          x: (e.clientX - r.left + canvasRef.current.scrollLeft) / zoom,
-          y: (e.clientY - r.top + canvasRef.current.scrollTop) / zoom,
-        });
-      }
-    };
-    window.addEventListener('mousemove', h);
-    return () => window.removeEventListener('mousemove', h);
-  }, [connFrom, zoom]);
-
-  // Wheel zoom
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el) return;
-    const h = (e: WheelEvent) => {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      setZoom(z => Math.min(Math.max(z + delta, 0.3), 2));
-    };
-    el.addEventListener('wheel', h, { passive: false });
-    return () => el.removeEventListener('wheel', h);
-  }, []);
-
-  const dragStart = useCallback((id: string, e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    const n = nodes.find(x => x.id === id);
-    if (!n) return;
-    dragRef.current = { id, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y };
-  }, [nodes]);
-
-  const onCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('[data-node]') || target.closest('[data-port]')) return;
-    if (!canvasRef.current) return;
-    panRef.current = {
-      active: true,
-      startX: e.clientX,
-      startY: e.clientY,
-      startScrollLeft: canvasRef.current.scrollLeft,
-      startScrollTop: canvasRef.current.scrollTop,
-    };
-    canvasRef.current.style.cursor = 'grabbing';
-    e.stopPropagation();
-  }, []);
-
-  useEffect(() => {
-    const move = (e: MouseEvent) => {
-      if (panRef.current?.active && canvasRef.current) {
-        canvasRef.current.scrollLeft = panRef.current.startScrollLeft - (e.clientX - panRef.current.startX);
-        canvasRef.current.scrollTop = panRef.current.startScrollTop - (e.clientY - panRef.current.startY);
-      }
-      if (dragRef.current) {
-        const d = dragRef.current;
-        setNodes(ns => ns.map(n => n.id === d.id ? { ...n, x: Math.max(0, d.ox + (e.clientX - d.sx) / zoom), y: Math.max(0, d.oy + (e.clientY - d.sy) / zoom) } : n));
-      }
-    };
-    const up = () => { panRef.current = null; dragRef.current = null; if (canvasRef.current) canvasRef.current.style.cursor = ''; };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
-  }, [zoom]);
-
-  const addNode = useCallback((cat: any, type: NodeType) => {
-    const maxY = nodes.length ? Math.max(...nodes.map(n => n.y + nodeH(n))) + 80 : 60;
-    const nn: FlowNode = { id: crypto.randomUUID(), type, nodeType: cat.type, label: cat.label, config: {}, x: 60, y: maxY };
-    setNodes(prev => [...prev, nn]);
-  }, [nodes]);
-
-  const onConfigChange = useCallback((nodeId: string, c: Record<string, any>) => {
-    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, config: { ...n.config, ...c } } : n));
-  }, []);
-
-  const removeNode = useCallback((id: string) => {
-    setNodes(prev => prev.filter(n => n.id !== id));
-    setConnections(prev => prev.filter(c => c.from !== id && c.to !== id));
-    setSelId(null);
-  }, []);
-
-  const doSave = async () => {
-    if (!name.trim()) { alert('Dê um nome ao fluxo'); return; }
-    setSaving(true);
-    try {
-      const exists = autos.find(a => a.id === automation.id);
-      const res = await fetch(exists ? `/api/automations/${automation.id}` : '/api/automations', {
-        method: exists ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: automation.id, name, description, is_active: 1, trigger_type: nodes.find(n => n.type === 'trigger')?.nodeType || '', trigger_config: nodes.find(n => n.type === 'trigger')?.config || {}, nodes, connections, created_at: automation.created_at, account_id: accountId })
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        alert('Erro ao salvar: ' + (err.error || 'Erro desconhecido'));
-        return;
-      }
-      onClose();
-      onRefresh();
-    } catch (e) {
-      console.error(e);
-      alert('Erro ao salvar fluxo');
-    }
-    setSaving(false);
-  };
-
-  const canvasH = Math.max(nodes.length ? Math.max(...nodes.map(n => n.y + nodeH(n))) + 500 : 800, 800);
-  const canvasW = Math.max(nodes.length ? Math.max(...nodes.map(n => n.x + NODE_W)) + 500 : 1200, 1200);
-
-  return (
-    <div className="h-full flex flex-col bg-slate-50">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shrink-0" style={{ zIndex: 50 }}>
-        <div className="flex items-center gap-3 flex-1">
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
-          <div className="flex-1"><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nome do fluxo..." className="text-lg font-bold text-slate-900 border-none focus:outline-none bg-transparent w-full" /><input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição..." className="text-xs text-slate-500 border-none focus:outline-none bg-transparent w-full" /></div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setShowCat(c => !c)} className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-sm"><Plus size={15} />Bloco</button>
-          <button onClick={doSave} disabled={saving || !nodes.length} className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-sm disabled:opacity-50">{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}Salvar</button>
-        </div>
-      </div>
-
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Catalog */}
-        {showCat && (
-          <aside className="w-60 bg-white border-r border-slate-200 overflow-y-auto shrink-0" style={{ zIndex: 40 }}>
-            <div className="p-3">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Gatilhos</p>
-              <div className="space-y-1 mb-4">{TRIGGERS.map(n => <CatItem key={n.type} n={n} onClick={() => addNode(n, 'trigger')} />)}</div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Condições</p>
-              <div className="space-y-1 mb-4">{CONDITIONS.map(n => <CatItem key={n.type} n={n} onClick={() => addNode(n, 'condition')} />)}</div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Ações</p>
-              <div className="space-y-1 mb-4">{ACTIONS.map(n => <CatItem key={n.type} n={n} onClick={() => addNode(n, 'action')} />)}</div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Tempo</p>
-              <CatItem n={DELAY_NODE} onClick={() => addNode(DELAY_NODE, 'delay')} />
-            </div>
-          </aside>
-        )}
-
-        {/* Canvas */}
-        <div ref={canvasRef} className="flex-1 overflow-auto relative" onMouseDown={onCanvasMouseDown}>
-          {/* Zoom controls */}
-          <div className="fixed bottom-6 right-6 flex items-center gap-1 bg-white rounded-xl shadow-xl border border-slate-200 p-1" style={{ zIndex: 100 }}>
-            <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.3))} className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg"><ZoomOut size={18} /></button>
-            <span className="text-xs font-bold text-slate-600 w-12 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
-            <button onClick={() => setZoom(z => Math.min(z + 0.1, 2))} className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg"><ZoomIn size={18} /></button>
-            <div className="w-px h-5 bg-slate-200" />
-            <button onClick={() => { if (canvasRef.current) canvasRef.current.scrollTo(0, 0); }} className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg" title="Voltar ao topo"><Minus size={18} /></button>
-          </div>
-
-          {/* Scaled content */}
-          <div style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', width: canvasW, height: canvasH, position: 'absolute', top: 0, left: 0 }}>
-            {/* Grid */}
-            <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:20px_20px]" />
-
-            {/* SVG connections */}
-            <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'none' }}>
-              {connections.map(c => {
-                const path = connPath(nodes, c.from, c.to);
-                if (!path) return null;
-                const tn = nodes.find(n => n.id === c.to);
-                const tp = tn ? portPos(tn, 'in') : { x: 0, y: 0 };
-                return (
-                  <g key={c.id}>
-                    <path d={path} fill="none" stroke="transparent" strokeWidth={18} className="cursor-pointer" style={{ pointerEvents: 'stroke' }} onClick={e => { e.stopPropagation(); setConnections(prev => prev.filter(x => x.id !== c.id)); }} />
-                    <path d={path} fill="none" stroke="#94a3b8" strokeWidth={2.5} strokeLinecap="round" />
-                    <circle cx={tp.x} cy={tp.y} r={4} fill="#94a3b8" />
-                  </g>
-                );
-              })}
-              {connFrom && (() => {
-                const fn = nodes.find(n => n.id === connFrom);
-                if (!fn) return null;
-                const a = portPos(fn, 'out');
-                const dx = Math.max(Math.abs(mouse.x - a.x) * 0.4, 40);
-                return <path d={`M${a.x},${a.y} C${a.x + dx},${a.y} ${mouse.x - dx},${mouse.y} ${mouse.x},${mouse.y}`} fill="none" stroke="#0d9488" strokeWidth={2.5} strokeDasharray="8 4" strokeLinecap="round" />;
-              })()}
-            </svg>
-
-            {/* Nodes */}
-            {nodes.map(node => {
-              const cat = findCat(node.nodeType);
-              const Icon = cat.icon;
-              const isConn = connFrom === node.id;
-              const hasOut = connections.some(c => c.from === node.id);
-              const hasIn = connections.some(c => c.to === node.id);
-              const isSel = selId === node.id;
-              const h = nodeH(node);
-
-              return (
-                <div key={node.id} data-node className="absolute" style={{ left: node.x, top: node.y, width: NODE_W, height: h, zIndex: isSel ? 30 : 10 }}>
-                  {/* Input port */}
-                  {nodes.indexOf(node) > 0 && (
-                    <div
-                      className={`absolute -left-[5px] w-3 h-3 rounded-full border-2 cursor-pointer transition-all z-30 ${connFrom ? 'bg-teal-400 border-teal-600 scale-150 shadow-md shadow-teal-200' : 'bg-white border-slate-300 hover:border-teal-500 hover:scale-125'}`}
-                      style={{ top: HEADER_H / 2 - 6 }}
-                      onClick={e => {
-                        e.stopPropagation();
-                        if (connFrom && connFrom !== node.id) {
-                          if (!connections.find(c => c.from === connFrom && c.to === node.id)) {
-                            setConnections(prev => [...prev, { id: crypto.randomUUID(), from: connFrom, to: node.id }]);
-                          }
-                          setConnFrom(null);
-                        }
-                      }}
-                    />
-                  )}
-
-                  {/* Card */}
-                  <div className={`bg-white border-2 rounded-xl shadow-md overflow-hidden transition-all ${isSel ? 'border-teal-500 shadow-lg ring-1 ring-teal-200' : 'border-slate-200'}`}>
-                    <div className="flex items-center gap-2.5 px-3 select-none" style={{ height: HEADER_H }} onMouseDown={e => dragStart(node.id, e)} onClick={() => { if (!connFrom) setSelId(isSel ? null : node.id); }}>
-                      <div className={`w-8 h-8 rounded-lg ${cat.color} flex items-center justify-center text-white shrink-0 shadow-sm`}><Icon size={16} /></div>
-                      <div className="flex-1 min-w-0"><p className="text-sm font-bold text-slate-900 truncate">{node.label}</p><p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">{node.type}</p></div>
-                      <button onClick={e => { e.stopPropagation(); removeNode(node.id); }} className="p-1 text-slate-300 hover:text-red-500 rounded shrink-0"><X size={14} /></button>
-                    </div>
-
-                    {/* Config panel */}
-                    {isSel && <ConfigPanel node={node} onConfigChange={onConfigChange} stages={stages} users={users} />}
-
-                    {/* Footer */}
-                    <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        {hasIn && hasOut ? '✓ Conectado' : hasOut ? '→ Saída' : hasIn ? '← Entrada' : 'Pendente'}
-                      </span>
-                      <button onClick={e => { e.stopPropagation(); setConnFrom(isConn ? null : node.id); }}
-                        className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all ${isConn ? 'bg-teal-100 text-teal-700 ring-1 ring-teal-300' : 'bg-teal-600 text-white hover:bg-teal-700'}`}>
-                        <ArrowRight size={12} />{isConn ? 'Selecione o alvo' : 'Conectar'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Output port */}
-                  <div
-                    className={`absolute -right-[5px] w-3 h-3 rounded-full border-2 cursor-pointer transition-all z-30 ${isConn ? 'bg-teal-500 border-teal-600 scale-150 animate-pulse shadow-md shadow-teal-200' : 'bg-white border-slate-300 hover:border-teal-500 hover:scale-125'}`}
-                    style={{ top: HEADER_H / 2 - 6 }}
-                    onClick={e => { e.stopPropagation(); setConnFrom(isConn ? null : node.id); }}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // ==================== CONFIG PANEL ====================
 
 const FieldLabel: React.FC<{ label: string; hint?: string; children: React.ReactNode }> = ({ label, hint, children }) => (
@@ -488,66 +144,283 @@ const ConfigPanel: React.FC<{ node: FlowNode; onConfigChange: (nodeId: string, c
   const t = node.nodeType;
 
   return (
-    <div className="px-4 pt-3 pb-2 border-t border-slate-100 space-y-2.5">
+    <div className="px-3 pt-3 pb-2 border-t border-slate-100 space-y-2.5">
       {t === 'new_lead' && <p className="text-xs text-slate-500 flex items-center gap-2"><Zap size={14} className="text-emerald-500" />Dispara quando um novo lead é criado.</p>}
-
       {t === 'stage_change' && (<>
         <FieldLabel label="Origem" hint="Qualquer se vazio"><select value={node.config.from_stage_id || ''} onChange={e => set('from_stage_id', e.target.value)} className={sc}><option value="">Qualquer</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>
         <div className="flex justify-center text-slate-300"><ArrowRight size={16} className="rotate-90" /></div>
         <FieldLabel label="Destino" hint="Qualquer se vazio"><select value={node.config.to_stage_id || ''} onChange={e => set('to_stage_id', e.target.value)} className={sc}><option value="">Qualquer</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>
       </>)}
-
-      {t === 'page_visit' && <FieldLabel label="URL contém"><input key="url_pattern" type="text" value={node.config.url_pattern || ''} onChange={e => set('url_pattern', e.target.value)} placeholder="/precos" className={ic} /></FieldLabel>}
-
-      {t === 'value_gt' && <FieldLabel label="Valor &gt;"><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">R$</span><input key="value" type="number" value={node.config.value || ''} onChange={e => set('value', +e.target.value || 0)} placeholder="0" className={`${ic} pl-9`} /></div></FieldLabel>}
-      {t === 'value_lt' && <FieldLabel label="Valor &lt;"><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">R$</span><input key="value" type="number" value={node.config.value || ''} onChange={e => set('value', +e.target.value || 0)} placeholder="0" className={`${ic} pl-9`} /></div></FieldLabel>}
-
-      {(t === 'has_tag' || t === 'not_has_tag') && <FieldLabel label="Tag"><input key="tag" type="text" value={node.config.tag || ''} onChange={e => set('tag', e.target.value)} placeholder="enterprise" className={ic} /></FieldLabel>}
-      {t === 'stage_is' && <FieldLabel label="Estágio"><select key="stage_id" value={node.config.stage_id || ''} onChange={e => set('stage_id', e.target.value)} className={sc}><option value="">Selecione</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>}
-      {t === 'email_contains' && <FieldLabel label="Email contém"><input key="text" type="text" value={node.config.text || ''} onChange={e => set('text', e.target.value)} placeholder="@empresa.com" className={ic} /></FieldLabel>}
-      {t === 'probability_gt' && <FieldLabel label="Probabilidade &gt;"><div className="relative"><input key="probability" type="number" value={node.config.probability || ''} onChange={e => set('probability', +e.target.value || 0)} placeholder="50" min={0} max={100} className={`${ic} pr-8`} /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span></div></FieldLabel>}
-
-      {t === 'move_stage' && <FieldLabel label="Mover para"><select key="to_stage_id" value={node.config.to_stage_id || ''} onChange={e => set('to_stage_id', e.target.value)} className={sc}><option value="">Selecione</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>}
-
+      {t === 'page_visit' && <FieldLabel label="URL contém"><input type="text" value={node.config.url_pattern || ''} onChange={e => set('url_pattern', e.target.value)} placeholder="/precos" className={ic} /></FieldLabel>}
+      {t === 'value_gt' && <FieldLabel label="Valor &gt;"><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">R$</span><input type="number" value={node.config.value || ''} onChange={e => set('value', +e.target.value || 0)} placeholder="0" className={`${ic} pl-9`} /></div></FieldLabel>}
+      {t === 'value_lt' && <FieldLabel label="Valor &lt;"><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">R$</span><input type="number" value={node.config.value || ''} onChange={e => set('value', +e.target.value || 0)} placeholder="0" className={`${ic} pl-9`} /></div></FieldLabel>}
+      {(t === 'has_tag' || t === 'not_has_tag') && <FieldLabel label="Tag"><input type="text" value={node.config.tag || ''} onChange={e => set('tag', e.target.value)} placeholder="enterprise" className={ic} /></FieldLabel>}
+      {t === 'stage_is' && <FieldLabel label="Estágio"><select value={node.config.stage_id || ''} onChange={e => set('stage_id', e.target.value)} className={sc}><option value="">Selecione</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>}
+      {t === 'email_contains' && <FieldLabel label="Email contém"><input type="text" value={node.config.text || ''} onChange={e => set('text', e.target.value)} placeholder="@empresa.com" className={ic} /></FieldLabel>}
+      {t === 'probability_gt' && <FieldLabel label="Probabilidade &gt;"><div className="relative"><input type="number" value={node.config.probability || ''} onChange={e => set('probability', +e.target.value || 0)} placeholder="50" min={0} max={100} className={`${ic} pr-8`} /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span></div></FieldLabel>}
+      {t === 'move_stage' && <FieldLabel label="Mover para"><select value={node.config.to_stage_id || ''} onChange={e => set('to_stage_id', e.target.value)} className={sc}><option value="">Selecione</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>}
       {t === 'create_task' && (<>
-        <FieldLabel label="Título"><input key="title" type="text" value={node.config.title || ''} onChange={e => set('title', e.target.value)} placeholder="Ligar para lead" className={ic} /></FieldLabel>
-        <FieldLabel label="Data limite"><input key="due_date" type="date" value={node.config.due_date || ''} onChange={e => set('due_date', e.target.value)} className={ic} /></FieldLabel>
-        <FieldLabel label="Atribuir a"><select key="assigned_user_id" value={node.config.assigned_user_id || ''} onChange={e => set('assigned_user_id', e.target.value)} className={sc}><option value="">Selecione</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></FieldLabel>
+        <FieldLabel label="Título"><input type="text" value={node.config.title || ''} onChange={e => set('title', e.target.value)} placeholder="Ligar para lead" className={ic} /></FieldLabel>
+        <FieldLabel label="Data limite"><input type="date" value={node.config.due_date || ''} onChange={e => set('due_date', e.target.value)} className={ic} /></FieldLabel>
+        <FieldLabel label="Atribuir a"><select value={node.config.assigned_user_id || ''} onChange={e => set('assigned_user_id', e.target.value)} className={sc}><option value="">Selecione</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></FieldLabel>
       </>)}
-
-      {(t === 'add_tag' || t === 'remove_tag') && <FieldLabel label="Tag"><input key="tag" type="text" value={node.config.tag || ''} onChange={e => set('tag', e.target.value)} placeholder="cliente" className={ic} /></FieldLabel>}
-
+      {(t === 'add_tag' || t === 'remove_tag') && <FieldLabel label="Tag"><input type="text" value={node.config.tag || ''} onChange={e => set('tag', e.target.value)} placeholder="cliente" className={ic} /></FieldLabel>}
       {t === 'send_email' && (<>
-        <FieldLabel label="Assunto"><input key="subject" type="text" value={node.config.subject || ''} onChange={e => set('subject', e.target.value)} placeholder="Bem-vindo!" className={ic} /></FieldLabel>
-        <FieldLabel label="Corpo"><textarea key="body" value={node.config.body || ''} onChange={e => set('body', e.target.value)} placeholder="Olá {{lead_name}}," rows={3} className={`${ic} resize-none font-mono text-xs`} /></FieldLabel>
+        <FieldLabel label="Assunto"><input type="text" value={node.config.subject || ''} onChange={e => set('subject', e.target.value)} placeholder="Bem-vindo!" className={ic} /></FieldLabel>
+        <FieldLabel label="Corpo"><textarea value={node.config.body || ''} onChange={e => set('body', e.target.value)} placeholder="Olá {{lead_name}}," rows={3} className={`${ic} resize-none font-mono text-xs`} /></FieldLabel>
       </>)}
-
       {t === 'send_webhook' && (<>
-        <FieldLabel label="URL"><input key="url" type="url" value={node.config.url || ''} onChange={e => set('url', e.target.value)} placeholder="https://api.exemplo.com" className={ic} /></FieldLabel>
-        <FieldLabel label="Método"><select key="method" value={node.config.method || 'POST'} onChange={e => set('method', e.target.value)} className={sc}><option>POST</option><option>GET</option><option>PUT</option><option>DELETE</option></select></FieldLabel>
+        <FieldLabel label="URL"><input type="url" value={node.config.url || ''} onChange={e => set('url', e.target.value)} placeholder="https://api.exemplo.com" className={ic} /></FieldLabel>
+        <FieldLabel label="Método"><select value={node.config.method || 'POST'} onChange={e => set('method', e.target.value)} className={sc}><option>POST</option><option>GET</option><option>PUT</option><option>DELETE</option></select></FieldLabel>
       </>)}
-
-      {t === 'create_note' && <FieldLabel label="Nota"><textarea key="content" value={node.config.content || ''} onChange={e => set('content', e.target.value)} placeholder="Lead qualificado..." rows={2} className={`${ic} resize-none`} /></FieldLabel>}
-      {t === 'assign_user' && <FieldLabel label="Usuário"><select key="user_id" value={node.config.user_id || ''} onChange={e => set('user_id', e.target.value)} className={sc}><option value="">Selecione</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></FieldLabel>}
-
+      {t === 'create_note' && <FieldLabel label="Nota"><textarea value={node.config.content || ''} onChange={e => set('content', e.target.value)} placeholder="Lead qualificado..." rows={2} className={`${ic} resize-none`} /></FieldLabel>}
+      {t === 'assign_user' && <FieldLabel label="Usuário"><select value={node.config.user_id || ''} onChange={e => set('user_id', e.target.value)} className={sc}><option value="">Selecione</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></FieldLabel>}
       {t === 'delay' && (
         <div className="flex items-end gap-2">
-          <div className="flex-1"><FieldLabel label="Duração"><input key="duration" type="number" value={node.config.duration || ''} onChange={e => set('duration', +e.target.value || 0)} placeholder="30" min={1} className={ic} /></FieldLabel></div>
-          <select key="unit" value={node.config.unit || 'minutes'} onChange={e => set('unit', e.target.value)} className={`${sc} flex-1 mt-4`}><option value="minutes">Minutos</option><option value="hours">Horas</option><option value="days">Dias</option></select>
+          <div className="flex-1"><FieldLabel label="Duração"><input type="number" value={node.config.duration || ''} onChange={e => set('duration', +e.target.value || 0)} placeholder="30" min={1} className={ic} /></FieldLabel></div>
+          <select value={node.config.unit || 'minutes'} onChange={e => set('unit', e.target.value)} className={`${sc} flex-1 mt-4`}><option value="minutes">Minutos</option><option value="hours">Horas</option><option value="days">Dias</option></select>
         </div>
       )}
     </div>
   );
-}, (prev, next) => {
-  return prev.node === next.node && prev.onConfigChange === next.onConfigChange && prev.stages === next.stages && prev.users === next.users;
+}, (prev, next) => prev.node === next.node && prev.onConfigChange === next.onConfigChange && prev.stages === next.stages && prev.users === next.users);
+
+// ==================== NODE CARD ====================
+
+const NodeCard: React.FC<{
+  node: FlowNode;
+  selId: string | null;
+  onConfigChange: (id: string, c: Record<string, any>) => void;
+  stages: any[];
+  users: any[];
+  onConnect: (parentId: string) => void;
+  onRemove: (id: string) => void;
+  onSelect: (id: string | null) => void;
+  onDragStart: (id: string, e: React.MouseEvent) => void;
+}> = React.memo(({ node, selId, onConfigChange, stages, users, onConnect, onRemove, onSelect, onDragStart }) => {
+  const cat = findCat(node.nodeType);
+  const Icon = cat.icon;
+  const isSel = selId === node.id;
+  const h = isSel ? NODE_H + 120 : NODE_H;
+
+  return (
+    <div className="absolute select-none" style={{ left: node.x, top: node.y, width: NODE_W, zIndex: isSel ? 30 : 10 }}>
+      <div className={`bg-white border-2 rounded-xl shadow-md overflow-hidden transition-all ${isSel ? 'border-teal-500 shadow-lg ring-1 ring-teal-200' : 'border-slate-200'}`}>
+        {/* Header + drag */}
+        <div className="flex items-center gap-2.5 px-3" style={{ height: 52 }} onMouseDown={e => onDragStart(node.id, e)} onClick={() => onSelect(isSel ? null : node.id)}>
+          <GripVertical size={16} className="text-slate-300 shrink-0" />
+          <div className={`w-8 h-8 rounded-lg ${cat.color} flex items-center justify-center text-white shrink-0 shadow-sm`}><Icon size={16} /></div>
+          <div className="flex-1 min-w-0"><p className="text-sm font-bold text-slate-900 truncate">{node.label}</p><p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">{node.type}</p></div>
+          <button onClick={e => { e.stopPropagation(); onRemove(node.id); }} className="p-1 text-slate-300 hover:text-red-500 rounded shrink-0"><X size={14} /></button>
+        </div>
+
+        {/* Config */}
+        {isSel && <ConfigPanel node={node} onConfigChange={onConfigChange} stages={stages} users={users} />}
+
+        {/* Footer */}
+        <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between" style={{ height: 38 }}>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{node.type === 'trigger' ? '🚀 Gatilho' : node.type === 'condition' ? '🔍 Condição' : node.type === 'delay' ? '⏱ Tempo' : '⚡ Ação'}</span>
+          <button onClick={e => { e.stopPropagation(); onConnect(node.id); }}
+            className="w-7 h-7 rounded-full bg-teal-600 hover:bg-teal-700 text-white flex items-center justify-center shadow-md transition-all hover:scale-110"
+            title="Adicionar próximo bloco">
+            <Plus size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 });
 
-const CatItem: React.FC<{ n: any; onClick: () => void }> = ({ n, onClick }) => {
-  const Icon = n.icon;
+// ==================== BUILDER ====================
+
+const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh: () => void; accountId: string }> = ({ automation, onClose, onRefresh, accountId }) => {
+  const [name, setName] = useState(automation.name || '');
+  const [description, setDescription] = useState(automation.description || '');
+  const [nodes, setNodes] = useState<FlowNode[]>(automation.nodes || []);
+  const [selId, setSelId] = useState<string | null>(null);
+  const [connectMenuId, setConnectMenuId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [stages, setStages] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [autos, setAutos] = useState<Automation[]>([]);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
+  const panRef = useRef<{ active: boolean; sx: number; sy: number; sl: number; st: number } | null>(null);
+
+  // Load data
+  useEffect(() => {
+    (async () => {
+      try {
+        const [f, u, a] = await Promise.all([fetch('/api/funnels'), fetch(`/api/users?account_id=${accountId}`), fetch(`/api/automations?account_id=${accountId}`)]);
+        if (f.ok) { const d = await f.json(); setStages(d.flatMap((x: any) => x.stages || [])); }
+        if (u.ok) setUsers(await u.json());
+        if (a.ok) setAutos(await a.json());
+      } catch (e) { /* */ }
+    })();
+  }, [accountId]);
+
+  // Pan on empty area
+  const onCanvasDown = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('[data-node]') || (e.target as HTMLElement).closest('[data-ui]')) return;
+    if (!canvasRef.current) return;
+    panRef.current = { active: true, sx: e.clientX, sy: e.clientY, sl: canvasRef.current.scrollLeft, st: canvasRef.current.scrollTop };
+    canvasRef.current.style.cursor = 'grabbing';
+  }, []);
+
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      if (panRef.current?.active && canvasRef.current) {
+        canvasRef.current.scrollLeft = panRef.current.sl - (e.clientX - panRef.current.sx);
+        canvasRef.current.scrollTop = panRef.current.st - (e.clientY - panRef.current.sy);
+      }
+      if (dragRef.current) {
+        const d = dragRef.current;
+        setNodes(ns => ns.map(n => n.id === d.id ? { ...n, x: Math.max(0, d.ox + (e.clientX - d.sx)), y: Math.max(0, d.oy + (e.clientY - d.sy)) } : n));
+      }
+    };
+    const up = () => { panRef.current = null; dragRef.current = null; if (canvasRef.current) canvasRef.current.style.cursor = ''; };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, []);
+
+  // Scroll to nodes on load
+  useEffect(() => {
+    if (nodes.length > 0 && canvasRef.current) {
+      const minX = Math.min(...nodes.map(n => n.x));
+      const minY = Math.min(...nodes.map(n => n.y));
+      canvasRef.current.scrollTo({ left: Math.max(0, minX - 100), top: Math.max(0, minY - 60), behavior: 'instant' as any });
+    }
+  }, [nodes.length]);
+
+  const dragStart = useCallback((id: string, e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const n = nodes.find(x => x.id === id);
+    if (!n) return;
+    dragRef.current = { id, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y };
+  }, [nodes]);
+
+  const onConfigChange = useCallback((nodeId: string, c: Record<string, any>) => {
+    setNodes(prev => prev.map(n => n.id === nodeId ? { ...n, config: { ...n.config, ...c } } : n));
+  }, []);
+
+  const removeNode = useCallback((id: string) => {
+    setNodes(prev => prev.filter(n => n.id !== id));
+    setSelId(null);
+  }, []);
+
+  const addNode = useCallback((parentId: string, cat: any, type: NodeType) => {
+    const parent = nodes.find(n => n.id === parentId);
+    if (!parent) return;
+
+    // Count existing children of this parent to stack vertically
+    const siblings = nodes.filter(n => n.parentId === parentId);
+    const x = parent.x + NODE_W + GAP_X;
+    const y = siblings.length === 0 ? parent.y : parent.y + NODE_H + GAP_Y;
+
+    const nn: FlowNode = { id: crypto.randomUUID(), type, nodeType: cat.type, label: cat.label, config: {}, x, y, parentId };
+    setNodes(prev => [...prev, nn]);
+    setConnectMenuId(null);
+  }, [nodes]);
+
+  const addFirstNode = useCallback((cat: any, type: NodeType) => {
+    const nn: FlowNode = { id: crypto.randomUUID(), type, nodeType: cat.type, label: cat.label, config: {}, x: 100, y: 100, parentId: null };
+    setNodes(prev => [...prev, nn]);
+  }, []);
+
+  const doSave = async () => {
+    if (!name.trim()) { alert('Dê um nome ao fluxo'); return; }
+    setSaving(true);
+    try {
+      const exists = autos.find(a => a.id === automation.id);
+      const res = await fetch(exists ? `/api/automations/${automation.id}` : '/api/automations', {
+        method: exists ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: automation.id, name, description, is_active: 1, trigger_type: nodes.find(n => n.type === 'trigger')?.nodeType || '', trigger_config: nodes.find(n => n.type === 'trigger')?.config || {}, nodes, connections: nodes.map(n => ({ id: crypto.randomUUID(), from: n.parentId || '', to: n.id })).filter(c => c.from), created_at: automation.created_at || '', account_id: accountId })
+      });
+      if (!res.ok) { const err = await res.json(); alert('Erro: ' + (err.error || 'Erro desconhecido')); return; }
+      onClose(); onRefresh();
+    } catch (e) { console.error(e); alert('Erro ao salvar'); }
+    setSaving(false);
+  };
+
   return (
-    <button onClick={onClick} className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border border-slate-200 hover:border-teal-300 hover:bg-teal-50/50 transition-all text-left group">
-      <div className={`w-7 h-7 rounded-md ${n.color} flex items-center justify-center text-white shrink-0 group-hover:scale-110 transition-transform`}><Icon size={14} /></div>
-      <div className="min-w-0"><p className="text-xs font-bold text-slate-700 truncate">{n.label}</p><p className="text-[9px] text-slate-400 truncate">{n.desc}</p></div>
-    </button>
+    <div className="h-full flex flex-col bg-slate-50">
+      {/* Header */}
+      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shrink-0" style={{ zIndex: 50 }}>
+        <div className="flex items-center gap-3 flex-1">
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+          <div className="flex-1"><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nome do fluxo..." className="text-lg font-bold text-slate-900 border-none focus:outline-none bg-transparent w-full" /><input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição..." className="text-xs text-slate-500 border-none focus:outline-none bg-transparent w-full" /></div>
+        </div>
+        <div className="flex items-center gap-2">
+          {nodes.length === 0 && <span className="text-sm text-slate-400 mr-2">Adicione um gatilho para começar →</span>}
+          <button onClick={doSave} disabled={saving || !nodes.length} className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-sm disabled:opacity-50">{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}Salvar</button>
+        </div>
+      </div>
+
+      {/* Canvas */}
+      <div ref={canvasRef} className="flex-1 overflow-auto relative" onMouseDown={onCanvasDown}>
+        <div style={{ width: 4000, height: 3000, position: 'relative' }}>
+          {/* Grid */}
+          <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:20px_20px]" />
+
+          {/* Empty state */}
+          {nodes.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center" data-ui>
+              <div className="text-center">
+                <GitBranch className="mx-auto text-slate-300 mb-4" size={48} />
+                <p className="text-slate-400 font-bold text-lg">Fluxo vazio</p>
+                <p className="text-sm text-slate-400 mt-2 mb-6">Escolha um gatilho para começar.</p>
+                <div className="flex flex-wrap justify-center gap-2 max-w-lg">
+                  {TRIGGERS.map(n => { const Icon = n.icon; return (
+                    <button key={n.type} onClick={() => addFirstNode(n, 'trigger')} className="flex items-center gap-2 px-4 py-3 bg-white border-2 border-slate-200 rounded-xl hover:border-emerald-400 hover:shadow-md transition-all">
+                      <div className={`w-7 h-7 rounded-lg ${n.color} flex items-center justify-center text-white`}><Icon size={14} /></div>
+                      <span className="text-sm font-bold text-slate-700">{n.label}</span>
+                    </button>
+                  );})}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Nodes */}
+          {nodes.map(node => (
+            <React.Fragment key={node.id}>
+              <NodeCard node={node} selId={selId} onConfigChange={onConfigChange} stages={stages} users={users}
+                onConnect={(id) => setConnectMenuId(connectMenuId === id ? null : id)}
+                onRemove={removeNode} onSelect={(id) => { setSelId(id); setConnectMenuId(null); }} onDragStart={dragStart} />
+
+              {/* Connect menu popup */}
+              {connectMenuId === node.id && (
+                <div className="absolute bg-white rounded-xl shadow-2xl border border-slate-200 p-3 z-50" style={{ left: node.x + NODE_W + 10, top: node.y + 40, width: 260 }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase">Adicionar bloco</span>
+                    <button onClick={() => setConnectMenuId(null)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
+                  </div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Condições</p>
+                  <div className="space-y-1 mb-3">{CONDITIONS.map(n => { const Icon = n.icon; return (
+                    <button key={n.type} onClick={() => addNode(node.id, n, 'condition')} className="w-full flex items-center gap-2 px-2 py-2 rounded-lg border border-slate-200 hover:border-amber-400 hover:bg-amber-50 transition-all text-left">
+                      <div className={`w-6 h-6 rounded ${n.color} flex items-center justify-center text-white shrink-0`}><Icon size={12} /></div>
+                      <span className="text-xs font-bold text-slate-700 truncate">{n.label}</span>
+                    </button>
+                  );})}</div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Ações</p>
+                  <div className="space-y-1 mb-3">{ACTIONS.map(n => { const Icon = n.icon; return (
+                    <button key={n.type} onClick={() => addNode(node.id, n, 'action')} className="w-full flex items-center gap-2 px-2 py-2 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-all text-left">
+                      <div className={`w-6 h-6 rounded ${n.color} flex items-center justify-center text-white shrink-0`}><Icon size={12} /></div>
+                      <span className="text-xs font-bold text-slate-700 truncate">{n.label}</span>
+                    </button>
+                  );})}</div>
+                  <button onClick={() => addNode(node.id, DELAY_NODE, 'delay')} className="w-full flex items-center gap-2 px-2 py-2 rounded-lg border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all text-left">
+                    <div className={`w-6 h-6 rounded ${DELAY_NODE.color} flex items-center justify-center text-white shrink-0`}><DELAY_NODE.icon size={12} /></div>
+                    <span className="text-xs font-bold text-slate-700 truncate">{DELAY_NODE.label}</span>
+                  </button>
+                </div>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 };
