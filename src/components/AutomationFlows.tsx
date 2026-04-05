@@ -160,7 +160,7 @@ export const AutomationFlows = () => {
           )}
         </div></div>
       ) : (
-        <Builder key={editing.id} automation={editing!} onClose={() => { setShowBuilder(false); setEditing(null); }} onRefresh={fetchAutos} accountId={aid} />
+        <Builder key={editing?.id || 'new'} automation={editing!} onClose={() => { setShowBuilder(false); setEditing(null); }} onRefresh={fetchAutos} accountId={aid} />
       )}
     </div>
   );
@@ -207,16 +207,18 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
     if (autoFitDone.current === automation.id) return;
     autoFitDone.current = automation.id;
 
+    console.log('[auto-fit] Opening automation with', nodes.length, 'nodes');
+    nodes.forEach(n => console.log(`  Node: "${n.label}" at x:${n.x} y:${n.y}`));
+
     const minX = Math.min(...nodes.map(n => n.x));
     const minY = Math.min(...nodes.map(n => n.y));
 
-    // Reset everything and scroll to first node
     setPan({ x: 0, y: 0 });
     setZoom(1);
 
-    // Use rAF to ensure DOM is painted before scrolling
     requestAnimationFrame(() => {
       if (canvasRef.current) {
+        console.log('[auto-fit] Scrolling to', Math.max(0, minX - 100), Math.max(0, minY - 60));
         canvasRef.current.scrollTo({
           left: Math.max(0, minX - 100),
           top: Math.max(0, minY - 60),
@@ -368,7 +370,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
           </div>
 
           {/* Scaled content */}
-          <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0', width: canvasW, height: canvasH, position: 'absolute', top: 0, left: 0 }}>
+          <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0', width: canvasW, height: canvasH, position: 'absolute', top: 0, left: 0, visibility: nodes.length > 0 ? 'visible' : 'visible' }}>
             {/* Grid */}
             <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:20px_20px]" />
 
