@@ -1386,6 +1386,17 @@ app.post('/tracking/events', async (c) => {
 
     // Auto-register form if event has form_data (works for both 'form' and 'conversion' events)
     var formData = body.form_data;
+    // Also check if conversion has form-like data in the 'data' field
+    if (!formData && event_type === 'conversion' && body.data && typeof body.data === 'object') {
+      var d = body.data;
+      if (d.fields && typeof d.fields === 'object') {
+        formData = { fid: d.fid || 'conv_' + (body.event_name || 'unknown'), action: url || '', fields: d.fields, has_lead: d.has_lead || false };
+      } else if (d.email || d.nome || d.name || d.phone) {
+        // Direct form fields in data object
+        formData = { fid: 'conv_' + (body.event_name || 'unknown'), action: url || '', fields: d, has_lead: true };
+      }
+    }
+
     if (formData && formData.fid) {
       const formId = formData.fid;
       const fields = formData.fields || {};
