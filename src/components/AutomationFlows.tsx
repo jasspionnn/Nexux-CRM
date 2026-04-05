@@ -186,7 +186,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
-  const panRef = useRef<{ active: boolean; sx: number; sy: number; sxScroll: number; syScroll: number } | null>(null);
+  const panRef = useRef<{ active: boolean; startX: number; startY: number; startScrollLeft: number; startScrollTop: number } | null>(null);
 
   // Load stages/users
   useEffect(() => {
@@ -209,20 +209,11 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
     }
   }, [nodes.length]);
 
-  // Pan on empty area (drag)
-  const onCanvasDown = useCallback((e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('[data-node]')) return;
-    if (!canvasRef.current) return;
-    panRef.current = { active: true, sx: e.clientX, sy: e.clientY, sxScroll: canvasRef.current.scrollLeft, syScroll: canvasRef.current.scrollTop };
-    canvasRef.current.style.cursor = 'grabbing';
-  }, []);
-
   useEffect(() => {
     const move = (e: MouseEvent) => {
       if (panRef.current?.active && canvasRef.current) {
-        canvasRef.current.scrollLeft = panRef.current.sxScroll - (e.clientX - panRef.current.sx);
-        canvasRef.current.scrollTop = panRef.current.syScroll - (e.clientY - panRef.current.sy);
+        canvasRef.current.scrollLeft = panRef.current.startScrollLeft - (e.clientX - panRef.current.startX);
+        canvasRef.current.scrollTop = panRef.current.startScrollTop - (e.clientY - panRef.current.startY);
       }
       if (dragRef.current) {
         const d = dragRef.current;
@@ -241,14 +232,14 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
       if (connFrom && canvasRef.current) {
         const r = canvasRef.current.getBoundingClientRect();
         setMouse({
-          x: e.clientX - r.left + canvasRef.current.scrollLeft,
-          y: e.clientY - r.top + canvasRef.current.scrollTop,
+          x: (e.clientX - r.left + canvasRef.current.scrollLeft) / zoom,
+          y: (e.clientY - r.top + canvasRef.current.scrollTop) / zoom,
         });
       }
     };
     window.addEventListener('mousemove', h);
     return () => window.removeEventListener('mousemove', h);
-  }, [connFrom]);
+  }, [connFrom, zoom]);
 
   // Wheel zoom
   useEffect(() => {
@@ -269,6 +260,38 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
     if (!n) return;
     dragRef.current = { id, sx: e.clientX, sy: e.clientY, ox: n.x, oy: n.y };
   }, [nodes]);
+
+  const onCanvasMouseDown = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-node]') || target.closest('[data-port]')) return;
+    if (!canvasRef.current) return;
+    panRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      startScrollLeft: canvasRef.current.scrollLeft,
+      startScrollTop: canvasRef.current.scrollTop,
+    };
+    canvasRef.current.style.cursor = 'grabbing';
+    e.stopPropagation();
+  }, []);
+
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      if (panRef.current?.active && canvasRef.current) {
+        canvasRef.current.scrollLeft = panRef.current.startScrollLeft - (e.clientX - panRef.current.startX);
+        canvasRef.current.scrollTop = panRef.current.startScrollTop - (e.clientY - panRef.current.startY);
+      }
+      if (dragRef.current) {
+        const d = dragRef.current;
+        setNodes(ns => ns.map(n => n.id === d.id ? { ...n, x: Math.max(0, d.ox + (e.clientX - d.sx) / zoom), y: Math.max(0, d.oy + (e.clientY - d.sy) / zoom) } : n));
+      }
+    };
+    const up = () => { panRef.current = null; dragRef.current = null; if (canvasRef.current) canvasRef.current.style.cursor = ''; };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, [zoom]);
 
   const addNode = useCallback((cat: any, type: NodeType) => {
     const maxY = nodes.length ? Math.max(...nodes.map(n => n.y + nodeH(n))) + 80 : 60;
@@ -345,7 +368,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
         )}
 
         {/* Canvas */}
-        <div ref={canvasRef} className="flex-1 overflow-auto relative" onMouseDown={onCanvasDown}>
+        <div ref={canvasRef} className="flex-1 overflow-auto relative" onMouseDown={onCanvasMouseDown}>
           {/* Zoom controls */}
           <div className="fixed bottom-6 right-6 flex items-center gap-1 bg-white rounded-xl shadow-xl border border-slate-200 p-1" style={{ zIndex: 100 }}>
             <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.3))} className="p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg"><ZoomOut size={18} /></button>
@@ -356,7 +379,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
           </div>
 
           {/* Scaled content */}
-          <div style={{ width: canvasW, height: canvasH, position: 'relative' }}>
+          <div style={{ transform: `scale(${zoom})`, transformOrigin: '0 0', width: canvasW, height: canvasH, position: 'absolute', top: 0, left: 0 }}>
             {/* Grid */}
             <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:20px_20px]" />
 
