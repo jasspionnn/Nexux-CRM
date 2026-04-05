@@ -418,6 +418,38 @@ app.get('/migrate-db', async (c) => {
       );
     `).run();
 
+    // Automations tables
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS automations (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          is_active INTEGER DEFAULT 1,
+          trigger_type TEXT NOT NULL,
+          trigger_config TEXT,
+          nodes TEXT,
+          connections TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS automation_executions (
+          id TEXT PRIMARY KEY,
+          automation_id TEXT NOT NULL,
+          lead_id TEXT,
+          node_id TEXT,
+          status TEXT DEFAULT 'pending',
+          error TEXT,
+          executed_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE,
+          FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL
+      );
+    `).run();
+
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Migration error:', error);
@@ -1429,6 +1461,210 @@ app.post('/segments/preview', async (c) => {
     return c.json({ error: error.message }, 500);
   }
 });
+
+// ==================== AUTOMATION ENDPOINTS ====================
+
+// Get all automations
+app.get('/automations', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+    const { results } = await c.env.DB.prepare(
+      'SELECT * FROM automations WHERE account_id = ? ORDER BY created_at DESC'
+    ).bind(accountId).all();
+
+    const automations = results.map((a: any) => ({
+      ...a,
+      nodes: a.nodes ? JSON.parse(a.nodes) : [],
+      connections: a.connections ? JSON.parse(a.connections) : [],
+      trigger_config: a.trigger_config ? JSON.parse(a.trigger_config) : {}
+    }));
+
+    return c.json(automations);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Create automation
+app.post('/automations', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { account_id = 'acc_demo', name, description, is_active, trigger_type, trigger_config, nodes, connections } = body;
+
+    if (!name) return c.json({ error: 'name is required' }, 400);
+
+    const id = crypto.randomUUID();
+
+    await c.env.DB.prepare(
+      'INSERT INTO automations (id, account_id, name, description, is_active, trigger_type, trigger_config, nodes, connections) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      id, account_id, name, description || null, is_active ?? 1, trigger_type || '',
+      JSON.stringify(trigger_config || {}),
+      JSON.stringify(nodes || []),
+      JSON.stringify(connections || [])
+    ).run();
+
+    return c.json({ id, name, description, is_active, trigger_type, trigger_config, nodes, connections });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Update automation
+app.put('/automations/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const { name, description, is_active, trigger_type, trigger_config, nodes, connections } = body;
+
+    await c.env.DB.prepare(
+      'UPDATE automations SET name = ?, description = ?, is_active = ?, trigger_type = ?, trigger_config = ?, nodes = ?, connections = ?, updated_at = datetime(\'now\') WHERE id = ?'
+    ).bind(
+      name, description || null, is_active ?? 1, trigger_type || '',
+      JSON.stringify(trigger_config || {}),
+      JSON.stringify(nodes || []),
+      JSON.stringify(connections || []),
+      id
+    ).run();
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Delete automation
+app.delete('/automations/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM automations WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Execute automation manually (for testing)
+app.post('/automations/:id/execute', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const { lead_id } = body;
+
+    const automation: any = await c.env.DB.prepare(
+      'SELECT * FROM automations WHERE id = ?'
+    ).bind(id).first();
+
+    if (!automation) return c.json({ error: 'Automation not found' }, 404);
+    if (automation.is_active === 0) return c.json({ error: 'Automation is paused' }, 400);
+
+    const nodes = automation.nodes ? JSON.parse(automation.nodes) : [];
+    const connections = automation.connections ? JSON.parse(automation.connections) : [];
+
+    // Simple linear execution
+    const triggerNode = nodes.find((n: any) => n.type === 'trigger');
+    if (!triggerNode) return c.json({ error: 'No trigger node found' }, 400);
+
+    const executionId = crypto.randomUUID();
+    await c.env.DB.prepare(
+      'INSERT INTO automation_executions (id, automation_id, lead_id, status) VALUES (?, ?, ?, \'running\')'
+    ).bind(executionId, id, lead_id || null).run();
+
+    // Follow connections and execute actions
+    let currentId = triggerNode.id;
+    const executed: string[] = [];
+
+    while (currentId) {
+      const conn = connections.find((c: any) => c.from === currentId);
+      if (!conn) break;
+
+      const nextNode = nodes.find((n: any) => n.id === conn.to);
+      if (!nextNode || executed.includes(nextNode.id)) break;
+
+      executed.push(nextNode.id);
+
+      // Execute action
+      if (nextNode.type === 'action' && lead_id) {
+        await executeActionNode(nextNode, lead_id, c.env.DB);
+      }
+
+      currentId = nextNode.id;
+    }
+
+    await c.env.DB.prepare(
+      'UPDATE automation_executions SET status = \'completed\' WHERE id = ?'
+    ).bind(executionId).run();
+
+    return c.json({ success: true, executed_nodes: executed.length });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Helper to execute action nodes
+async function executeActionNode(node: any, leadId: string, db: any) {
+  const { nodeType, config } = node;
+
+  switch (nodeType) {
+    case 'move_stage':
+      if (config.to_stage_id) {
+        await db.prepare('UPDATE leads SET stage_id = ? WHERE id = ?').bind(config.to_stage_id, leadId).run();
+      }
+      break;
+    case 'create_task':
+      if (config.title) {
+        const taskId = crypto.randomUUID();
+        await db.prepare(
+          'INSERT INTO tasks (id, lead_id, title, due_date, assigned_user_id) VALUES (?, ?, ?, ?, ?)'
+        ).bind(taskId, leadId, config.title, config.due_date || null, config.assigned_user_id || null).run();
+      }
+      break;
+    case 'add_tag':
+      if (config.tag) {
+        const lead: any = await db.prepare('SELECT tags FROM leads WHERE id = ?').bind(leadId).first();
+        const tags = lead.tags ? lead.tags.split(',').filter(Boolean) : [];
+        if (!tags.includes(config.tag)) {
+          tags.push(config.tag);
+          await db.prepare('UPDATE leads SET tags = ? WHERE id = ?').bind(tags.join(','), leadId).run();
+        }
+      }
+      break;
+    case 'remove_tag':
+      if (config.tag) {
+        const lead: any = await db.prepare('SELECT tags FROM leads WHERE id = ?').bind(leadId).first();
+        const tags = lead.tags ? lead.tags.split(',').filter((t: string) => t !== config.tag) : [];
+        await db.prepare('UPDATE leads SET tags = ? WHERE id = ?').bind(tags.join(','), leadId).run();
+      }
+      break;
+    case 'create_note':
+      if (config.content) {
+        const noteId = crypto.randomUUID();
+        await db.prepare(
+          'INSERT INTO notes (id, lead_id, content, author_name) VALUES (?, ?, ?, ?)'
+        ).bind(noteId, leadId, config.content, 'Automação').run();
+      }
+      break;
+    case 'assign_user':
+      if (config.user_id) {
+        await db.prepare('UPDATE leads SET assigned_user_id = ? WHERE id = ?').bind(config.user_id, leadId).run();
+      }
+      break;
+    case 'send_webhook':
+      if (config.url) {
+        try {
+          await fetch(config.url, {
+            method: config.method || 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lead_id: leadId, ...config })
+          });
+        } catch (e) { console.error('Webhook send error:', e); }
+      }
+      break;
+    // send_email would require an email service integration
+    default:
+      console.log(`Unknown action type: ${nodeType}`);
+  }
+}
 
 app.post('/login', async (c) => {
   try {

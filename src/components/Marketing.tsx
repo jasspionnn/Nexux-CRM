@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Megaphone, BarChart3, Filter } from 'lucide-react';
+import { Megaphone, BarChart3, Filter, GitBranch } from 'lucide-react';
 import { SiteTracking } from './SiteTracking';
 import { LeadSegmentation } from './LeadSegmentation';
+import { AutomationFlows } from './AutomationFlows';
 
 const SUB_ITEMS = [
   { id: 'tracking', label: 'Site Tracking', icon: BarChart3, description: 'Rastreie visitantes e conversões do seu site' },
   { id: 'segmentation', label: 'Segmentação de Leads', icon: Filter, description: 'Crie segmentações dinâmicas para filtrar leads' },
+  { id: 'automations', label: 'Automações', icon: GitBranch, description: 'Crie fluxos de automação visuais estilo RD Station' },
 ];
 
 export const Marketing = () => {
@@ -19,6 +21,7 @@ export const Marketing = () => {
     const handleHashChange = () => {
       const hash = window.location.hash;
       if (hash.includes('segmentation')) setActiveSubView('segmentation');
+      else if (hash.includes('automations')) setActiveSubView('automations');
       else if (hash.includes('tracking') || hash.includes('marketing')) setActiveSubView('tracking');
     };
     window.addEventListener('hashchange', handleHashChange);
@@ -81,6 +84,7 @@ export const Marketing = () => {
       <main className="flex-1 overflow-y-auto">
         {activeSubView === 'tracking' && <SiteTracking />}
         {activeSubView === 'segmentation' && <LeadSegmentation />}
+        {activeSubView === 'automations' && <AutomationFlows />}
       </main>
     </div>
   );

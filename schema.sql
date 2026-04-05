@@ -197,3 +197,31 @@ CREATE TABLE IF NOT EXISTS segments (
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
+
+-- Fluxos de Automação
+CREATE TABLE IF NOT EXISTS automations (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    is_active INTEGER DEFAULT 1,
+    trigger_type TEXT NOT NULL,
+    trigger_config TEXT,
+    nodes TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+-- Histórico de execuções de automações
+CREATE TABLE IF NOT EXISTS automation_executions (
+    id TEXT PRIMARY KEY,
+    automation_id TEXT NOT NULL,
+    lead_id TEXT,
+    node_id TEXT,
+    status TEXT DEFAULT 'pending',
+    error TEXT,
+    executed_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE,
+    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL
+);
