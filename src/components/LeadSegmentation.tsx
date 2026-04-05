@@ -168,6 +168,8 @@ export const LeadSegmentation = () => {
         return;
       }
 
+      // Clear preview
+      setPreviewLeads([]);
       setBuilderName('');
       setBuilderDescription('');
       setBuilderRules([]);

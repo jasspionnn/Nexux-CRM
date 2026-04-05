@@ -1330,13 +1330,49 @@ app.get('/segments', async (c) => {
     ).bind(accountId).all();
 
     // Parse rules JSON and count leads for each segment
-    const segments = results.map((s: any) => ({
-      ...s,
-      rules: s.rules ? JSON.parse(s.rules) : []
-    }));
+    const segments = [];
+    for (const s of results) {
+      const rules = s.rules ? JSON.parse(s.rules) : [];
+      let leadCount = 0;
+
+      if (rules.length > 0) {
+        // Build WHERE clause from rules
+        let whereClause = 'account_id = ?';
+        const params: any[] = [accountId];
+
+        for (const rule of rules) {
+          const { field, operator, value } = rule;
+          switch (operator) {
+            case 'equals': whereClause += ` AND ${field} = ?`; params.push(value); break;
+            case 'not_equals': whereClause += ` AND ${field} != ?`; params.push(value); break;
+            case 'contains': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}%`); break;
+            case 'not_contains': whereClause += ` AND ${field} NOT LIKE ?`; params.push(`%${value}%`); break;
+            case 'greater_than': whereClause += ` AND ${field} > ?`; params.push(parseFloat(value)); break;
+            case 'less_than': whereClause += ` AND ${field} < ?`; params.push(parseFloat(value)); break;
+            case 'starts_with': whereClause += ` AND ${field} LIKE ?`; params.push(`${value}%`); break;
+            case 'ends_with': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}`); break;
+            case 'is_empty': whereClause += ` AND (${field} IS NULL OR ${field} = '')`; break;
+            case 'is_not_empty': whereClause += ` AND ${field} IS NOT NULL AND ${field} != ''`; break;
+          }
+        }
+
+        const countResult: any = await c.env.DB.prepare(
+          `SELECT COUNT(*) as cnt FROM leads WHERE ${whereClause}`
+        ).bind(...params).first();
+        leadCount = countResult?.cnt || 0;
+
+        // Update stored lead_count
+        await c.env.DB.prepare(
+          'UPDATE segments SET lead_count = ? WHERE id = ?'
+        ).bind(leadCount, s.id).run();
+      }
+
+      segments.push({ ...s, rules, lead_count: leadCount });
+    }
 
     return c.json(segments);
   } catch (error: any) {
+    console.error('Get segments error:', error);
     return c.json({ error: error.message }, 500);
   }
 });
