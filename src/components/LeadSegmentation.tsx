@@ -162,16 +162,21 @@ export const LeadSegmentation = () => {
         })
       });
 
-      if (res.ok) {
-        setBuilderName('');
-        setBuilderDescription('');
-        setBuilderRules([]);
-        setShowBuilder(false);
-        setEditingSegment(null);
-        fetchData();
+      if (!res.ok) {
+        const err = await res.json();
+        alert('Erro ao salvar: ' + (err.error || 'Erro desconhecido'));
+        return;
       }
+
+      setBuilderName('');
+      setBuilderDescription('');
+      setBuilderRules([]);
+      setShowBuilder(false);
+      setEditingSegment(null);
+      fetchData();
     } catch (error) {
       console.error('Save segment error:', error);
+      alert('Erro ao salvar segmentação');
     }
   };
 

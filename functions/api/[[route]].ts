@@ -1355,11 +1355,12 @@ app.post('/segments', async (c) => {
     const rulesJson = JSON.stringify(rules);
 
     await c.env.DB.prepare(
-      'INSERT INTO segments (id, account_id, name, description, rules) VALUES (?, ?, ?, ?, ?)'
+      'INSERT INTO segments (id, account_id, name, description, rules, lead_count) VALUES (?, ?, ?, ?, ?, 0)'
     ).bind(id, account_id, name, description || null, rulesJson).run();
 
     return c.json({ id, name, description, rules, lead_count: 0 });
   } catch (error: any) {
+    console.error('Create segment error:', error);
     return c.json({ error: error.message }, 500);
   }
 });
@@ -1504,8 +1505,9 @@ app.post('/automations', async (c) => {
       JSON.stringify(connections || [])
     ).run();
 
-    return c.json({ id, name, description, is_active, trigger_type, trigger_config, nodes, connections });
+    return c.json({ id, name, description, is_active: is_active ?? 1, trigger_type: trigger_type || '', trigger_config: trigger_config || {}, nodes: nodes || [], connections: connections || [] });
   } catch (error: any) {
+    console.error('Create automation error:', error);
     return c.json({ error: error.message }, 500);
   }
 });
@@ -1527,8 +1529,9 @@ app.put('/automations/:id', async (c) => {
       id
     ).run();
 
-    return c.json({ success: true });
+    return c.json({ success: true, id });
   } catch (error: any) {
+    console.error('Update automation error:', error);
     return c.json({ error: error.message }, 500);
   }
 });

@@ -122,14 +122,6 @@ export const AutomationFlows = () => {
     setLoading(false);
   };
 
-  const doSave = async (data: any) => {
-    try {
-      const ex = autos.find(a => a.id === data.id);
-      const r = await fetch(ex ? `/api/automations/${data.id}` : '/api/automations', { method: ex ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data, account_id: aid }) });
-      if (r.ok) { setShowBuilder(false); setEditing(null); fetchAutos(); }
-    } catch (e) { console.error(e); }
-  };
-
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
@@ -168,7 +160,7 @@ export const AutomationFlows = () => {
           )}
         </div></div>
       ) : (
-        <Builder automation={editing!} onSave={doSave} onCancel={() => { setShowBuilder(false); setEditing(null); }} accountId={aid} />
+        <Builder automation={editing!} onClose={() => { setShowBuilder(false); setEditing(null); }} onRefresh={fetchAutos} accountId={aid} />
       )}
     </div>
   );
@@ -176,7 +168,7 @@ export const AutomationFlows = () => {
 
 // ==================== BUILDER ====================
 
-const Builder: React.FC<{ automation: Automation; onSave: (d: any) => void; onCancel: () => void; accountId: string }> = ({ automation, onSave, onCancel, accountId }) => {
+const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh: () => void; accountId: string }> = ({ automation, onClose, onRefresh, accountId }) => {
   const [name, setName] = useState(automation.name || '');
   const [description, setDescription] = useState(automation.description || '');
   const [nodes, setNodes] = useState<FlowNode[]>(automation.nodes || []);
@@ -190,6 +182,7 @@ const Builder: React.FC<{ automation: Automation; onSave: (d: any) => void; onCa
   const [users, setUsers] = useState<any[]>([]);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [autos, setAutos] = useState<Automation[]>([]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
@@ -199,9 +192,10 @@ const Builder: React.FC<{ automation: Automation; onSave: (d: any) => void; onCa
   useEffect(() => {
     (async () => {
       try {
-        const [f, u] = await Promise.all([fetch('/api/funnels'), fetch(`/api/users?account_id=${accountId}`)]);
+        const [f, u, a] = await Promise.all([fetch('/api/funnels'), fetch(`/api/users?account_id=${accountId}`), fetch(`/api/automations?account_id=${accountId}`)]);
         if (f.ok) { const d = await f.json(); setStages(d.flatMap((x: any) => x.stages || [])); }
         if (u.ok) setUsers(await u.json());
+        if (a.ok) setAutos(await a.json());
       } catch (e) { /* */ }
     })();
   }, [accountId]);
@@ -281,7 +275,24 @@ const Builder: React.FC<{ automation: Automation; onSave: (d: any) => void; onCa
   const doSave = async () => {
     if (!name.trim()) { alert('Dê um nome ao fluxo'); return; }
     setSaving(true);
-    await onSave({ id: automation.id, name, description, is_active: 1, trigger_type: nodes.find(n => n.type === 'trigger')?.nodeType || '', trigger_config: nodes.find(n => n.type === 'trigger')?.config || {}, nodes, connections, created_at: automation.created_at });
+    try {
+      const exists = autos.find(a => a.id === automation.id);
+      const res = await fetch(exists ? `/api/automations/${automation.id}` : '/api/automations', {
+        method: exists ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: automation.id, name, description, is_active: 1, trigger_type: nodes.find(n => n.type === 'trigger')?.nodeType || '', trigger_config: nodes.find(n => n.type === 'trigger')?.config || {}, nodes, connections, created_at: automation.created_at, account_id: accountId })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert('Erro ao salvar: ' + (err.error || 'Erro desconhecido'));
+        return;
+      }
+      onClose();
+      onRefresh();
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao salvar fluxo');
+    }
     setSaving(false);
   };
 
@@ -293,7 +304,7 @@ const Builder: React.FC<{ automation: Automation; onSave: (d: any) => void; onCa
       {/* Header */}
       <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shrink-0" style={{ zIndex: 50 }}>
         <div className="flex items-center gap-3 flex-1">
-          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
           <div className="flex-1"><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nome do fluxo..." className="text-lg font-bold text-slate-900 border-none focus:outline-none bg-transparent w-full" /><input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição..." className="text-xs text-slate-500 border-none focus:outline-none bg-transparent w-full" /></div>
         </div>
         <div className="flex items-center gap-2">
