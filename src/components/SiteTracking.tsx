@@ -220,7 +220,7 @@ export const SiteTracking = () => {
       </div>
 
       {/* Right: Forms */}
-      <div className="w-80 bg-white overflow-y-auto shrink-0">
+      <div className="flex-1 bg-white overflow-y-auto shrink-0 border-l border-slate-200">
         <div className="p-4">
           <div className="flex items-center gap-2 mb-4">
             <FormInput size={20} className="text-teal-600" />
