@@ -1308,14 +1308,12 @@ app.post('/tracking/events', async (c) => {
     try {
       body = await c.req.json();
     } catch (e) {
-      console.error('[TRACKING] Failed to parse JSON body');
-      return new Response(JSON.stringify({ error: 'Invalid JSON' }), {
-        status: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      });
+      // Fallback: parse as text then JSON (for fetch without Content-Type header)
+      const text = await c.req.text();
+      try { body = JSON.parse(text); } catch (e2) {
+        console.error('[TRACKING] Failed to parse body');
+        return new Response(JSON.stringify({ error: 'Invalid body' }), { status: 400 });
+      }
     }
 
     console.log('[TRACKING] Received body:', JSON.stringify(body).substring(0, 500));
