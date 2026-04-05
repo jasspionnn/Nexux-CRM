@@ -90,13 +90,13 @@ export const SiteTracking = () => {
     var t='${trackingId}';
     var e='${origin}';
     var s=document.createElement('script');
-    s.src=e+'/tracker.js?v=4';
+    s.src=e+'/tracker.js?v=5';
     s.onload=function(){NexuxTracker.init(t,e)};
     document.head.appendChild(s);
   })();
 <\/script>
 
-<!-- Conversões são automáticas: quando o formulário tiver email, telefone ou nome, conta como conversão -->
+<!-- Captura automática de formulários: email, telefone, nome = conversão -->
 <!-- Para rastrear conversões manuais via JS: -->
 <!-- <script>NexuxTracker.track('compra',{valor:99.90})<\/script> -->`;
   };
@@ -128,6 +128,14 @@ export const SiteTracking = () => {
       case 'conversion': return 'bg-purple-100 text-purple-700 border-purple-200';
       default: return 'bg-gray-100 text-gray-700 border-gray-200';
     }
+  };
+
+  const parseFormData = (formDataStr: string | null) => {
+    if (!formDataStr) return null;
+    try {
+      const data = typeof formDataStr === 'string' ? JSON.parse(formDataStr) : formDataStr;
+      return data;
+    } catch { return null; }
   };
 
   if (isLoading) {
@@ -267,12 +275,16 @@ export const SiteTracking = () => {
                   <tr className="text-slate-400 text-xs uppercase tracking-wider font-bold">
                     <th className="px-6 py-4">Tipo</th>
                     <th className="px-6 py-4">URL</th>
-                    <th className="px-6 py-4">Referência</th>
+                    <th className="px-6 py-4">Campos Capturados</th>
                     <th className="px-6 py-4">Data/Hora</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {events.slice(0, activeTab === 'overview' ? 10 : undefined).map((event) => (
+                  {events.slice(0, activeTab === 'overview' ? 10 : undefined).map((event) => {
+                    const formData = parseFormData(event.form_data);
+                    const fields = formData?.fields || {};
+                    const fieldEntries = Object.entries(fields);
+                    return (
                     <tr key={event.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${getEventTypeColor(event.event_type)}`}>
@@ -285,9 +297,19 @@ export const SiteTracking = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-slate-500 max-w-xs truncate" title={event.referrer}>
-                          {event.referrer || '-'}
-                        </div>
+                        {fieldEntries.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {fieldEntries.slice(0, 3).map(([key, val]) => (
+                              <span key={key} className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200" title={`${key}: ${val}`}>
+                                <span className="font-bold text-slate-500">{key}:</span>
+                                <span className="ml-1 truncate max-w-[80px]">{String(val)}</span>
+                              </span>
+                            ))}
+                            {fieldEntries.length > 3 && <span className="text-xs text-slate-400">+{fieldEntries.length - 3}</span>}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-slate-400">-</span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -296,7 +318,8 @@ export const SiteTracking = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
