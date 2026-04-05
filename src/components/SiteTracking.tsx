@@ -70,6 +70,12 @@ export const SiteTracking = () => {
 <\/script>`;
   };
 
+  const handleDeleteForm = async (id: string) => {
+    if (!confirm('Excluir este formulário rastreado?')) return;
+    try { await fetch(`/api/tracking-forms/${id}`, { method: 'DELETE' }); fetchData(); }
+    catch (e) { console.error(e); alert('Erro ao excluir'); }
+  };
+
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
@@ -237,10 +243,15 @@ export const SiteTracking = () => {
                 const convCount = formConversions[form.name] || 0;
                 const leadFields = fields.filter((f: any) => ['email','phone','name'].includes(f.type));
                 return (
-                  <div key={form.id} className="border border-slate-200 rounded-xl p-3 hover:border-teal-300 transition-colors">
+                  <div key={form.id} className="border border-slate-200 rounded-xl p-3 hover:border-teal-300 transition-colors group">
                     <div className="flex items-start justify-between mb-2">
                       <h4 className="text-xs font-bold text-slate-900 truncate flex-1" title={form.name}>{form.name}</h4>
-                      {convCount > 0 && <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded">{convCount} conv.</span>}
+                      <div className="flex items-center gap-1">
+                        {convCount > 0 && <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded">{convCount} conv.</span>}
+                        <button onClick={() => handleDeleteForm(form.id)} className="p-1 text-slate-300 hover:text-red-500 rounded transition-colors opacity-0 group-hover:opacity-100">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                        </button>
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-1 mb-1.5">
                       {fields.slice(0, 4).map((f: any, i: number) => (
