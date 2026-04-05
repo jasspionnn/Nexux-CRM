@@ -403,6 +403,21 @@ app.get('/migrate-db', async (c) => {
       );
     `).run();
 
+    // Segments table
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS segments (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          rules TEXT NOT NULL,
+          lead_count INTEGER DEFAULT 0,
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Migration error:', error);
@@ -1268,6 +1283,149 @@ app.get('/tracking/stats', async (c) => {
       conversions: conversions?.count || 0
     });
   } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ==================== SEGMENT ENDPOINTS ====================
+
+// Get all segments
+app.get('/segments', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+    const { results } = await c.env.DB.prepare(
+      'SELECT * FROM segments WHERE account_id = ? ORDER BY created_at DESC'
+    ).bind(accountId).all();
+
+    // Parse rules JSON and count leads for each segment
+    const segments = results.map((s: any) => ({
+      ...s,
+      rules: s.rules ? JSON.parse(s.rules) : []
+    }));
+
+    return c.json(segments);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Create segment
+app.post('/segments', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { account_id = 'acc_demo', name, description, rules } = body;
+
+    if (!name || !rules || rules.length === 0) {
+      return c.json({ error: 'name and rules are required' }, 400);
+    }
+
+    const id = crypto.randomUUID();
+    const rulesJson = JSON.stringify(rules);
+
+    await c.env.DB.prepare(
+      'INSERT INTO segments (id, account_id, name, description, rules) VALUES (?, ?, ?, ?, ?)'
+    ).bind(id, account_id, name, description || null, rulesJson).run();
+
+    return c.json({ id, name, description, rules, lead_count: 0 });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Update segment
+app.put('/segments/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const { name, description, rules } = body;
+
+    await c.env.DB.prepare(
+      'UPDATE segments SET name = ?, description = ?, rules = ?, updated_at = datetime(\'now\') WHERE id = ?'
+    ).bind(name, description || null, JSON.stringify(rules), id).run();
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Delete segment
+app.delete('/segments/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM segments WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Preview segment (match leads against rules)
+app.post('/segments/preview', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { account_id = 'acc_demo', rules } = body;
+
+    if (!rules || rules.length === 0) {
+      return c.json({ leads: [] });
+    }
+
+    // Build SQL query from rules
+    let whereClause = 'account_id = ?';
+    const params: any[] = [account_id];
+
+    rules.forEach((rule: any) => {
+      const { field, operator, value } = rule;
+
+      switch (operator) {
+        case 'equals':
+          whereClause += ` AND ${field} = ?`;
+          params.push(value);
+          break;
+        case 'not_equals':
+          whereClause += ` AND ${field} != ?`;
+          params.push(value);
+          break;
+        case 'contains':
+          whereClause += ` AND ${field} LIKE ?`;
+          params.push(`%${value}%`);
+          break;
+        case 'not_contains':
+          whereClause += ` AND ${field} NOT LIKE ?`;
+          params.push(`%${value}%`);
+          break;
+        case 'greater_than':
+          whereClause += ` AND ${field} > ?`;
+          params.push(parseFloat(value));
+          break;
+        case 'less_than':
+          whereClause += ` AND ${field} < ?`;
+          params.push(parseFloat(value));
+          break;
+        case 'starts_with':
+          whereClause += ` AND ${field} LIKE ?`;
+          params.push(`${value}%`);
+          break;
+        case 'ends_with':
+          whereClause += ` AND ${field} LIKE ?`;
+          params.push(`%${value}`);
+          break;
+        case 'is_empty':
+          whereClause += ` AND (${field} IS NULL OR ${field} = '')`;
+          break;
+        case 'is_not_empty':
+          whereClause += ` AND ${field} IS NOT NULL AND ${field} != ''`;
+          break;
+      }
+    });
+
+    const { results } = await c.env.DB.prepare(
+      `SELECT * FROM leads WHERE ${whereClause} ORDER BY created_at DESC LIMIT 500`
+    ).bind(...params).all();
+
+    return c.json({ leads: results, count: results.length });
+  } catch (error: any) {
+    console.error('Segment preview error:', error);
     return c.json({ error: error.message }, 500);
   }
 });
