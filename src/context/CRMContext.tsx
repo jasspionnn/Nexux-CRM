@@ -26,15 +26,13 @@ export const CRMProvider: React.FC<{children: React.ReactNode}> = ({ children })
   useEffect(() => {
     // Perform database migration and seeding once per browser environment
     // Use a version identifier to allow forcing a migration if the schema changes in the future
-    const db_version = 'v5';
+    const db_version = 'v6';
     if (localStorage.getItem(`nexus_db_initialized_${db_version}`)) return;
 
     const initializeDB = async () => {
       try {
         await fetch('/api/migrate-db');
         await fetch('/api/seed-db');
-        // Add field_mapping column if not exists
-        await fetch('/api/migrate-tracking-forms');
         localStorage.setItem(`nexus_db_initialized_${db_version}`, 'true');
       } catch (err) {
         console.error('Database initialization error:', err);

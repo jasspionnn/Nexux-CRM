@@ -426,6 +426,11 @@ app.get('/migrate-db', async (c) => {
       ).run();
     } catch (e) { /* index may already exist */ }
 
+    // Add field_mapping column if not exists
+    try {
+      await c.env.DB.prepare('ALTER TABLE tracking_forms ADD COLUMN field_mapping TEXT').run();
+    } catch (e) { /* column already exists */ }
+
     // Segments table
     await c.env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS segments (
