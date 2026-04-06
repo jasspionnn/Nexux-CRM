@@ -1528,6 +1528,14 @@ app.delete('/tracking-forms/:id', async (c) => {
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });
 
+// Add field_mapping column to tracking_forms
+app.get('/migrate-tracking-forms', async (c) => {
+  try {
+    try { await c.env.DB.prepare('ALTER TABLE tracking_forms ADD COLUMN field_mapping TEXT').run(); } catch (e) { /* column already exists */ }
+    return c.json({ success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
 // ==================== SEGMENT ENDPOINTS ====================
 
 // Get all segments

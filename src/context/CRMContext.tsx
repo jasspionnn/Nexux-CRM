@@ -33,6 +33,8 @@ export const CRMProvider: React.FC<{children: React.ReactNode}> = ({ children })
       try {
         await fetch('/api/migrate-db');
         await fetch('/api/seed-db');
+        // Add field_mapping column if not exists
+        await fetch('/api/migrate-tracking-forms');
         localStorage.setItem(`nexus_db_initialized_${db_version}`, 'true');
       } catch (err) {
         console.error('Database initialization error:', err);

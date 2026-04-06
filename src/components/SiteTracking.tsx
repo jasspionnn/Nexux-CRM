@@ -16,8 +16,6 @@ export const SiteTracking = () => {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   const fetchData = async () => {
@@ -115,8 +113,17 @@ export const SiteTracking = () => {
           field_mapping: fieldMapping,
         })
       });
-      if (res.ok) { setMappingForm(null); fetchData(); }
-    } catch (e) { console.error(e); alert('Erro ao salvar'); }
+      if (res.ok) {
+        setMappingForm(null);
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert('Erro ao salvar: ' + (err.error || 'Erro desconhecido'));
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao salvar mapeamento');
+    }
   };
 
   const formatDate = (dateStr: string) => {
