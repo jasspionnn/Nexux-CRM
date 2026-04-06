@@ -37,7 +37,7 @@ export const MarketingLeads = () => {
 
   const handleSyncToCrm = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Enviar ${selectedIds.size} lead(s) para o CRM?`)) return;
+    if (!confirm(`Enviar ${selectedIds.size} lead(s) para o CRM?\n\n⚠️ Leads sem email serão ignorados.`)) return;
     setSyncing(true);
     try {
       const res = await fetch('/api/marketing-leads/sync-to-crm', {
@@ -47,7 +47,9 @@ export const MarketingLeads = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        alert(`${data.synced} lead(s) enviado(s) para o CRM!`);
+        let msg = `${data.synced} lead(s) enviado(s) para o CRM!`;
+        if (data.skipped > 0) msg += `\n\n${data.skipped} ignorado(s) - sem email ou já existe no CRM.`;
+        alert(msg);
         setSelectedIds(new Set());
         fetchData();
       }
@@ -83,6 +85,20 @@ export const MarketingLeads = () => {
           </div>
         </div>
 
+        {/* Email Required Banner */}
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <div className="flex items-start gap-3">
+            <span className="text-xl mt-0.5">⚠️</span>
+            <div>
+              <p className="text-sm font-bold text-amber-800">Regra: Email é obrigatório</p>
+              <p className="text-xs text-amber-700 mt-1">
+                Leads sem <strong>email</strong> não são capturados e não podem ser enviados ao CRM. O email é o identificador único do sistema.
+                No CRM, você pode criar leads manualmente sem email, mas capturas automáticas exigem email.
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
           {leads.length === 0 ? (
             <div className="p-12 text-center"><Users className="mx-auto text-slate-300 mb-4" size={48} /><p className="text-slate-400 font-bold text-lg">Nenhum lead capturado ainda</p><p className="text-sm text-slate-400 mt-2">Preencha um formulário com campos mapeados para capturar leads.</p></div>
@@ -103,17 +119,25 @@ export const MarketingLeads = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {leads.map(lead => (
-                      <tr key={lead.id} className={`hover:bg-slate-50 transition-colors ${selectedIds.has(lead.id) ? 'bg-teal-50/50' : ''}`}>
+                      <tr key={lead.id} className={`hover:bg-slate-50 transition-colors ${selectedIds.has(lead.id) ? 'bg-teal-50/50' : ''} ${!lead.contact_email ? 'opacity-60' : ''}`}>
                         <td className="px-4 py-3"><input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => toggleSelect(lead.id)} className="rounded" /></td>
                         <td className="px-4 py-3 text-sm font-medium text-slate-900">{lead.contact_name || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-slate-500">{lead.contact_email || '-'}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {lead.contact_email ? (
+                            <span className="text-slate-500">{lead.contact_email}</span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded">⚠️ Sem email</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm text-slate-500">{lead.contact_phone || '-'}</td>
                         <td className="px-4 py-3"><span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">{lead.form_name}</span></td>
                         <td className="px-4 py-3">
-                          {lead.synced_to_crm ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600"><Check size={12} />CRM</span>
+                          {!lead.contact_email ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded">✗ Sem email</span>
+                          ) : lead.synced_to_crm ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded"><Check size={12} />CRM</span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600"><X size={12} />Pendente</span>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded"><X size={12} />Pendente</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-500">{formatDate(lead.created_at)}</td>

@@ -1461,17 +1461,23 @@ app.post('/tracking/events', async (c) => {
         } else if (existing) {
           console.log('[TRACKING] Form already exists:', formName, '(skipping)');
 
-          // If form has field_mapping, create marketing lead
+          // If form has field_mapping, check for EMAIL before creating marketing lead
           if (existing.field_mapping) {
             try {
               var mapping = typeof existing.field_mapping === 'string' ? JSON.parse(existing.field_mapping) : existing.field_mapping;
               var mappedData: any = {};
+              var hasEmail = false;
               for (var fieldName in fields) {
                 if (mapping[fieldName] && mapping[fieldName]) {
                   mappedData[mapping[fieldName]] = fields[fieldName];
+                  if (mapping[fieldName] === 'contact_email' && fields[fieldName]) hasEmail = true;
                 }
               }
-              if (Object.keys(mappedData).length > 0) {
+
+              // EMAIL IS REQUIRED - skip if no email
+              if (!hasEmail) {
+                console.log('[TRACKING] Skipped marketing lead (no email):', formName);
+              } else if (Object.keys(mappedData).length > 0) {
                 var mLeadId = crypto.randomUUID();
                 await c.env.DB.prepare(
                   'INSERT INTO marketing_leads (id, account_id, form_name, contact_name, contact_email, contact_phone, company, title, value, tags, raw_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -1488,7 +1494,7 @@ app.post('/tracking/events', async (c) => {
                   mappedData.tags || null,
                   JSON.stringify(fields)
                 ).run();
-                console.log('[TRACKING] Created marketing lead:', mLeadId);
+                console.log('[TRACKING] Created marketing lead:', mLeadId, '(email validated)');
               }
             } catch (leadErr: any) {
               console.error('[TRACKING] Error creating marketing lead:', leadErr.message);
@@ -1625,11 +1631,30 @@ app.post('/marketing-leads/sync-to-crm', async (c) => {
     const { account_id = 'acc_demo', lead_ids } = body;
 
     let synced = 0;
+    let skipped = 0;
     for (const leadId of lead_ids) {
       const mLead: any = await c.env.DB.prepare(
         'SELECT * FROM marketing_leads WHERE id = ? AND account_id = ?'
       ).bind(leadId, account_id).first();
       if (!mLead || mLead.synced_to_crm) continue;
+
+      // EMAIL IS REQUIRED to sync to CRM
+      if (!mLead.contact_email) {
+        console.log('[MARKETING LEADS] Skipped sync (no email):', mLead.form_name, mLead.id);
+        skipped++;
+        continue;
+      }
+
+      // Check if lead already exists in CRM by email
+      const existingLead: any = await c.env.DB.prepare(
+        'SELECT id FROM leads WHERE account_id = ? AND contact_email = ?'
+      ).bind(account_id, mLead.contact_email).first();
+
+      if (existingLead) {
+        console.log('[MARKETING LEADS] Lead already exists in CRM:', mLead.contact_email);
+        skipped++;
+        continue;
+      }
 
       // Create lead in CRM
       const crmId = crypto.randomUUID();
@@ -1650,7 +1675,7 @@ app.post('/marketing-leads/sync-to-crm', async (c) => {
       await c.env.DB.prepare('UPDATE marketing_leads SET synced_to_crm = 1 WHERE id = ?').bind(leadId).run();
       synced++;
     }
-    return c.json({ success: true, synced });
+    return c.json({ success: true, synced, skipped });
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });
 
