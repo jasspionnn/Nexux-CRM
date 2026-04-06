@@ -8,8 +8,8 @@ import { MarketingLeads } from './MarketingLeads';
 const SUB_ITEMS = [
   { id: 'tracking', label: 'Site Tracking', icon: BarChart3 },
   { id: 'segmentation', label: 'Segmentação', icon: Filter },
-  { id: 'leads-db', label: 'Base de Leads', icon: Users },
   { id: 'automations', label: 'Automações', icon: GitBranch },
+  { id: 'leads-db', label: 'Base de Leads', icon: Users },
 ];
 
 export const Marketing = () => {
@@ -26,7 +26,7 @@ export const Marketing = () => {
       if (hash.includes('segmentation')) setActiveSubView('segmentation');
       else if (hash.includes('leads-db') || hash.includes('marketing-leads')) setActiveSubView('leads-db');
       else if (hash.includes('automations')) setActiveSubView('automations');
-      else if (hash.includes('tracking') || hash.includes('marketing')) setActiveSubView('tracking');
+      else setActiveSubView('tracking');
     };
     window.addEventListener('hashchange', h);
     return () => window.removeEventListener('hashchange', h);
