@@ -431,6 +431,26 @@ app.get('/migrate-db', async (c) => {
       await c.env.DB.prepare('ALTER TABLE tracking_forms ADD COLUMN field_mapping TEXT').run();
     } catch (e) { /* column already exists */ }
 
+    // Marketing leads table
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS marketing_leads (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          form_name TEXT NOT NULL,
+          contact_name TEXT,
+          contact_email TEXT,
+          contact_phone TEXT,
+          company TEXT,
+          title TEXT,
+          value REAL DEFAULT 0,
+          tags TEXT,
+          raw_data TEXT,
+          synced_to_crm INTEGER DEFAULT 0,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
     // Segments table
     await c.env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS segments (
@@ -1414,24 +1434,24 @@ app.post('/tracking/events', async (c) => {
 
         // Check if form already exists by EXACT name match
         const existing: any = await c.env.DB.prepare(
-          'SELECT id FROM tracking_forms WHERE account_id = ? AND name = ?'
+          'SELECT id, field_mapping FROM tracking_forms WHERE account_id = ? AND name = ?'
         ).bind(settings.account_id, formName).first();
 
         if (!existing && fieldNames.length > 0) {
           try {
             await c.env.DB.prepare(
-              'INSERT INTO tracking_forms (id, account_id, name, url_pattern, form_selector, fields, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)'
+              'INSERT INTO tracking_forms (id, account_id, name, url_pattern, form_selector, fields, field_mapping, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)'
             ).bind(
               crypto.randomUUID(),
               settings.account_id,
               formName,
               (url || null),
               null,
-              JSON.stringify(fieldNames)
+              JSON.stringify(fieldNames),
+              JSON.stringify({})
             ).run();
             console.log('[TRACKING] Auto-registered form:', formName);
           } catch (dbErr: any) {
-            // UNIQUE constraint violation - form already exists
             if (dbErr.message && dbErr.message.includes('UNIQUE')) {
               console.log('[TRACKING] Form already exists (unique constraint):', formName);
             } else {
@@ -1440,6 +1460,40 @@ app.post('/tracking/events', async (c) => {
           }
         } else if (existing) {
           console.log('[TRACKING] Form already exists:', formName, '(skipping)');
+
+          // If form has field_mapping, create marketing lead
+          if (existing.field_mapping) {
+            try {
+              var mapping = typeof existing.field_mapping === 'string' ? JSON.parse(existing.field_mapping) : existing.field_mapping;
+              var mappedData: any = {};
+              for (var fieldName in fields) {
+                if (mapping[fieldName] && mapping[fieldName]) {
+                  mappedData[mapping[fieldName]] = fields[fieldName];
+                }
+              }
+              if (Object.keys(mappedData).length > 0) {
+                var mLeadId = crypto.randomUUID();
+                await c.env.DB.prepare(
+                  'INSERT INTO marketing_leads (id, account_id, form_name, contact_name, contact_email, contact_phone, company, title, value, tags, raw_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                ).bind(
+                  mLeadId,
+                  settings.account_id,
+                  formName,
+                  mappedData.contact_name || null,
+                  mappedData.contact_email || null,
+                  mappedData.contact_phone || null,
+                  mappedData.company || null,
+                  mappedData.title || null,
+                  mappedData.value ? parseFloat(mappedData.value) : 0,
+                  mappedData.tags || null,
+                  JSON.stringify(fields)
+                ).run();
+                console.log('[TRACKING] Created marketing lead:', mLeadId);
+              }
+            } catch (leadErr: any) {
+              console.error('[TRACKING] Error creating marketing lead:', leadErr.message);
+            }
+          }
         }
       }
     } catch (e: any) {
@@ -1537,6 +1591,73 @@ app.delete('/tracking-forms/:id', async (c) => {
 app.get('/migrate-tracking-forms', async (c) => {
   try {
     try { await c.env.DB.prepare('ALTER TABLE tracking_forms ADD COLUMN field_mapping TEXT').run(); } catch (e) { /* column already exists */ }
+    // Create marketing_leads table if not exists
+    try {
+      await c.env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS marketing_leads (
+          id TEXT PRIMARY KEY, account_id TEXT NOT NULL, form_name TEXT NOT NULL,
+          contact_name TEXT, contact_email TEXT, contact_phone TEXT,
+          company TEXT, title TEXT, value REAL DEFAULT 0, tags TEXT,
+          raw_data TEXT, synced_to_crm INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+        );
+      `).run();
+    } catch (e) { /* table may already exist */ }
+    return c.json({ success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+// ==================== MARKETING LEADS ENDPOINTS ====================
+
+app.get('/marketing-leads', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+    const { results } = await c.env.DB.prepare(
+      'SELECT * FROM marketing_leads WHERE account_id = ? ORDER BY created_at DESC LIMIT 500'
+    ).bind(accountId).all();
+    return c.json(results);
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.post('/marketing-leads/sync-to-crm', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { account_id = 'acc_demo', lead_ids } = body;
+
+    let synced = 0;
+    for (const leadId of lead_ids) {
+      const mLead: any = await c.env.DB.prepare(
+        'SELECT * FROM marketing_leads WHERE id = ? AND account_id = ?'
+      ).bind(leadId, account_id).first();
+      if (!mLead || mLead.synced_to_crm) continue;
+
+      // Create lead in CRM
+      const crmId = crypto.randomUUID();
+      await c.env.DB.prepare(
+        'INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, contact_name, contact_email, contact_phone, tags, custom_values, created_at) VALUES (?, ?, (SELECT id FROM funnels WHERE account_id = ? LIMIT 1), (SELECT id FROM stages WHERE funnel_id = (SELECT id FROM funnels WHERE account_id = ? LIMIT 1) LIMIT 1), ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+      ).bind(
+        crmId, account_id, account_id, account_id,
+        mLead.title || mLead.contact_name || 'Lead from Marketing',
+        mLead.company || null,
+        mLead.value || 0,
+        mLead.contact_name || null,
+        mLead.contact_email || null,
+        mLead.contact_phone || null,
+        mLead.tags || null,
+        JSON.stringify({ source: 'marketing_form', form_name: mLead.form_name, raw: mLead.raw_data ? JSON.parse(mLead.raw_data) : null })
+      ).run();
+
+      await c.env.DB.prepare('UPDATE marketing_leads SET synced_to_crm = 1 WHERE id = ?').bind(leadId).run();
+      synced++;
+    }
+    return c.json({ success: true, synced });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.delete('/marketing-leads/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM marketing_leads WHERE id = ?').bind(id).run();
     return c.json({ success: true });
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });

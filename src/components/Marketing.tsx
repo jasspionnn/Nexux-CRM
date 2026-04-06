@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronDown, BarChart3, Filter, GitBranch } from 'lucide-react';
+import { ChevronDown, BarChart3, Filter, GitBranch, Users } from 'lucide-react';
 import { SiteTracking } from './SiteTracking';
 import { LeadSegmentation } from './LeadSegmentation';
 import { AutomationFlows } from './AutomationFlows';
+import { MarketingLeads } from './MarketingLeads';
 
 const SUB_ITEMS = [
   { id: 'tracking', label: 'Site Tracking', icon: BarChart3 },
   { id: 'segmentation', label: 'Segmentação', icon: Filter },
+  { id: 'leads-db', label: 'Base de Leads', icon: Users },
   { id: 'automations', label: 'Automações', icon: GitBranch },
 ];
 
@@ -22,6 +24,7 @@ export const Marketing = () => {
     const h = () => {
       const hash = window.location.hash;
       if (hash.includes('segmentation')) setActiveSubView('segmentation');
+      else if (hash.includes('leads-db') || hash.includes('marketing-leads')) setActiveSubView('leads-db');
       else if (hash.includes('automations')) setActiveSubView('automations');
       else if (hash.includes('tracking') || hash.includes('marketing')) setActiveSubView('tracking');
     };
@@ -64,6 +67,7 @@ export const Marketing = () => {
       <main className="flex-1 overflow-y-auto">
         {activeSubView === 'tracking' && <SiteTracking />}
         {activeSubView === 'segmentation' && <LeadSegmentation />}
+        {activeSubView === 'leads-db' && <MarketingLeads />}
         {activeSubView === 'automations' && <AutomationFlows />}
       </main>
     </div>
