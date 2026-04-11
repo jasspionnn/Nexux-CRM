@@ -2222,51 +2222,79 @@ app.get('/segments', async (c) => {
 
         try {
           if (hasSpecialRules) {
-            let fromClause = 'leads l';
-            let whereClause = 'l.account_id = ?';
-            const params: any[] = [accountId];
-            let jc = 0;
+            // Use same 2-step approach as preview
+            const matchingVisitorIds: string[] = [];
+            const matchingLeadIds: string[] = [];
 
             for (const rule of filledFormRules) {
-              const alias = `vf${jc++}`;
-              fromClause += ` INNER JOIN visitor_leads ${alias} ON l.id = ${alias}.lead_id`;
-              whereClause += ` AND ${alias}.source = 'form_submit'`;
               if (rule.value) {
-                const formRes = await c.env.DB.prepare('SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?').bind(rule.value, accountId).first();
+                const formRes = await c.env.DB.prepare(
+                  'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
+                ).bind(rule.value, accountId).first();
                 if (formRes) {
-                  const va = `vf${jc++}`;
-                  fromClause += ` INNER JOIN tracking_events ${va} ON l.contact_email = JSON_EXTRACT(${va}.form_data, '$.fields.email')`;
-                  whereClause += ` AND ${va}.event_type = 'form' AND ${va}.account_id = ? AND ${va}.form_data LIKE ?`;
-                  params.push(accountId);
-                  params.push(`%"${formRes.name}"%`);
+                  const { results: events } = await c.env.DB.prepare(
+                    "SELECT DISTINCT visitor_id FROM tracking_events WHERE account_id = ? AND event_type = 'form' AND form_data LIKE ?"
+                  ).bind(accountId, `%${formRes.name as string}%`).all();
+                  if (events) {
+                    for (const ev of events as any[]) {
+                      if (ev.visitor_id && !matchingVisitorIds.includes(ev.visitor_id)) matchingVisitorIds.push(ev.visitor_id);
+                    }
+                  }
                 }
               }
             }
-            for (const rule of visitedPageRules) {
-              const alias = `lv${jc++}`;
-              fromClause += ` INNER JOIN lead_visits ${alias} ON l.id = ${alias}.lead_id`;
-              if (rule.value) { whereClause += ` AND ${alias}.url LIKE ?`; params.push(`%${rule.value}%`); }
-            }
-            regularRules.forEach((rule: any) => {
-              const { field, operator, value } = rule;
-              switch (operator) {
-                case 'equals': whereClause += ` AND l.${field} = ?`; params.push(value); break;
-                case 'not_equals': whereClause += ` AND l.${field} != ?`; params.push(value); break;
-                case 'contains': whereClause += ` AND l.${field} LIKE ?`; params.push(`%${value}%`); break;
-                case 'not_contains': whereClause += ` AND l.${field} NOT LIKE ?`; params.push(`%${value}%`); break;
-                case 'greater_than': whereClause += ` AND l.${field} > ?`; params.push(parseFloat(value)); break;
-                case 'less_than': whereClause += ` AND l.${field} < ?`; params.push(parseFloat(value)); break;
-                case 'starts_with': whereClause += ` AND l.${field} LIKE ?`; params.push(`${value}%`); break;
-                case 'ends_with': whereClause += ` AND l.${field} LIKE ?`; params.push(`%${value}`); break;
-                case 'is_empty': whereClause += ` AND (l.${field} IS NULL OR l.${field} = '')`; break;
-                case 'is_not_empty': whereClause += ` AND l.${field} IS NOT NULL AND l.${field} != ''`; break;
-              }
-            });
 
-            const cr: any = await c.env.DB.prepare(
-              `SELECT COUNT(DISTINCT l.id) as cnt FROM ${fromClause} WHERE ${whereClause}`
-            ).bind(...params).first();
-            leadCount = cr?.cnt || 0;
+            if (matchingVisitorIds.length > 0) {
+              const ph = matchingVisitorIds.map(() => '?').join(',');
+              const { results: vlResults } = await c.env.DB.prepare(
+                `SELECT DISTINCT lead_id FROM visitor_leads WHERE account_id = ? AND visitor_id IN (${ph})`
+              ).bind(accountId, ...matchingVisitorIds).all();
+              if (vlResults) {
+                for (const vl of vlResults as any[]) {
+                  if (vl.lead_id && !matchingLeadIds.includes(vl.lead_id)) matchingLeadIds.push(vl.lead_id);
+                }
+              }
+            }
+
+            for (const rule of visitedPageRules) {
+              if (rule.value) {
+                const { results: visits } = await c.env.DB.prepare(
+                  'SELECT DISTINCT lead_id FROM lead_visits WHERE account_id = ? AND url LIKE ?'
+                ).bind(accountId, `%${rule.value}%`).all();
+                if (visits) {
+                  for (const v of visits as any[]) {
+                    if (v.lead_id && !matchingLeadIds.includes(v.lead_id)) matchingLeadIds.push(v.lead_id);
+                  }
+                }
+              }
+            }
+
+            if (matchingLeadIds.length === 0) {
+              leadCount = 0;
+            } else {
+              const ph = matchingLeadIds.map(() => '?').join(',');
+              let whereClause = `id IN (${ph})`;
+              const params: any[] = [...matchingLeadIds];
+              regularRules.forEach((rule: any) => {
+                const { field, operator, value } = rule;
+                switch (operator) {
+                  case 'equals': whereClause += ` AND ${field} = ?`; params.push(value); break;
+                  case 'not_equals': whereClause += ` AND ${field} != ?`; params.push(value); break;
+                  case 'contains': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}%`); break;
+                  case 'not_contains': whereClause += ` AND ${field} NOT LIKE ?`; params.push(`%${value}%`); break;
+                  case 'greater_than': whereClause += ` AND ${field} > ?`; params.push(parseFloat(value)); break;
+                  case 'less_than': whereClause += ` AND ${field} < ?`; params.push(parseFloat(value)); break;
+                  case 'starts_with': whereClause += ` AND ${field} LIKE ?`; params.push(`${value}%`); break;
+                  case 'ends_with': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}`); break;
+                  case 'is_empty': whereClause += ` AND (${field} IS NULL OR ${field} = '')`; break;
+                  case 'is_not_empty': whereClause += ` AND ${field} IS NOT NULL AND ${field} != ''`; break;
+                }
+              });
+              const cr: any = await c.env.DB.prepare(
+                `SELECT COUNT(*) as cnt FROM leads WHERE account_id = ? AND ${whereClause}`
+              ).bind(accountId, ...params).first();
+              leadCount = cr?.cnt || 0;
+            }
           } else {
             // Simple query - no special rules
             let whereClause = 'account_id = ?';
@@ -2383,62 +2411,110 @@ app.post('/segments/preview', async (c) => {
     const hasSpecialRules = filledFormRules.length > 0 || visitedPageRules.length > 0;
 
     if (hasSpecialRules) {
-      // Build query with JOINs for special rules
-      let fromClause = 'leads l';
-      let whereClause = 'l.account_id = ?';
-      const params: any[] = [account_id];
-      let joinCounter = 0;
+      // Step 1: Collect visitor_ids that match special rules
+      const matchingVisitorIds: string[] = [];
+      const matchingLeadIds: string[] = [];
 
-      // Handle filled_form rules
+      // For filled_form: find visitor_ids that submitted this form
       for (const rule of filledFormRules) {
-        const alias = `vf${joinCounter++}`;
-        fromClause += ` INNER JOIN visitor_leads ${alias} ON l.id = ${alias}.lead_id`;
-        whereClause += ` AND ${alias}.source = 'form_submit'`;
         if (rule.value) {
-          // Find form name by ID
-          const formRes = await c.env.DB.prepare('SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?').bind(rule.value, account_id).first();
+          // Find form name
+          const formRes = await c.env.DB.prepare(
+            'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
+          ).bind(rule.value, account_id).first();
+
           if (formRes) {
-            whereClause += ` AND ${alias}.email IN (SELECT contact_email FROM leads WHERE account_id = ?)`;
-            // Use lead_visits to check if lead submitted this specific form
-            const visitAlias = `vf${joinCounter++}`;
-            fromClause += ` INNER JOIN tracking_events ${visitAlias} ON l.contact_email = JSON_EXTRACT(${visitAlias}.form_data, '$.fields.email')`;
-            whereClause += ` AND ${visitAlias}.event_type = 'form' AND ${visitAlias}.account_id = ? AND ${visitAlias}.form_data LIKE ?`;
-            params.push(account_id);
-            params.push(`%"${formRes.name}"%`);
+            // Find tracking_events for this form (search form_data for form name)
+            const { results: events } = await c.env.DB.prepare(
+              "SELECT DISTINCT visitor_id FROM tracking_events WHERE account_id = ? AND event_type = 'form' AND form_data LIKE ?"
+            ).bind(account_id, `%${formRes.name as string}%`).all();
+
+            if (events && (events as any[]).length > 0) {
+              for (const ev of events as any[]) {
+                if (ev.visitor_id && !matchingVisitorIds.includes(ev.visitor_id)) {
+                  matchingVisitorIds.push(ev.visitor_id);
+                }
+              }
+            }
+          }
+        } else {
+          // No specific form selected - any form submission counts
+          const { results: visitors } = await c.env.DB.prepare(
+            "SELECT DISTINCT visitor_id FROM visitor_leads WHERE account_id = ? AND source = 'form_submit'"
+          ).bind(account_id).all();
+          if (visitors && (visitors as any[]).length > 0) {
+            for (const v of visitors as any[]) {
+              if (v.visitor_id && !matchingVisitorIds.includes(v.visitor_id)) {
+                matchingVisitorIds.push(v.visitor_id);
+              }
+            }
           }
         }
       }
 
-      // Handle visited_page rules
-      for (const rule of visitedPageRules) {
-        const alias = `lv${joinCounter++}`;
-        fromClause += ` INNER JOIN lead_visits ${alias} ON l.id = ${alias}.lead_id`;
-        if (rule.value) {
-          whereClause += ` AND ${alias}.url LIKE ?`;
-          params.push(`%${rule.value}%`);
+      // Map visitor_ids to lead_ids
+      if (matchingVisitorIds.length > 0) {
+        const placeholders = matchingVisitorIds.map(() => '?').join(',');
+        const { results: vlResults } = await c.env.DB.prepare(
+          `SELECT DISTINCT lead_id FROM visitor_leads WHERE account_id = ? AND visitor_id IN (${placeholders})`
+        ).bind(account_id, ...matchingVisitorIds).all();
+        if (vlResults && (vlResults as any[]).length > 0) {
+          for (const vl of vlResults as any[]) {
+            if (vl.lead_id && !matchingLeadIds.includes(vl.lead_id)) {
+              matchingLeadIds.push(vl.lead_id);
+            }
+          }
         }
       }
 
-      // Add regular rules conditions
+      // For visited_page: find lead_ids that visited this URL
+      for (const rule of visitedPageRules) {
+        if (rule.value) {
+          const { results: visits } = await c.env.DB.prepare(
+            'SELECT DISTINCT lead_id FROM lead_visits WHERE account_id = ? AND url LIKE ?'
+          ).bind(account_id, `%${rule.value}%`).all();
+          if (visits && (visits as any[]).length > 0) {
+            for (const v of visits as any[]) {
+              if (v.lead_id && !matchingLeadIds.includes(v.lead_id)) {
+                matchingLeadIds.push(v.lead_id);
+              }
+            }
+          }
+        }
+      }
+
+      // If no matching leads from special rules, return empty
+      if (matchingLeadIds.length === 0) {
+        return c.json({ leads: [], count: 0 });
+      }
+
+      // Step 2: Build query for regular rules + filter by matchingLeadIds
+      let whereClause = 'account_id = ?';
+      const params: any[] = [account_id];
+
+      // Add lead_id filter
+      const leadPlaceholders = matchingLeadIds.map(() => '?').join(',');
+      whereClause += ` AND id IN (${leadPlaceholders})`;
+      params.push(...matchingLeadIds);
+
       regularRules.forEach((rule: any) => {
         const { field, operator, value } = rule;
         switch (operator) {
-          case 'equals': whereClause += ` AND l.${field} = ?`; params.push(value); break;
-          case 'not_equals': whereClause += ` AND l.${field} != ?`; params.push(value); break;
-          case 'contains': whereClause += ` AND l.${field} LIKE ?`; params.push(`%${value}%`); break;
-          case 'not_contains': whereClause += ` AND l.${field} NOT LIKE ?`; params.push(`%${value}%`); break;
-          case 'greater_than': whereClause += ` AND l.${field} > ?`; params.push(parseFloat(value)); break;
-          case 'less_than': whereClause += ` AND l.${field} < ?`; params.push(parseFloat(value)); break;
-          case 'starts_with': whereClause += ` AND l.${field} LIKE ?`; params.push(`${value}%`); break;
-          case 'ends_with': whereClause += ` AND l.${field} LIKE ?`; params.push(`%${value}`); break;
-          case 'is_empty': whereClause += ` AND (l.${field} IS NULL OR l.${field} = '')`; break;
-          case 'is_not_empty': whereClause += ` AND l.${field} IS NOT NULL AND l.${field} != ''`; break;
+          case 'equals': whereClause += ` AND ${field} = ?`; params.push(value); break;
+          case 'not_equals': whereClause += ` AND ${field} != ?`; params.push(value); break;
+          case 'contains': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}%`); break;
+          case 'not_contains': whereClause += ` AND ${field} NOT LIKE ?`; params.push(`%${value}%`); break;
+          case 'greater_than': whereClause += ` AND ${field} > ?`; params.push(parseFloat(value)); break;
+          case 'less_than': whereClause += ` AND ${field} < ?`; params.push(parseFloat(value)); break;
+          case 'starts_with': whereClause += ` AND ${field} LIKE ?`; params.push(`${value}%`); break;
+          case 'ends_with': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}`); break;
+          case 'is_empty': whereClause += ` AND (${field} IS NULL OR ${field} = '')`; break;
+          case 'is_not_empty': whereClause += ` AND ${field} IS NOT NULL AND ${field} != ''`; break;
         }
       });
 
-      // Use DISTINCT to avoid duplicates from JOINs
       const { results } = await c.env.DB.prepare(
-        `SELECT DISTINCT l.* FROM ${fromClause} WHERE ${whereClause} ORDER BY l.created_at DESC LIMIT 500`
+        `SELECT * FROM leads WHERE ${whereClause} ORDER BY created_at DESC LIMIT 500`
       ).bind(...params).all();
 
       return c.json({ leads: results, count: results.length });
