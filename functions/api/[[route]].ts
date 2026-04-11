@@ -2317,11 +2317,81 @@ app.post('/segments/preview', async (c) => {
       return c.json({ leads: [] });
     }
 
-    // Build SQL query from rules
+    // Separate regular rules from special rules
+    const regularRules = rules.filter((r: any) => !['filled_form', 'visited_page'].includes(r.field));
+    const filledFormRules = rules.filter((r: any) => r.field === 'filled_form');
+    const visitedPageRules = rules.filter((r: any) => r.field === 'visited_page');
+
+    // Check if we have special rules that require JOINs
+    const hasSpecialRules = filledFormRules.length > 0 || visitedPageRules.length > 0;
+
+    if (hasSpecialRules) {
+      // Build query with JOINs for special rules
+      let fromClause = 'leads l';
+      let whereClause = 'l.account_id = ?';
+      const params: any[] = [account_id];
+      let joinCounter = 0;
+
+      // Handle filled_form rules
+      for (const rule of filledFormRules) {
+        const alias = `vf${joinCounter++}`;
+        fromClause += ` INNER JOIN visitor_leads ${alias} ON l.id = ${alias}.lead_id`;
+        whereClause += ` AND ${alias}.source = 'form_submit'`;
+        if (rule.value) {
+          // Find form name by ID
+          const formRes = await c.env.DB.prepare('SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?').bind(rule.value, account_id).first();
+          if (formRes) {
+            whereClause += ` AND ${alias}.email IN (SELECT contact_email FROM leads WHERE account_id = ?)`;
+            // Use lead_visits to check if lead submitted this specific form
+            const visitAlias = `vf${joinCounter++}`;
+            fromClause += ` INNER JOIN tracking_events ${visitAlias} ON l.contact_email = JSON_EXTRACT(${visitAlias}.form_data, '$.fields.email')`;
+            whereClause += ` AND ${visitAlias}.event_type = 'form' AND ${visitAlias}.account_id = ? AND ${visitAlias}.form_data LIKE ?`;
+            params.push(account_id);
+            params.push(`%"${formRes.name}"%`);
+          }
+        }
+      }
+
+      // Handle visited_page rules
+      for (const rule of visitedPageRules) {
+        const alias = `lv${joinCounter++}`;
+        fromClause += ` INNER JOIN lead_visits ${alias} ON l.id = ${alias}.lead_id`;
+        if (rule.value) {
+          whereClause += ` AND ${alias}.url LIKE ?`;
+          params.push(`%${rule.value}%`);
+        }
+      }
+
+      // Add regular rules conditions
+      regularRules.forEach((rule: any) => {
+        const { field, operator, value } = rule;
+        switch (operator) {
+          case 'equals': whereClause += ` AND l.${field} = ?`; params.push(value); break;
+          case 'not_equals': whereClause += ` AND l.${field} != ?`; params.push(value); break;
+          case 'contains': whereClause += ` AND l.${field} LIKE ?`; params.push(`%${value}%`); break;
+          case 'not_contains': whereClause += ` AND l.${field} NOT LIKE ?`; params.push(`%${value}%`); break;
+          case 'greater_than': whereClause += ` AND l.${field} > ?`; params.push(parseFloat(value)); break;
+          case 'less_than': whereClause += ` AND l.${field} < ?`; params.push(parseFloat(value)); break;
+          case 'starts_with': whereClause += ` AND l.${field} LIKE ?`; params.push(`${value}%`); break;
+          case 'ends_with': whereClause += ` AND l.${field} LIKE ?`; params.push(`%${value}`); break;
+          case 'is_empty': whereClause += ` AND (l.${field} IS NULL OR l.${field} = '')`; break;
+          case 'is_not_empty': whereClause += ` AND l.${field} IS NOT NULL AND l.${field} != ''`; break;
+        }
+      });
+
+      // Use DISTINCT to avoid duplicates from JOINs
+      const { results } = await c.env.DB.prepare(
+        `SELECT DISTINCT l.* FROM ${fromClause} WHERE ${whereClause} ORDER BY l.created_at DESC LIMIT 500`
+      ).bind(...params).all();
+
+      return c.json({ leads: results, count: results.length });
+    }
+
+    // Original simple query for regular rules only
     let whereClause = 'account_id = ?';
     const params: any[] = [account_id];
 
-    rules.forEach((rule: any) => {
+    regularRules.forEach((rule: any) => {
       const { field, operator, value } = rule;
 
       switch (operator) {

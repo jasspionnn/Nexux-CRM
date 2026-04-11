@@ -37,6 +37,8 @@ const FIELDS = [
   { value: 'probability', label: 'Probabilidade (%)', type: 'number' },
   { value: 'tags', label: 'Tags', type: 'text' },
   { value: 'created_at', label: 'Data de Criação', type: 'date' },
+  { value: 'filled_form', label: 'Preencheu Formulário', type: 'special' },
+  { value: 'visited_page', label: 'Visitou Página', type: 'special' },
 ];
 
 const OPERATORS: { value: Operator; label: string; showValue: boolean }[] = [
@@ -58,6 +60,7 @@ export const LeadSegmentation = () => {
   const [funnels, setFunnels] = useState<any[]>([]);
   const [stages, setStages] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
+  const [forms, setForms] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingSegment, setEditingSegment] = useState<string | null>(null);
@@ -77,10 +80,11 @@ export const LeadSegmentation = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [segmentsRes, funnelsRes, usersRes] = await Promise.all([
+      const [segmentsRes, funnelsRes, usersRes, formsRes] = await Promise.all([
         fetch(`/api/segments?account_id=${accountId}`),
         fetch(`/api/funnels`),
         fetch(`/api/users?account_id=${accountId}`),
+        fetch(`/api/tracking-forms?account_id=${accountId}`),
       ]);
 
       if (segmentsRes.ok) {
@@ -98,6 +102,11 @@ export const LeadSegmentation = () => {
       if (usersRes.ok) {
         const data = await usersRes.json();
         setUsers(Array.isArray(data) ? data : []);
+      }
+
+      if (formsRes.ok) {
+        const data = await formsRes.json();
+        setForms(Array.isArray(data) ? data : []);
       }
     } catch (error) {
       console.error('Failed to fetch segmentation data:', error);
@@ -336,6 +345,7 @@ export const LeadSegmentation = () => {
                   {builderRules.map((rule, index) => {
                     const field = FIELDS.find(f => f.value === rule.field);
                     const isSelectField = field?.type === 'select';
+                    const isSpecialField = field?.type === 'special';
                     const showValue = OPERATORS.find(o => o.value === rule.operator)?.showValue ?? true;
 
                     return (
@@ -352,37 +362,61 @@ export const LeadSegmentation = () => {
                           ))}
                         </select>
 
-                        <select
-                          value={rule.operator}
-                          onChange={e => updateRule(rule.id, { operator: e.target.value as Operator })}
-                          className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[150px]"
-                        >
-                          {OPERATORS.map(o => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
-                          ))}
-                        </select>
+                        {isSpecialField ? (
+                          // Special fields: no operator, just value selector
+                          rule.field === 'filled_form' ? (
+                            <select
+                              value={rule.value}
+                              onChange={e => updateRule(rule.id, { value: e.target.value })}
+                              className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            >
+                              <option value="">Selecione o formulário...</option>
+                              {forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                            </select>
+                          ) : rule.field === 'visited_page' ? (
+                            <input
+                              type="text"
+                              value={rule.value}
+                              onChange={e => updateRule(rule.id, { value: e.target.value })}
+                              placeholder="URL contém... ex: /precos"
+                              className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                          ) : null
+                        ) : (
+                          <>
+                            <select
+                              value={rule.operator}
+                              onChange={e => updateRule(rule.id, { operator: e.target.value as Operator })}
+                              className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[150px]"
+                            >
+                              {OPERATORS.map(o => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
+                            </select>
 
-                        {showValue && !isSelectField && (
-                          <input
-                            type={field?.type === 'number' ? 'number' : 'text'}
-                            value={rule.value}
-                            onChange={e => updateRule(rule.id, { value: e.target.value })}
-                            placeholder="Valor..."
-                            className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          />
-                        )}
+                            {showValue && !isSelectField && (
+                              <input
+                                type={field?.type === 'number' ? 'number' : 'text'}
+                                value={rule.value}
+                                onChange={e => updateRule(rule.id, { value: e.target.value })}
+                                placeholder="Valor..."
+                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              />
+                            )}
 
-                        {showValue && isSelectField && (
-                          <select
-                            value={rule.value}
-                            onChange={e => updateRule(rule.id, { value: e.target.value })}
-                            className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          >
-                            <option value="">Selecione...</option>
-                            {getSelectOptions(rule.field).map(opt => (
-                              <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                          </select>
+                            {showValue && isSelectField && (
+                              <select
+                                value={rule.value}
+                                onChange={e => updateRule(rule.id, { value: e.target.value })}
+                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              >
+                                <option value="">Selecione...</option>
+                                {getSelectOptions(rule.field).map(opt => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                            )}
+                          </>
                         )}
 
                         <button
