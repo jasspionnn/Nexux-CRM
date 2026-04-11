@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  ArrowLeft, ThumbsDown, ThumbsUp, Briefcase, Phone, MessageSquare, Send, Layers, 
-  Edit2, Check, X, Calendar, Trash2, Clock, CheckCircle2, Circle, Plus
+import {
+  ArrowLeft, ThumbsDown, ThumbsUp, Briefcase, Phone, MessageSquare, Send, Layers,
+  Edit2, Check, X, Calendar, Trash2, Clock, CheckCircle2, Circle, Plus, Activity
 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 import { format } from 'date-fns';
@@ -114,10 +114,11 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
   const [tasks, setTasks] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [leadVisits, setLeadVisits] = useState<any[]>([]);
+  const [leadTimeline, setLeadTimeline] = useState<any[]>([]);
   const [noteText, setNoteText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDate, setNewTaskDate] = useState('');
-  const [activeTab, setActiveTab] = useState<'notes' | 'tasks' | 'visits'>('notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'tasks' | 'visits' | 'timeline'>('notes');
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingTask, setIsAddingTask] = useState(false);
 
@@ -154,6 +155,12 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
       if (visitsRes.ok) {
         const visitsData = await visitsRes.json();
         setLeadVisits(visitsData);
+      }
+
+      const timelineRes = await fetch(`/api/lead-timeline?lead_id=${leadId}`);
+      if (timelineRes.ok) {
+        const timelineData = await timelineRes.json();
+        setLeadTimeline(timelineData);
       }
     } catch (error) {
       console.error(error);
@@ -491,6 +498,21 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                 </div>
                 {activeTab === 'visits' && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 rounded-t-full"></div>}
               </button>
+
+              <button
+                onClick={() => setActiveTab('timeline')}
+                className={`pb-4 px-2 text-sm font-bold tracking-wider uppercase transition-all relative ${
+                  activeTab === 'timeline' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Activity size={18} />
+                  JORNADA {leadTimeline.length > 0 && (
+                    <span className="text-[10px] bg-amber-100 px-1.5 py-0.5 rounded-full text-amber-600">{leadTimeline.length}</span>
+                  )}
+                </div>
+                {activeTab === 'timeline' && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 rounded-t-full"></div>}
+              </button>
             </div>
 
             {activeTab === 'notes' ? (
@@ -679,30 +701,4 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-3">
                               <div className="w-2 h-2 bg-purple-400 rounded-full shrink-0" />
-                              <p className="text-sm font-semibold text-slate-800 truncate">{visit.url}</p>
-                            </div>
-                            {visit.referrer && (
-                              <p className="text-xs text-slate-400 mt-1 ml-5 truncate">Ref: {visit.referrer}</p>
-                            )}
-                          </div>
-                          <div className="text-right shrink-0 ml-4">
-                            <p className="text-xs font-bold text-slate-600">
-                              {new Date(visit.visited_at).toLocaleDateString('pt-BR')}
-                            </p>
-                            <p className="text-[10px] text-slate-400">
-                              {new Date(visit.visited_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+                   

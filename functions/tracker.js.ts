@@ -5,12 +5,16 @@ export const onRequestGet = async () => {
         if(T.id)return;
         T.id=t;
         T.b=e.replace(/\\/$/, '');
-        T.v=sessionStorage.getItem('nx_v');
-        if(!T.v){T.v='v'+Date.now().toString(36);sessionStorage.setItem('nx_v',T.v);}
+        // Use persistent cookie (1 year) instead of sessionStorage
+        T.v=T._gc('nx_v');
+        if(!T.v){T.v='v'+Date.now().toString(36);T._sc('nx_v',T.v,365);}
         T._pv();
         T._f();
+        T._clk();
         console.log('[NX] Ready',t);
       },
+      _gc:function(n){var m=document.cookie.match('(^|;)\\\\s*'+n+'\\\\s*=\\\\s*([^;]+)');return m?m.pop():null;},
+      _sc:function(n,v,d){var x=new Date();x.setTime(x.getTime()+d*864e5);document.cookie=n+'='+v+';expires='+x.toUTCString()+';path=/;SameSite=Lax';},
       track:function(n,d){
         d=d||{};
         if(d.form_fields){
@@ -28,7 +32,6 @@ export const onRequestGet = async () => {
         return out;
       },
       _sf:function(name,url,fields){
-        // Debounce: ignore if same form submitted within 2 seconds
         var now=Date.now();
         if(now-T.lastForm<2000){console.log('[NX] Form skipped (debounce)');return;}
         T.lastForm=now;
@@ -42,6 +45,8 @@ export const onRequestGet = async () => {
         if(d.en)p.event_name=d.en;
         if(d.d)p.data=d.d;
         if(d.form_data)p.form_data=d.form_data;
+        if(d.el_label)p.el_label=d.el_label;
+        if(d.el_tag)p.el_tag=d.el_tag;
         console.log('[NX]',ty,d.form_data?d.form_data.fid:'',d.form_data?JSON.stringify(d.form_data.fields):'');
         fetch(T.b+'/api/tracking/events',{method:'POST',body:JSON.stringify(p),mode:'no-cors'}).catch(function(){});
       },
@@ -58,10 +63,8 @@ export const onRequestGet = async () => {
         document.addEventListener('submit',function(e){
           var f=e.target;
           if(!f||f.tagName!=='FORM')return;
-          // Prevent double capture from Elementor double-submit
           if(f._nx)return;
           f._nx=true;
-          // Also reset _nx after 3 seconds to allow next submission
           setTimeout(function(){f._nx=false;},3000);
           var fd={},hl=false;
           var fname=T._getFName(f);
@@ -83,16 +86,8 @@ export const onRequestGet = async () => {
           }
         },true);
       },
-      _h:function(s){var h=0;for(var i=0;i<(s||'').length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return Math.abs(h).toString(36).substr(0,6);}
-    };
-    w.NexuxTracker=T;
-  })(window);`;
-
-  return new Response(script, {
-    headers: {
-      'Content-Type': 'application/javascript; charset=utf-8',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Access-Control-Allow-Origin': '*',
-    },
-  });
-};
+      _clk:function(){
+        // Track clicks on buttons and links with data-track attribute
+        document.addEventListener('click',function(e){
+          var el=e.target;
+          while(el&&el.tagName!=='A'&&e
