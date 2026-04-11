@@ -2640,4 +2640,112 @@ async function triggerAutomations(accountId: string, triggerType: string, leadId
         executed.push(nextNode.id);
 
         if (nextNode.type === 'action' && leadId) {
-          await executeActionNode(nextN
+          await executeActionNode(nextNode, leadId, db);
+        }
+        currentId = nextNode.id;
+      }
+
+      await db.prepare(
+        "UPDATE automation_executions SET status = 'completed' WHERE id = ?"
+      ).bind(executionId).run();
+    }
+  } catch (err: any) {
+    console.error('[AUTOMATIONS] Trigger Error:', err.message);
+  }
+}
+
+// Helper to execute action nodes
+async function executeActionNode(node: any, leadId: string, db: any) {
+  const { nodeType, config } = node;
+
+  switch (nodeType) {
+    case 'move_stage':
+      if (config.to_stage_id) {
+        await db.prepare('UPDATE leads SET stage_id = ? WHERE id = ?').bind(config.to_stage_id, leadId).run();
+      }
+      break;
+    case 'create_task':
+      if (config.title) {
+        const taskId = crypto.randomUUID();
+        await db.prepare(
+          'INSERT INTO tasks (id, lead_id, title, due_date, assigned_user_id) VALUES (?, ?, ?, ?, ?)'
+        ).bind(taskId, leadId, config.title, config.due_date || null, config.assigned_user_id || null).run();
+      }
+      break;
+    case 'add_tag':
+      if (config.tag) {
+        const lead: any = await db.prepare('SELECT tags FROM leads WHERE id = ?').bind(leadId).first();
+        const tags = lead.tags ? lead.tags.split(',').filter(Boolean) : [];
+        if (!tags.includes(config.tag)) {
+          tags.push(config.tag);
+          await db.prepare('UPDATE leads SET tags = ? WHERE id = ?').bind(tags.join(','), leadId).run();
+        }
+      }
+      break;
+    case 'remove_tag':
+      if (config.tag) {
+        const lead: any = await db.prepare('SELECT tags FROM leads WHERE id = ?').bind(leadId).first();
+        const tags = lead.tags ? lead.tags.split(',').filter((t: string) => t !== config.tag) : [];
+        await db.prepare('UPDATE leads SET tags = ? WHERE id = ?').bind(tags.join(','), leadId).run();
+      }
+      break;
+    case 'create_note':
+      if (config.content) {
+        const noteId = crypto.randomUUID();
+        await db.prepare(
+          'INSERT INTO notes (id, lead_id, content, author_name) VALUES (?, ?, ?, ?)'
+        ).bind(noteId, leadId, config.content, 'Automação').run();
+      }
+      break;
+    case 'assign_user':
+      if (config.user_id) {
+        await db.prepare('UPDATE leads SET assigned_user_id = ? WHERE id = ?').bind(config.user_id, leadId).run();
+      }
+      break;
+    case 'send_webhook':
+      if (config.url) {
+        try {
+          await fetch(config.url, {
+            method: config.method || 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lead_id: leadId, ...config })
+          });
+        } catch (e) { console.error('Webhook send error:', e); }
+      }
+      break;
+    // send_email would require an email service integration
+    default:
+      console.log(`Unknown action type: ${nodeType}`);
+  }
+}
+
+app.post('/login', async (c) => {
+  try {
+    const { email, password } = await c.req.json();
+    
+    if (!email || !password) {
+      return c.json({ error: 'Email e senha são obrigatórios' }, 400);
+    }
+
+    const user: any = await c.env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
+    
+    if (!user) {
+      return c.json({ error: 'Usuário não encontrado' }, 401);
+    }
+
+    // Direct comparison for now as requested. 
+    // In a production app, we would use hashing.
+    if (user.password !== password) {
+      return c.json({ error: 'Senha incorreta' }, 401);
+    }
+
+    // Return user data without password
+    const { password: _, ...userWithoutPassword } = user;
+    return c.json(userWithoutPassword);
+  } catch (error: any) {
+    console.error('Login error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+export const onRequest = handle(app);
