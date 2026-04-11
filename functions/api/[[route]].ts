@@ -1787,6 +1787,59 @@ app.get('/migrate-tracking-forms', async (c) => {
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });
 
+// Debug endpoint — see all tracking form data
+app.get('/debug-segment', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+    const formId = c.req.query('form_id') || '';
+
+    const result: any = { account_id: accountId, form_id: formId };
+
+    // 1. All tracking forms
+    const { results: forms } = await c.env.DB.prepare(
+      'SELECT * FROM tracking_forms WHERE account_id = ?'
+    ).bind(accountId).all();
+    result.forms = forms;
+
+    // 2. If formId provided, find its name
+    if (formId) {
+      const formRes: any = await c.env.DB.prepare(
+        'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
+      ).bind(formId, accountId).first();
+      result.form_name = formRes?.name || null;
+
+      // 3. All tracking_events for this form
+      const { results: events } = await c.env.DB.prepare(
+        "SELECT id, visitor_id, form_data FROM tracking_events WHERE account_id = ? AND event_type = 'form' AND form_data LIKE ?"
+      ).bind(accountId, `%${formRes?.name || ''}%`).all();
+      result.tracking_events_count = (events as any[])?.length || 0;
+      result.tracking_events = (events as any[] || []).map((e: any) => {
+        try {
+          const fd = typeof e.form_data === 'string' ? JSON.parse(e.form_data) : e.form_data;
+          return { id: e.id, visitor_id: e.visitor_id, parsed_fields: fd?.fields || {} };
+        } catch(e) {
+          return { id: e.id, visitor_id: e.visitor_id, parse_error: true };
+        }
+      });
+
+      // 4. All leads
+      const { results: leads } = await c.env.DB.prepare(
+        'SELECT id, contact_email, custom_values FROM leads WHERE account_id = ?'
+      ).bind(accountId).all();
+      result.leads = leads;
+      result.leads_count = (leads as any[])?.length || 0;
+
+      // 5. Marketing leads
+      const { results: mleads } = await c.env.DB.prepare(
+        'SELECT contact_email, form_name FROM marketing_leads WHERE account_id = ? AND form_name = ?'
+      ).bind(accountId, formRes?.name || '').all();
+      result.marketing_leads = mleads;
+    }
+
+    return c.json(result);
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
 // ==================== MARKETING LEADS ENDPOINTS ====================
 
 // ==================== LEAD VISITS ENDPOINTS ====================
