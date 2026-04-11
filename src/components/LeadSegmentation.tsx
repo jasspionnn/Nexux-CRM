@@ -567,47 +567,4 @@ export const LeadSegmentation = () => {
                       {previewLoading && expandedSegment === segment.id ? (
                         <Loader2 size={18} className="animate-spin" />
                       ) : (
-                        <Play size={18} />
-                      )}
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleEditSegment(segment); }}
-                      className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
-                      title="Editar"
-                    >
-                      <Edit2 size={18} />
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDeleteSegment(segment.id); }}
-                      className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-                      title="Excluir"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                    {expandedSegment === segment.id ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
-                  </div>
-                </div>
-
-                {expandedSegment === segment.id && (
-                  <div className="px-6 pb-5 border-t border-slate-100 bg-slate-50/30">
-                    <div className="pt-4 space-y-2">
-                      <h4 className="text-sm font-bold text-slate-700 mb-3">Regras:</h4>
-                      {segment.rules.map((rule, i) => (
-                        <div key={rule.id} className="flex items-center gap-2 text-sm">
-                          <span className="text-xs font-bold text-slate-400 w-5">{i + 1}.</span>
-                          <span className="font-medium text-slate-700">{getFieldLabel(rule.field)}</span>
-                          <span className="text-slate-500">{getOperatorLabel(rule.operator)}</span>
-                          {rule.value && <span className="font-medium text-purple-600 bg-purple-50 px-2 py-0.5 rounded">"{rule.value}"</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
+                   

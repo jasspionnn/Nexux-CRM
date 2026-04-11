@@ -543,14 +543,14 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                   )}
                 </div>
               </>
-            ) : (
+            ) : activeTab === 'tasks' ? (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-gray-900">
                     <CheckCircle2 size={20} className="text-indigo-600" />
                     <h2 className="text-lg font-bold uppercase tracking-wide">PRÓXIMAS TAREFAS</h2>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setIsAddingTask(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-indigo-50 text-indigo-600 rounded-xl font-bold text-sm hover:bg-indigo-100 transition-colors"
                   >
@@ -565,8 +565,8 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">O que precisa ser feito?</label>
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           value={newTaskTitle}
                           onChange={e => setNewTaskTitle(e.target.value)}
                           placeholder="Ex: Ligar para cliente..."
@@ -576,8 +576,8 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                       </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Quando?</label>
-                        <input 
-                          type="datetime-local" 
+                        <input
+                          type="datetime-local"
                           value={newTaskDate}
                           onChange={e => setNewTaskDate(e.target.value)}
                           className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
@@ -585,13 +585,13 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                       </div>
                     </div>
                     <div className="flex justify-end gap-3">
-                      <button 
+                      <button
                         onClick={() => setIsAddingTask(false)}
                         className="px-4 py-2 text-slate-400 hover:text-slate-600 font-bold text-xs uppercase tracking-widest"
                       >
                         Cancelar
                       </button>
-                      <button 
+                      <button
                         onClick={handleAddTask}
                         disabled={!newTaskTitle.trim()}
                         className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 disabled:opacity-50 transition-all"
@@ -614,16 +614,16 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                     </div>
                   ) : (
                     tasks.map(task => (
-                      <div 
-                        key={task.id} 
+                      <div
+                        key={task.id}
                         className={`group flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                          task.completed 
-                            ? 'bg-slate-50 border-slate-100 opacity-60' 
+                          task.completed
+                            ? 'bg-slate-50 border-slate-100 opacity-60'
                             : 'bg-white border-slate-200 hover:border-indigo-200 hover:shadow-lg shadow-slate-200/40'
                         }`}
                       >
                         <div className="flex items-center gap-4 flex-1">
-                          <button 
+                          <button
                             onClick={() => handleToggleTask(task)}
                             className={`p-1 rounded-lg transition-colors ${
                               task.completed ? 'text-green-500' : 'text-slate-300 hover:text-indigo-500'
@@ -631,7 +631,7 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                           >
                             {task.completed ? <CheckCircle2 size={24} /> : <Circle size={24} />}
                           </button>
-                          
+
                           <div className="min-w-0 flex-1">
                             <h4 className={`font-bold text-sm truncate ${task.completed ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
                               {task.title}
@@ -647,7 +647,7 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                           </div>
                         </div>
 
-                        <button 
+                        <button
                           onClick={() => handleDeleteTask(task.id)}
                           className="p-2 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all rounded-xl hover:bg-red-50"
                         >
