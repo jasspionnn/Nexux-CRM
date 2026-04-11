@@ -113,10 +113,11 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
   const [notes, setNotes] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
+  const [leadVisits, setLeadVisits] = useState<any[]>([]);
   const [noteText, setNoteText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDate, setNewTaskDate] = useState('');
-  const [activeTab, setActiveTab] = useState<'notes' | 'tasks'>('notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'tasks' | 'visits'>('notes');
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingTask, setIsAddingTask] = useState(false);
 
@@ -148,6 +149,12 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
       const usersRes = await fetch('/api/users');
       const usersData = await usersRes.json();
       setUsers(usersData);
+
+      const visitsRes = await fetch(`/api/lead-visits?lead_id=${leadId}`);
+      if (visitsRes.ok) {
+        const visitsData = await visitsRes.json();
+        setLeadVisits(visitsData);
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -469,6 +476,21 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                 </div>
                 {activeTab === 'tasks' && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 rounded-t-full"></div>}
               </button>
+
+              <button
+                onClick={() => setActiveTab('visits')}
+                className={`pb-4 px-2 text-sm font-bold tracking-wider uppercase transition-all relative ${
+                  activeTab === 'visits' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Layers size={18} />
+                  VISITAS {leadVisits.length > 0 && (
+                    <span className="text-[10px] bg-purple-100 px-1.5 py-0.5 rounded-full text-purple-600">{leadVisits.length}</span>
+                  )}
+                </div>
+                {activeTab === 'visits' && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 rounded-t-full"></div>}
+              </button>
             </div>
 
             {activeTab === 'notes' ? (
@@ -636,7 +658,48 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                   )}
                 </div>
               </div>
-            )}
+            ) : activeTab === 'visits' ? (
+              <>
+                <div className="flex items-center gap-2 text-gray-900 mb-6">
+                  <Layers size={20} className="text-purple-600" />
+                  <h2 className="text-lg font-bold uppercase tracking-wide">HISTÓRICO DE VISITAS</h2>
+                </div>
+
+                <div className="bg-white border border-gray-100 rounded-3xl overflow-hidden shadow-sm">
+                  {leadVisits.length === 0 ? (
+                    <div className="text-center py-16 bg-slate-50 border border-dashed border-slate-200 rounded-3xl">
+                      <Layers size={40} className="mx-auto text-slate-200 mb-3" />
+                      <p className="text-slate-400 text-sm italic font-medium">Nenhuma visita registrada.</p>
+                      <p className="text-slate-300 text-xs mt-2">As páginas visitadas pelo lead aparecerão aqui.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100">
+                      {leadVisits.map((visit, i) => (
+                        <div key={visit.id} className="px-5 py-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-3">
+                              <div className="w-2 h-2 bg-purple-400 rounded-full shrink-0" />
+                              <p className="text-sm font-semibold text-slate-800 truncate">{visit.url}</p>
+                            </div>
+                            {visit.referrer && (
+                              <p className="text-xs text-slate-400 mt-1 ml-5 truncate">Ref: {visit.referrer}</p>
+                            )}
+                          </div>
+                          <div className="text-right shrink-0 ml-4">
+                            <p className="text-xs font-bold text-slate-600">
+                              {new Date(visit.visited_at).toLocaleDateString('pt-BR')}
+                            </p>
+                            <p className="text-[10px] text-slate-400">
+                              {new Date(visit.visited_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
       </div>

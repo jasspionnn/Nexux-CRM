@@ -1495,6 +1495,29 @@ app.post('/tracking/events', async (c) => {
 
     console.log('[TRACKING] Event saved:', eventId);
 
+    // Handle pageview: if visitor_id is mapped to a lead, save in lead_visits and trigger automations
+    try {
+      if (event_type === 'pageview' && visitor_id) {
+        const { results: mappedLeads } = await c.env.DB.prepare(
+          'SELECT lead_id FROM visitor_leads WHERE visitor_id = ? AND account_id = ?'
+        ).bind(visitor_id, settings.account_id).all();
+
+        if (mappedLeads && mappedLeads.length > 0) {
+          for (const ml of mappedLeads as any[]) {
+            const visitId = crypto.randomUUID();
+            await c.env.DB.prepare(
+              'INSERT INTO lead_visits (id, account_id, lead_id, visitor_id, url, referrer, title) VALUES (?, ?, ?, ?, ?, ?, ?)'
+            ).bind(visitId, settings.account_id, ml.lead_id, visitor_id, url || null, referrer || null, body.title || null).run();
+
+            // Trigger page_visit automation
+            await triggerAutomations(settings.account_id, 'page_visit', ml.lead_id, c.env.DB, { url_pattern: url });
+          }
+        }
+      }
+    } catch (pvErr: any) {
+      console.error('[TRACKING] Pageview handling error:', pvErr.message);
+    }
+
     // Auto-register form if event has form_data
     try {
       var formData = body.form_data;
@@ -1606,6 +1629,19 @@ app.post('/tracking/events', async (c) => {
                   // Trigger form_submit automation with form_id
                   const formId = formData.fid || formName;
                   await triggerAutomations(settings.account_id, 'form_submit', crmLeadId, c.env.DB, { form_id: formId });
+
+                  // Map visitor_id to lead for future pageview tracking
+                  if (visitor_id) {
+                    try {
+                      const vlId = crypto.randomUUID();
+                      await c.env.DB.prepare(
+                        'INSERT OR IGNORE INTO visitor_leads (id, account_id, visitor_id, lead_id, email, source) VALUES (?, ?, ?, ?, ?, ?)'
+                      ).bind(vlId, settings.account_id, visitor_id, crmLeadId, mappedData.contact_email || null, 'form_submit').run();
+                      console.log('[TRACKING] Mapped visitor to lead:', visitor_id, '->', crmLeadId);
+                    } catch (vlErr: any) {
+                      console.log('[TRACKING] Visitor already mapped:', visitor_id);
+                    }
+                  }
                 } catch (autoErr: any) {
                   console.error('[TRACKING] Error auto-syncing / running automations:', autoErr.message);
                 }
@@ -1723,11 +1759,48 @@ app.get('/migrate-tracking-forms', async (c) => {
         );
       `).run();
     } catch (e) { /* table may already exist */ }
+    // Create visitor_leads and lead_visits tables
+    try {
+      await c.env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS visitor_leads (
+          id TEXT PRIMARY KEY, account_id TEXT NOT NULL, visitor_id TEXT NOT NULL,
+          lead_id TEXT NOT NULL, email TEXT, first_seen TEXT DEFAULT (datetime('now')),
+          last_seen TEXT DEFAULT (datetime('now')), source TEXT DEFAULT 'form_submit',
+          UNIQUE(visitor_id, lead_id),
+          FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+        );
+      `).run();
+    } catch (e) { /* */ }
+    try {
+      await c.env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS lead_visits (
+          id TEXT PRIMARY KEY, account_id TEXT NOT NULL, lead_id TEXT NOT NULL,
+          visitor_id TEXT, url TEXT NOT NULL, referrer TEXT, title TEXT,
+          duration_seconds INTEGER DEFAULT 0, visited_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+        );
+      `).run();
+    } catch (e) { /* */ }
     return c.json({ success: true });
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });
 
 // ==================== MARKETING LEADS ENDPOINTS ====================
+
+// ==================== LEAD VISITS ENDPOINTS ====================
+app.get('/lead-visits', async (c) => {
+  try {
+    const leadId = c.req.query('lead_id');
+    if (!leadId) return c.json({ error: 'lead_id is required' }, 400);
+
+    const { results } = await c.env.DB.prepare(
+      'SELECT * FROM lead_visits WHERE lead_id = ? ORDER BY visited_at DESC LIMIT 500'
+    ).bind(leadId).all();
+    return c.json(results);
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
 
 app.get('/marketing-leads', async (c) => {
   try {
@@ -2458,6 +2531,16 @@ async function triggerAutomations(accountId: string, triggerType: string, leadId
         const triggerConfig = a.trigger_config ? JSON.parse(a.trigger_config) : {};
         // If automation has form_id filter, it must match; otherwise include it
         return !triggerConfig.form_id || triggerConfig.form_id === extraConfig.form_id;
+      });
+    }
+
+    // If triggerType is page_visit and url_pattern is provided, filter automations by url_pattern
+    if (triggerType === 'page_visit' && extraConfig?.url_pattern) {
+      automations = automations.filter((a: any) => {
+        const triggerConfig = a.trigger_config ? JSON.parse(a.trigger_config) : {};
+        // If automation has url_pattern filter, check if URL matches; otherwise include it
+        if (!triggerConfig.url_pattern) return true;
+        return (extraConfig.url_pattern || '').includes(triggerConfig.url_pattern);
       });
     }
 

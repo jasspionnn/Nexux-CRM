@@ -307,3 +307,33 @@ CREATE TABLE IF NOT EXISTS email_events (
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (campaign_id) REFERENCES email_campaigns(id) ON DELETE CASCADE
 );
+
+-- Mapeamento Visitor -> Lead (conecta visitor_id anônimo a lead identificado)
+CREATE TABLE IF NOT EXISTS visitor_leads (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    visitor_id TEXT NOT NULL,
+    lead_id TEXT NOT NULL,
+    email TEXT,
+    first_seen TEXT DEFAULT (datetime('now')),
+    last_seen TEXT DEFAULT (datetime('now')),
+    source TEXT DEFAULT 'form_submit',
+    UNIQUE(visitor_id, lead_id),
+    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+-- Histórico de visitas de páginas por lead
+CREATE TABLE IF NOT EXISTS lead_visits (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    lead_id TEXT NOT NULL,
+    visitor_id TEXT,
+    url TEXT NOT NULL,
+    referrer TEXT,
+    title TEXT,
+    duration_seconds INTEGER DEFAULT 0,
+    visited_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
