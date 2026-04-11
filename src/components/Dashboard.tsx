@@ -489,7 +489,7 @@ const MetricCard = ({ title, value, icon, color, trend, trendUp, subtitle }: Met
         {icon}
       </div>
       {trend && (
-        <div className={`flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${trendUp ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+        <div className={`flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${trendUp ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
           {trend}
         </div>
       )}

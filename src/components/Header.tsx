@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, BarChart2, Inbox, CheckSquare, Sparkles, Search, Bell, Settings as SettingsIcon, Hexagon, LogOut } from 'lucide-react';
+import { LayoutGrid, BarChart2, Inbox, CheckSquare, Sparkles, Search, Bell, Settings as SettingsIcon, Hexagon, LogOut, Megaphone } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 export const Header = ({ currentView, onChangeView }: any) => {
@@ -10,6 +10,7 @@ export const Header = ({ currentView, onChangeView }: any) => {
     { id: 'kanban', label: 'Negociações', icon: BarChart2 },
     { id: 'leads-db', label: 'Contatos', icon: Inbox },
     { id: 'tasks', label: 'Tarefas', icon: CheckSquare },
+    { id: 'marketing', label: 'Marketing', icon: Megaphone, color: 'text-slate-900' },
     { id: 'ai-bot', label: 'AIFlux', icon: Sparkles, color: 'text-indigo-600' },
   ];
 

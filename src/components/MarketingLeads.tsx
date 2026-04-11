@@ -65,37 +65,23 @@ export const MarketingLeads = () => {
 
   const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin" /></div>;
+  if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-12 h-12 border-4 border-slate-900 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
     <div className="h-full bg-slate-50/50 p-6 lg:p-10 overflow-y-auto">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3"><Users className="text-teal-600" size={32} />Base de Leads</h1>
+            <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3"><Users className="text-blue-600" size={32} />Base de Leads</h1>
             <p className="text-slate-500 font-medium mt-1">Leads capturados via formulários de marketing.</p>
           </div>
           <div className="flex items-center gap-2">
             {selectedIds.size > 0 && (
-              <button onClick={handleSyncToCrm} disabled={syncing} className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-sm disabled:opacity-50">
+              <button onClick={handleSyncToCrm} disabled={syncing} className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-sm disabled:opacity-50">
                 <Send size={16} />Enviar {selectedIds.size} para CRM
               </button>
             )}
             <button onClick={fetchData} className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-sm"><RefreshCw size={16} /></button>
-          </div>
-        </div>
-
-        {/* Email Required Banner */}
-        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-          <div className="flex items-start gap-3">
-            <span className="text-xl mt-0.5">⚠️</span>
-            <div>
-              <p className="text-sm font-bold text-amber-800">Regra: Email é obrigatório</p>
-              <p className="text-xs text-amber-700 mt-1">
-                Leads sem <strong>email</strong> não são capturados e não podem ser enviados ao CRM. O email é o identificador único do sistema.
-                No CRM, você pode criar leads manualmente sem email, mas capturas automáticas exigem email.
-              </p>
-            </div>
           </div>
         </div>
 
@@ -106,7 +92,7 @@ export const MarketingLeads = () => {
             <>
               <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-3">
                 <span className="text-xs font-bold text-slate-500">{leads.length} leads</span>
-                {selectedIds.size > 0 && <span className="text-xs font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded">{selectedIds.size} selecionado(s)</span>}
+                {selectedIds.size > 0 && <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{selectedIds.size} selecionado(s)</span>}
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
@@ -119,7 +105,7 @@ export const MarketingLeads = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {leads.map(lead => (
-                      <tr key={lead.id} className={`hover:bg-slate-50 transition-colors ${selectedIds.has(lead.id) ? 'bg-teal-50/50' : ''} ${!lead.contact_email ? 'opacity-60' : ''}`}>
+                      <tr key={lead.id} className={`hover:bg-slate-50 transition-colors ${selectedIds.has(lead.id) ? 'bg-blue-50/50' : ''} ${!lead.contact_email ? 'opacity-60' : ''}`}>
                         <td className="px-4 py-3"><input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => toggleSelect(lead.id)} className="rounded" /></td>
                         <td className="px-4 py-3 text-sm font-medium text-slate-900">{lead.contact_name || '-'}</td>
                         <td className="px-4 py-3 text-sm">

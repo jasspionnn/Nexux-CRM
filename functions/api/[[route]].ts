@@ -498,6 +498,81 @@ app.get('/migrate-db', async (c) => {
       );
     `).run();
 
+    // Bio Links table
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS bio_links (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          slug TEXT NOT NULL,
+          title TEXT NOT NULL,
+          description TEXT,
+          avatar_url TEXT,
+          bg_color TEXT DEFAULT '#0f172a',
+          text_color TEXT DEFAULT '#f8fafc',
+          button_color TEXT DEFAULT '#0d9488',
+          button_text_color TEXT DEFAULT '#ffffff',
+          button_radius INTEGER DEFAULT 12,
+          links TEXT NOT NULL,
+          is_active INTEGER DEFAULT 1,
+          click_count INTEGER DEFAULT 0,
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    // Email marketing tables
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS email_templates (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          subject TEXT NOT NULL,
+          body TEXT NOT NULL,
+          type TEXT NOT NULL DEFAULT 'campaign',
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS email_campaigns (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          segment_id TEXT,
+          template_id TEXT,
+          subject TEXT NOT NULL,
+          body TEXT NOT NULL,
+          status TEXT DEFAULT 'draft',
+          total_sent INTEGER DEFAULT 0,
+          total_opened INTEGER DEFAULT 0,
+          total_clicked INTEGER DEFAULT 0,
+          total_hard_bounce INTEGER DEFAULT 0,
+          total_soft_bounce INTEGER DEFAULT 0,
+          engaged_lead_ids TEXT,
+          sent_at TEXT,
+          scheduled_at TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          updated_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS email_events (
+          id TEXT PRIMARY KEY,
+          campaign_id TEXT NOT NULL,
+          lead_id TEXT,
+          lead_email TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          clicked_url TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (campaign_id) REFERENCES email_campaigns(id) ON DELETE CASCADE
+      );
+    `).run();
+
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Migration error:', error);
@@ -742,6 +817,9 @@ app.post('/webhooks/incoming/:id', async (c) => {
       custom_values
     ).run();
 
+    // Trigger automations for the new lead
+    await triggerAutomations(webhook.account_id || 'acc_demo', 'new_lead', leadId, c.env.DB);
+
     return c.json({ success: true, lead_id: leadId });
   } catch (error: any) {
     console.error('Webhook processing error:', error);
@@ -835,6 +913,8 @@ app.post('/leads', async (c) => {
     ).run();
     
     const newLead = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ?').bind(id).first();
+    // Trigger automations for the new lead
+    await triggerAutomations('acc_demo', 'new_lead', id, c.env.DB);
     return c.json(newLead);
   } catch (error: any) {
     console.error('Error creating lead:', error);
@@ -1480,7 +1560,7 @@ app.post('/tracking/events', async (c) => {
               } else if (Object.keys(mappedData).length > 0) {
                 var mLeadId = crypto.randomUUID();
                 await c.env.DB.prepare(
-                  'INSERT INTO marketing_leads (id, account_id, form_name, contact_name, contact_email, contact_phone, company, title, value, tags, raw_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                  'INSERT INTO marketing_leads (id, account_id, form_name, contact_name, contact_email, contact_phone, company, title, value, tags, raw_data, synced_to_crm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)'
                 ).bind(
                   mLeadId,
                   settings.account_id,
@@ -1495,6 +1575,36 @@ app.post('/tracking/events', async (c) => {
                   JSON.stringify(fields)
                 ).run();
                 console.log('[TRACKING] Created marketing lead:', mLeadId, '(email validated)');
+
+                try {
+                  var existingLead: any = await c.env.DB.prepare(
+                    'SELECT id FROM leads WHERE account_id = ? AND contact_email = ?'
+                  ).bind(settings.account_id, mappedData.contact_email).first();
+
+                  var crmLeadId = existingLead ? existingLead.id : crypto.randomUUID();
+
+                  if (!existingLead) {
+                    await c.env.DB.prepare(
+                      'INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, contact_name, contact_email, contact_phone, tags, custom_values, created_at) VALUES (?, ?, (SELECT id FROM funnels WHERE account_id = ? LIMIT 1), (SELECT id FROM stages WHERE funnel_id = (SELECT id FROM funnels WHERE account_id = ? LIMIT 1) LIMIT 1), ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+                    ).bind(
+                      crmLeadId, settings.account_id, settings.account_id, settings.account_id,
+                      mappedData.title || mappedData.contact_name || 'Lead from Tracking',
+                      mappedData.company || null,
+                      mappedData.value ? parseFloat(mappedData.value) : 0,
+                      mappedData.contact_name || null,
+                      mappedData.contact_email || null,
+                      mappedData.contact_phone || null,
+                      mappedData.tags || null,
+                      JSON.stringify({ source: 'tracking_form', form_name: formName, raw: fields })
+                    ).run();
+                    console.log('[TRACKING] Auto-synced lead to CRM:', crmLeadId);
+                  }
+
+                  // Trigger new_lead automation
+                  await triggerAutomations(settings.account_id, 'new_lead', crmLeadId, c.env.DB);
+                } catch (autoErr: any) {
+                  console.error('[TRACKING] Error auto-syncing / running automations:', autoErr.message);
+                }
               }
             } catch (leadErr: any) {
               console.error('[TRACKING] Error creating marketing lead:', leadErr.message);
@@ -1673,6 +1783,10 @@ app.post('/marketing-leads/sync-to-crm', async (c) => {
       ).run();
 
       await c.env.DB.prepare('UPDATE marketing_leads SET synced_to_crm = 1 WHERE id = ?').bind(leadId).run();
+
+      // Trigger new_lead automation
+      await triggerAutomations(account_id, 'new_lead', crmId, c.env.DB);
+
       synced++;
     }
     return c.json({ success: true, synced, skipped });
@@ -1684,6 +1798,325 @@ app.delete('/marketing-leads/:id', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('DELETE FROM marketing_leads WHERE id = ?').bind(id).run();
     return c.json({ success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+// ==================== BIO LINKS ENDPOINTS ====================
+
+// Get all bio link pages for an account
+app.get('/bio-links', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+    console.log('Fetching bio links for:', accountId);
+    const { results } = await c.env.DB.prepare(
+      'SELECT * FROM bio_links WHERE account_id = ? ORDER BY created_at DESC'
+    ).bind(accountId).all();
+    console.log('Bio links found:', results?.length || 0);
+    return c.json(results.map((r: any) => ({ ...r, links: r.links ? JSON.parse(r.links) : [] })));
+  } catch (error: any) {
+    console.error('Bio fetch error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Get a single bio link page by slug (public)
+app.get('/bio-links/public/:slug', async (c) => {
+  try {
+    const slug = c.req.param('slug');
+    const page: any = await c.env.DB.prepare(
+      'SELECT * FROM bio_links WHERE slug = ? AND is_active = 1'
+    ).bind(slug).first();
+    if (!page) return c.json({ error: 'Not found' }, 404);
+    page.links = page.links ? JSON.parse(page.links) : [];
+    // Increment click count
+    await c.env.DB.prepare(
+      'UPDATE bio_links SET click_count = click_count + 1 WHERE id = ?'
+    ).bind(page.id).run();
+    return c.json(page);
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+// Create a new bio link page
+app.post('/bio-links', async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = crypto.randomUUID();
+    const accountId = body.account_id || 'acc_demo';
+    const slug = body.slug || id.slice(0, 8);
+    const links = JSON.stringify(body.links || []);
+
+    console.log('Creating bio page:', { id, accountId, slug, title: body.title, linkCount: body.links?.length || 0 });
+
+    await c.env.DB.prepare(
+      `INSERT INTO bio_links (id, account_id, slug, title, description, avatar_url, bg_color, text_color, button_color, button_text_color, button_radius, links, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      id, accountId, slug, body.title || 'Meus Links', body.description || '', body.avatar_url || '',
+      body.bg_color || '#0f172a', body.text_color || '#f8fafc', body.button_color || '#0d9488',
+      body.button_text_color || '#ffffff', body.button_radius ?? 12, links, body.is_active ?? 1
+    ).run();
+
+    return c.json({ id, account_id: accountId, slug, title: body.title, links: body.links || [], bg_color: body.bg_color, text_color: body.text_color, button_color: body.button_color, button_text_color: body.button_text_color, button_radius: body.button_radius ?? 12 });
+  } catch (error: any) {
+    console.error('Bio create error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Update a bio link page
+app.put('/bio-links/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const links = body.links ? JSON.stringify(body.links) : null;
+
+    await c.env.DB.prepare(
+      `UPDATE bio_links SET slug = COALESCE(?, slug), title = COALESCE(?, title), description = COALESCE(?, description),
+       avatar_url = COALESCE(?, avatar_url), bg_color = COALESCE(?, bg_color), text_color = COALESCE(?, text_color),
+       button_color = COALESCE(?, button_color), button_text_color = COALESCE(?, button_text_color),
+       button_radius = COALESCE(?, button_radius), links = COALESCE(?, links),
+       is_active = COALESCE(?, is_active), updated_at = datetime('now')
+       WHERE id = ?`
+    ).bind(
+      body.slug, body.title, body.description, body.avatar_url,
+      body.bg_color, body.text_color, body.button_color, body.button_text_color,
+      body.button_radius, links, body.is_active, id
+    ).run();
+
+    // Fetch updated
+    const updated: any = await c.env.DB.prepare('SELECT * FROM bio_links WHERE id = ?').bind(id).first();
+    if (updated) updated.links = updated.links ? JSON.parse(updated.links) : [];
+    return c.json(updated || { success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+// Delete a bio link page
+app.delete('/bio-links/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM bio_links WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+// ==================== EMAIL MARKETING ENDPOINTS ====================
+
+// --- Email Templates ---
+app.get('/email-templates', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+    const type = c.req.query('type');
+    const query = type ? 'SELECT * FROM email_templates WHERE account_id = ? AND type = ? ORDER BY created_at DESC' : 'SELECT * FROM email_templates WHERE account_id = ? ORDER BY created_at DESC';
+    const { results } = await c.env.DB.prepare(query).bind(type ? [accountId, type] : [accountId]).all();
+    return c.json(results);
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.post('/email-templates', async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = crypto.randomUUID();
+    const accountId = body.account_id || 'acc_demo';
+    await c.env.DB.prepare(
+      'INSERT INTO email_templates (id, account_id, name, subject, body, type) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(id, accountId, body.name, body.subject, body.body, body.type || 'campaign').run();
+    return c.json({ id, name: body.name, subject: body.subject, body: body.body, type: body.type || 'campaign' });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.put('/email-templates/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    await c.env.DB.prepare(
+      'UPDATE email_templates SET name = COALESCE(?, name), subject = COALESCE(?, subject), body = COALESCE(?, body), type = COALESCE(?, type), updated_at = datetime(\'now\') WHERE id = ?'
+    ).bind(body.name, body.subject, body.body, body.type, id).run();
+    const updated: any = await c.env.DB.prepare('SELECT * FROM email_templates WHERE id = ?').bind(id).first();
+    return c.json(updated || { success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.delete('/email-templates/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM email_templates WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+// --- Email Campaigns ---
+app.get('/email-campaigns', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+    const { results } = await c.env.DB.prepare(
+      'SELECT * FROM email_campaigns WHERE account_id = ? ORDER BY created_at DESC'
+    ).bind(accountId).all();
+    return c.json(results.map((r: any) => ({ ...r, engaged_lead_ids: r.engaged_lead_ids ? JSON.parse(r.engaged_lead_ids) : [] })));
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.get('/email-campaigns/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const campaign: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ?').bind(id).first();
+    if (!campaign) return c.json({ error: 'Not found' }, 404);
+    campaign.engaged_lead_ids = campaign.engaged_lead_ids ? JSON.parse(campaign.engaged_lead_ids) : [];
+    // Get event breakdown
+    const events: any = await c.env.DB.prepare(
+      'SELECT event_type, COUNT(*) as count FROM email_events WHERE campaign_id = ? GROUP BY event_type'
+    ).bind(id).all();
+    campaign.event_breakdown = events.results;
+    return c.json(campaign);
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.post('/email-campaigns', async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = crypto.randomUUID();
+    const accountId = body.account_id || 'acc_demo';
+    await c.env.DB.prepare(
+      'INSERT INTO email_campaigns (id, account_id, name, segment_id, template_id, subject, body, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(id, accountId, body.name, body.segment_id || null, body.template_id || null, body.subject, body.body, body.status || 'draft', body.scheduled_at || null).run();
+    const campaign: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ?').bind(id).first();
+    return c.json(campaign);
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.put('/email-campaigns/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    await c.env.DB.prepare(
+      'UPDATE email_campaigns SET name = COALESCE(?, name), segment_id = COALESCE(?, segment_id), template_id = COALESCE(?, template_id), subject = COALESCE(?, subject), body = COALESCE(?, body), status = COALESCE(?, status), scheduled_at = COALESCE(?, scheduled_at), updated_at = datetime(\'now\') WHERE id = ?'
+    ).bind(body.name, body.segment_id, body.template_id, body.subject, body.body, body.status, body.scheduled_at, id).run();
+    const updated: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ?').bind(id).first();
+    return c.json(updated || { success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.delete('/email-campaigns/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM email_campaigns WHERE id = ?').bind(id).run();
+    await c.env.DB.prepare('DELETE FROM email_events WHERE campaign_id = ?').bind(id).run();
+    return c.json({ success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+// --- Send Campaign (simulate dispatch) ---
+app.post('/email-campaigns/:id/send', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const campaign: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ?').bind(id).first();
+    if (!campaign) return c.json({ error: 'Campaign not found' }, 404);
+
+    // Get leads from segment
+    let leads: any[] = [];
+    if (campaign.segment_id) {
+      const segment: any = await c.env.DB.prepare('SELECT * FROM segments WHERE id = ?').bind(campaign.segment_id).first();
+      if (segment) {
+        const rules = segment.rules ? JSON.parse(segment.rules) : [];
+        // Build query from rules
+        let where = 'account_id = (SELECT account_id FROM segments WHERE id = ?)';
+        const params: any[] = [campaign.segment_id];
+        for (const rule of rules) {
+          switch (rule.operator) {
+            case 'equals': where += ` AND ${rule.field} = ?`; params.push(rule.value); break;
+            case 'not_equals': where += ` AND ${rule.field} != ?`; params.push(rule.value); break;
+            case 'contains': where += ` AND ${rule.field} LIKE ?`; params.push(`%${rule.value}%`); break;
+            case 'starts_with': where += ` AND ${rule.field} LIKE ?`; params.push(`${rule.value}%`); break;
+            case 'is_empty': where += ` AND (${rule.field} IS NULL OR ${rule.field} = '')`; break;
+          }
+        }
+        const leadResults = await c.env.DB.prepare(`SELECT id, contact_email FROM leads WHERE ${where}`).bind(...params).all();
+        leads = leadResults.results || [];
+      }
+    }
+
+    // Filter leads with email
+    const emailLeads = leads.filter(l => l.contact_email);
+    const totalSent = emailLeads.length;
+
+    // Update campaign status
+    await c.env.DB.prepare(
+      'UPDATE email_campaigns SET status = ?, total_sent = ?, sent_at = datetime(\'now\') WHERE id = ?'
+    ).bind('sent', totalSent, id).run();
+
+    // Create sent events
+    for (const lead of emailLeads) {
+      await c.env.DB.prepare(
+        'INSERT INTO email_events (id, campaign_id, lead_id, lead_email, event_type) VALUES (?, ?, ?, ?, ?)'
+      ).bind(crypto.randomUUID(), id, lead.id, lead.contact_email, 'sent').run();
+    }
+
+    return c.json({ success: true, total_sent: totalSent });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+// --- Track Email Events (open, click, bounce) ---
+app.post('/email-events/track', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { campaign_id, lead_id, lead_email, event_type, clicked_url } = body;
+
+    await c.env.DB.prepare(
+      'INSERT INTO email_events (id, campaign_id, lead_id, lead_email, event_type, clicked_url) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(crypto.randomUUID(), campaign_id, lead_id || null, lead_email, event_type, clicked_url || null).run();
+
+    // Update campaign counters
+    const updates: Record<string, string> = {
+      opened: 'total_opened',
+      clicked: 'total_clicked',
+      hard_bounce: 'total_hard_bounce',
+      soft_bounce: 'total_soft_bounce',
+    };
+    if (updates[event_type]) {
+      await c.env.DB.prepare(
+        `UPDATE email_campaigns SET ${updates[event_type]} = ${updates[event_type]} + 1 WHERE id = ?`
+      ).bind(campaign_id).run();
+    }
+
+    // Track engaged leads (opened or clicked)
+    if (event_type === 'opened' || event_type === 'clicked') {
+      const campaign: any = await c.env.DB.prepare('SELECT engaged_lead_ids FROM email_campaigns WHERE id = ?').bind(campaign_id).first();
+      if (campaign) {
+        const engaged = campaign.engaged_lead_ids ? JSON.parse(campaign.engaged_lead_ids) : [];
+        if (lead_id && !engaged.includes(lead_id)) {
+          engaged.push(lead_id);
+          await c.env.DB.prepare(
+            'UPDATE email_campaigns SET engaged_lead_ids = ? WHERE id = ?'
+          ).bind(JSON.stringify(engaged), campaign_id).run();
+        }
+      }
+    }
+
+    return c.json({ success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+// --- Get Campaign Metrics ---
+app.get('/email-campaigns/:id/metrics', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const campaign: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ?').bind(id).first();
+    if (!campaign) return c.json({ error: 'Not found' }, 404);
+
+    const total = campaign.total_sent || 0;
+    const metrics = {
+      total_sent: total,
+      total_opened: campaign.total_opened || 0,
+      total_clicked: campaign.total_clicked || 0,
+      total_hard_bounce: campaign.total_hard_bounce || 0,
+      total_soft_bounce: campaign.total_soft_bounce || 0,
+      open_rate: total > 0 ? ((campaign.total_opened || 0) / total * 100).toFixed(1) : 0,
+      click_rate: total > 0 ? ((campaign.total_clicked || 0) / total * 100).toFixed(1) : 0,
+      hard_bounce_rate: total > 0 ? ((campaign.total_hard_bounce || 0) / total * 100).toFixed(1) : 0,
+      soft_bounce_rate: total > 0 ? ((campaign.total_soft_bounce || 0) / total * 100).toFixed(1) : 0,
+      engaged_count: campaign.engaged_lead_ids ? JSON.parse(campaign.engaged_lead_ids).length : 0,
+    };
+
+    return c.json(metrics);
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });
 
@@ -2008,98 +2441,29 @@ app.post('/automations/:id/execute', async (c) => {
   }
 });
 
-// Helper to execute action nodes
-async function executeActionNode(node: any, leadId: string, db: any) {
-  const { nodeType, config } = node;
-
-  switch (nodeType) {
-    case 'move_stage':
-      if (config.to_stage_id) {
-        await db.prepare('UPDATE leads SET stage_id = ? WHERE id = ?').bind(config.to_stage_id, leadId).run();
-      }
-      break;
-    case 'create_task':
-      if (config.title) {
-        const taskId = crypto.randomUUID();
-        await db.prepare(
-          'INSERT INTO tasks (id, lead_id, title, due_date, assigned_user_id) VALUES (?, ?, ?, ?, ?)'
-        ).bind(taskId, leadId, config.title, config.due_date || null, config.assigned_user_id || null).run();
-      }
-      break;
-    case 'add_tag':
-      if (config.tag) {
-        const lead: any = await db.prepare('SELECT tags FROM leads WHERE id = ?').bind(leadId).first();
-        const tags = lead.tags ? lead.tags.split(',').filter(Boolean) : [];
-        if (!tags.includes(config.tag)) {
-          tags.push(config.tag);
-          await db.prepare('UPDATE leads SET tags = ? WHERE id = ?').bind(tags.join(','), leadId).run();
-        }
-      }
-      break;
-    case 'remove_tag':
-      if (config.tag) {
-        const lead: any = await db.prepare('SELECT tags FROM leads WHERE id = ?').bind(leadId).first();
-        const tags = lead.tags ? lead.tags.split(',').filter((t: string) => t !== config.tag) : [];
-        await db.prepare('UPDATE leads SET tags = ? WHERE id = ?').bind(tags.join(','), leadId).run();
-      }
-      break;
-    case 'create_note':
-      if (config.content) {
-        const noteId = crypto.randomUUID();
-        await db.prepare(
-          'INSERT INTO notes (id, lead_id, content, author_name) VALUES (?, ?, ?, ?)'
-        ).bind(noteId, leadId, config.content, 'Automação').run();
-      }
-      break;
-    case 'assign_user':
-      if (config.user_id) {
-        await db.prepare('UPDATE leads SET assigned_user_id = ? WHERE id = ?').bind(config.user_id, leadId).run();
-      }
-      break;
-    case 'send_webhook':
-      if (config.url) {
-        try {
-          await fetch(config.url, {
-            method: config.method || 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lead_id: leadId, ...config })
-          });
-        } catch (e) { console.error('Webhook send error:', e); }
-      }
-      break;
-    // send_email would require an email service integration
-    default:
-      console.log(`Unknown action type: ${nodeType}`);
-  }
-}
-
-app.post('/login', async (c) => {
+// Helper to trigger automations
+async function triggerAutomations(accountId: string, triggerType: string, leadId: string, db: any) {
   try {
-    const { email, password } = await c.req.json();
-    
-    if (!email || !password) {
-      return c.json({ error: 'Email e senha são obrigatórios' }, 400);
-    }
+    const { results: automations } = await db.prepare(
+      'SELECT * FROM automations WHERE account_id = ? AND trigger_type = ? AND is_active = 1'
+    ).bind(accountId, triggerType).all();
 
-    const user: any = await c.env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
-    
-    if (!user) {
-      return c.json({ error: 'Usuário não encontrado' }, 401);
-    }
+    for (const automation of automations) {
+      if (!automation) continue;
+      const nodes = automation.nodes ? JSON.parse(automation.nodes) : [];
+      const connections = automation.connections ? JSON.parse(automation.connections) : [];
 
-    // Direct comparison for now as requested. 
-    // In a production app, we would use hashing.
-    if (user.password !== password) {
-      return c.json({ error: 'Senha incorreta' }, 401);
-    }
+      const triggerNode = nodes.find((n: any) => n.type === 'trigger');
+      if (!triggerNode) continue;
 
-    // Return user data without password
-    const { password: _, ...userWithoutPassword } = user;
-    return c.json(userWithoutPassword);
-  } catch (error: any) {
-    console.error('Login error:', error);
-    return c.json({ error: error.message }, 500);
-  }
-});
+      const executionId = crypto.randomUUID();
+      await db.prepare(
+        'INSERT INTO automation_executions (id, automation_id, lead_id, status) VALUES (?, ?, ?, \'running\')'
+      ).bind(executionId, automation.id, leadId).run();
 
-export const onRequest = handle(app);
+      let currentId = triggerNode.id;
+      const executed: string[] = [];
+
+      while (currentId) {
+        const conn = connections.find((c: any) => c.from === currentId);
+        if (!

@@ -28,7 +28,7 @@ interface Automation {
 }
 
 const TRIGGERS = [
-  { type: 'new_lead' as TriggerType, label: 'Novo Lead', icon: UserPlus, color: 'bg-emerald-500', desc: 'Quando um novo lead é criado' },
+  { type: 'new_lead' as TriggerType, label: 'Novo Lead', icon: UserPlus, color: 'bg-blue-500', desc: 'Quando um novo lead é criado' },
   { type: 'stage_change' as TriggerType, label: 'Mudou de Estágio', icon: ArrowRight, color: 'bg-blue-500', desc: 'Quando lead muda de estágio' },
   { type: 'form_submit' as TriggerType, label: 'Formulário Preenchido', icon: FileText, color: 'bg-orange-500', desc: 'Quando lead preenche formulário' },
   { type: 'page_visit' as TriggerType, label: 'Visitou Página', icon: Globe, color: 'bg-purple-500', desc: 'Quando lead visita uma URL' },
@@ -52,7 +52,7 @@ const ACTIONS = [
   { type: 'send_email' as ActionType, label: 'Enviar Email', icon: Mail, color: 'bg-red-500', desc: 'Envia email para lead' },
   { type: 'send_webhook' as ActionType, label: 'Enviar Webhook', icon: Globe, color: 'bg-indigo-500', desc: 'Envia payload via webhook' },
   { type: 'create_note' as ActionType, label: 'Criar Nota', icon: FileText, color: 'bg-gray-500', desc: 'Adiciona nota ao lead' },
-  { type: 'assign_user' as ActionType, label: 'Atribuir Usuário', icon: UserPlus, color: 'bg-teal-500', desc: 'Atribui lead a usuário' },
+  { type: 'assign_user' as ActionType, label: 'Atribuir Usuário', icon: UserPlus, color: 'bg-blue-500', desc: 'Atribui lead a usuário' },
 ];
 const DELAY_NODE = { type: 'delay' as const, label: 'Esperar', icon: Clock, color: 'bg-slate-500', desc: 'Espera X minutos/horas/dias' };
 
@@ -80,25 +80,25 @@ export const AutomationFlows = () => {
     setLoading(false);
   };
 
-  if (loading) return <div className="flex items-center justify-center h-full"><div className="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin" /></div>;
+  if (loading) return <div className="flex items-center justify-center h-full"><div className="w-12 h-12 border-4 border-slate-900 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
     <div className="min-h-full bg-slate-50/50">
       {!showBuilder ? (
         <div className="p-6 lg:p-10"><div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-8">
-            <div><h1 className="text-3xl font-black text-slate-900 flex items-center gap-3"><GitBranch className="text-teal-600" size={32} />Automações</h1><p className="text-slate-500 font-medium mt-1">Fluxos visuais para automatizar suas vendas.</p></div>
-            <button onClick={() => { setEditing({ id: crypto.randomUUID(), name: '', description: '', is_active: 1, trigger_type: '', trigger_config: {}, nodes: [], connections: [], created_at: new Date().toISOString() }); setShowBuilder(true); }} className="flex items-center gap-2 px-5 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold shadow-lg shadow-teal-200"><Plus size={20} />Novo Fluxo</button>
+            <div><h1 className="text-3xl font-black text-slate-900 flex items-center gap-3"><GitBranch className="text-blue-600" size={32} />Automações</h1><p className="text-slate-500 font-medium mt-1">Fluxos visuais para automatizar suas vendas.</p></div>
+            <button onClick={() => { setEditing({ id: crypto.randomUUID(), name: '', description: '', is_active: 1, trigger_type: '', trigger_config: {}, nodes: [], connections: [], created_at: new Date().toISOString() }); setShowBuilder(true); }} className="flex items-center gap-2 px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold shadow-lg shadow-blue-200"><Plus size={20} />Novo Fluxo</button>
           </div>
           {autos.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-xl p-12 text-center"><GitBranch className="mx-auto text-slate-300 mb-4" size={48} /><p className="text-slate-400 font-bold text-lg">Nenhum fluxo criado</p><p className="text-sm text-slate-400 mt-2 mb-6">Crie seu primeiro fluxo de automação.</p><button onClick={() => { setEditing({ id: crypto.randomUUID(), name: '', description: '', is_active: 1, trigger_type: '', trigger_config: {}, nodes: [], connections: [], created_at: new Date().toISOString() }); setShowBuilder(true); }} className="inline-flex items-center gap-2 px-5 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold"><Plus size={20} />Criar Primeiro Fluxo</button></div>
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-xl p-12 text-center"><GitBranch className="mx-auto text-slate-300 mb-4" size={48} /><p className="text-slate-400 font-bold text-lg">Nenhum fluxo criado</p><p className="text-sm text-slate-400 mt-2 mb-6">Crie seu primeiro fluxo de automação.</p><button onClick={() => { setEditing({ id: crypto.randomUUID(), name: '', description: '', is_active: 1, trigger_type: '', trigger_config: {}, nodes: [], connections: [], created_at: new Date().toISOString() }); setShowBuilder(true); }} className="inline-flex items-center gap-2 px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold"><Plus size={20} />Criar Primeiro Fluxo</button></div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {autos.map(a => (
                 <div key={a.id} className="bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-shadow">
                   <div className="p-6">
                     <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-xl flex items-center justify-center ${a.is_active ? 'bg-teal-50 text-teal-600' : 'bg-slate-100 text-slate-400'}`}><GitBranch size={20} /></div><div><h3 className="font-bold text-slate-900">{a.name}</h3>{a.description && <p className="text-xs text-slate-400 truncate max-w-[180px]">{a.description}</p>}</div></div>
+                      <div className="flex items-center gap-3"><div className={`w-10 h-10 rounded-xl flex items-center justify-center ${a.is_active ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-400'}`}><GitBranch size={20} /></div><div><h3 className="font-bold text-slate-900">{a.name}</h3>{a.description && <p className="text-xs text-slate-400 truncate max-w-[180px]">{a.description}</p>}</div></div>
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${a.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{a.is_active ? 'Ativo' : 'Pausado'}</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-slate-500 mt-1"><Zap size={12} className="text-yellow-500" /><span>Trigger:</span><span className="capitalize">{a.trigger_type?.replace('_', ' ') || '-'}</span></div>
@@ -106,11 +106,11 @@ export const AutomationFlows = () => {
                   </div>
                   <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
                     <div className="flex gap-1">
-                      <button onClick={async () => { await fetch(`/api/automations/${a.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...a, is_active: a.is_active ? 0 : 1 }) }); fetchAutos(); }} className="p-2 text-slate-400 hover:text-teal-600 rounded-lg hover:bg-white">{a.is_active ? <Pause size={16} /> : <Play size={16} />}</button>
+                      <button onClick={async () => { await fetch(`/api/automations/${a.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...a, is_active: a.is_active ? 0 : 1 }) }); fetchAutos(); }} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-white">{a.is_active ? <Pause size={16} /> : <Play size={16} />}</button>
                       <button onClick={() => { setEditing(a); setShowBuilder(true); }} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-white"><Edit2 size={16} /></button>
                       <button onClick={async () => { if (confirm('Excluir?')) { await fetch(`/api/automations/${a.id}`, { method: 'DELETE' }); fetchAutos(); } }} className="p-2 text-slate-400 hover:text-red-500 rounded-lg hover:bg-white"><Trash2 size={16} /></button>
                     </div>
-                    <button onClick={() => { setEditing(a); setShowBuilder(true); }} className="flex items-center gap-1 text-xs font-bold text-teal-600"><Eye size={14} />Abrir<ChevronRight size={14} /></button>
+                    <button onClick={() => { setEditing(a); setShowBuilder(true); }} className="flex items-center gap-1 text-xs font-bold text-blue-600"><Eye size={14} />Abrir<ChevronRight size={14} /></button>
                   </div>
                 </div>
               ))}
@@ -131,13 +131,13 @@ const FieldLabel: React.FC<{ label: string; hint?: string; children: React.React
 );
 
 const ConfigPanel: React.FC<{ node: FlowNode; onConfigChange: (nodeId: string, c: Record<string, any>) => void; stages: any[]; users: any[] }> = React.memo(({ node, onConfigChange, stages, users }) => {
-  const ic = "w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 bg-white";
+  const ic = "w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 bg-white";
   const set = (key: string, val: any) => onConfigChange(node.id, { [key]: val });
   const t = node.nodeType;
 
   return (
     <div className="px-3 pt-3 pb-2 border-t border-slate-100 space-y-2.5">
-      {t === 'new_lead' && <p className="text-xs text-slate-500 flex items-center gap-2"><Zap size={14} className="text-emerald-500" />Dispara quando um novo lead é criado.</p>}
+      {t === 'new_lead' && <p className="text-xs text-slate-500 flex items-center gap-2"><Zap size={14} className="text-blue-500" />Dispara quando um novo lead é criado.</p>}
       {t === 'stage_change' && (<>
         <FieldLabel label="Origem"><select value={node.config.from_stage_id || ''} onChange={e => set('from_stage_id', e.target.value)} className={ic}><option value="">Qualquer</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>
         <div className="flex justify-center text-slate-300"><ArrowRight size={16} className="rotate-90" /></div>
@@ -301,7 +301,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
                   <button onClick={() => setAddMenuIdx(null)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
                 </div>
                 <div className="space-y-1">{TRIGGERS.map(n => { const Icon = n.icon; return (
-                  <button key={n.type} onClick={() => addNode(n, 'trigger')} className="w-full flex items-center gap-2 px-2 py-2 rounded-lg border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50 transition-all text-left">
+                  <button key={n.type} onClick={() => addNode(n, 'trigger')} className="w-full flex items-center gap-2 px-2 py-2 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-all text-left">
                     <div className={`w-6 h-6 rounded ${n.color} flex items-center justify-center text-white shrink-0`}><Icon size={12} /></div>
                     <span className="text-xs font-bold text-slate-700 truncate">{n.label}</span>
                   </button>
@@ -309,7 +309,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
               </div>
             )}
           </div>
-          <button onClick={doSave} disabled={saving || !nodes.length} className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-sm disabled:opacity-50">{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}Salvar</button>
+          <button onClick={doSave} disabled={saving || !nodes.length} className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-sm disabled:opacity-50">{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}Salvar</button>
         </div>
       </div>
 
@@ -328,7 +328,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
                 <p className="text-sm text-slate-400 mt-2 mb-6">Escolha um gatilho para começar.</p>
                 <div className="flex flex-wrap justify-center gap-3 max-w-2xl">
                   {TRIGGERS.map(n => { const Icon = n.icon; return (
-                    <button key={n.type} onClick={() => addNode(n, 'trigger')} className="flex items-center gap-3 px-5 py-3.5 bg-white border-2 border-slate-200 rounded-xl hover:border-emerald-400 hover:shadow-lg transition-all">
+                    <button key={n.type} onClick={() => addNode(n, 'trigger')} className="flex items-center gap-3 px-5 py-3.5 bg-white border-2 border-slate-200 rounded-xl hover:border-blue-400 hover:shadow-lg transition-all">
                       <div className={`w-9 h-9 rounded-lg ${n.color} flex items-center justify-center text-white`}><Icon size={18} /></div>
                       <div className="text-left"><p className="text-sm font-bold text-slate-700">{n.label}</p><p className="text-[10px] text-slate-400">{n.desc}</p></div>
                     </button>
@@ -368,7 +368,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
               <React.Fragment key={node.id}>
                 {/* Node card */}
                 <div className="absolute select-none" style={{ left: node.x, top: node.y, width: NODE_W, zIndex: isSel ? 30 : 10 }} data-node>
-                  <div className={`bg-white border-2 rounded-xl shadow-md overflow-hidden transition-all ${isSel ? 'border-teal-500 shadow-lg ring-1 ring-teal-200' : 'border-slate-200'}`}>
+                  <div className={`bg-white border-2 rounded-xl shadow-md overflow-hidden transition-all ${isSel ? 'border-blue-500 shadow-lg ring-1 ring-blue-200' : 'border-slate-200'}`}>
                     <div className="flex items-center gap-2.5 px-3" style={{ height: 52 }} onMouseDown={e => { e.preventDefault(); e.stopPropagation(); dragRef.current = { idx, sx: e.clientX, sy: e.clientY, ox: node.x, oy: node.y }; }} onClick={() => { setSelId(isSel ? null : idx); setAddMenuIdx(null); }}>
                       <GripVertical size={16} className="text-slate-300 shrink-0" />
                       <div className={`w-8 h-8 rounded-lg ${cat.color} flex items-center justify-center text-white shrink-0 shadow-sm`}><Icon size={16} /></div>
@@ -385,7 +385,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
                 {/* Linker "+" after last node */}
                 {isLast && (
                   <div className="absolute flex items-center justify-center" style={{ left: node.x + NODE_W, top: node.y + NODE_H / 2 - 16, width: LINKER_GAP, height: 32 }} data-ui>
-                    <div className="w-8 h-8 bg-teal-600 hover:bg-teal-700 rounded-full flex items-center justify-center text-white cursor-pointer shadow-lg hover:scale-110 transition-all" onClick={() => setAddMenuIdx(addMenuIdx === idx ? null : idx)}>
+                    <div className="w-8 h-8 bg-slate-900 hover:bg-slate-800 rounded-full flex items-center justify-center text-white cursor-pointer shadow-lg hover:scale-110 transition-all" onClick={() => setAddMenuIdx(addMenuIdx === idx ? null : idx)}>
                       <Plus size={18} />
                     </div>
                   </div>

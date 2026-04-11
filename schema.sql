@@ -238,3 +238,72 @@ CREATE TABLE IF NOT EXISTS automation_executions (
     FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE,
     FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL
 );
+
+-- Links na Bio (páginas de links personalizáveis)
+CREATE TABLE IF NOT EXISTS bio_links (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    avatar_url TEXT,
+    bg_color TEXT DEFAULT '#0f172a',
+    text_color TEXT DEFAULT '#f8fafc',
+    button_color TEXT DEFAULT '#0d9488',
+    button_text_color TEXT DEFAULT '#ffffff',
+    button_radius INTEGER DEFAULT 12,
+    links TEXT NOT NULL,
+    is_active INTEGER DEFAULT 1,
+    click_count INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+-- Templates de Email (para campanhas e automações)
+CREATE TABLE IF NOT EXISTS email_templates (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'campaign',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+-- Campanhas de Email (disparos)
+CREATE TABLE IF NOT EXISTS email_campaigns (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    segment_id TEXT,
+    template_id TEXT,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    status TEXT DEFAULT 'draft',
+    total_sent INTEGER DEFAULT 0,
+    total_opened INTEGER DEFAULT 0,
+    total_clicked INTEGER DEFAULT 0,
+    total_hard_bounce INTEGER DEFAULT 0,
+    total_soft_bounce INTEGER DEFAULT 0,
+    engaged_lead_ids TEXT,
+    sent_at TEXT,
+    scheduled_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+-- Eventos de Email (tracking por lead)
+CREATE TABLE IF NOT EXISTS email_events (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL,
+    lead_id TEXT,
+    lead_email TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    clicked_url TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (campaign_id) REFERENCES email_campaigns(id) ON DELETE CASCADE
+);

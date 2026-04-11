@@ -279,9 +279,9 @@ export const SiteTracking = () => {
       <div className="flex-1 bg-white overflow-y-auto shrink-0 border-l border-slate-200">
         <div className="p-4">
           <div className="flex items-center gap-2 mb-4">
-            <FormInput size={20} className="text-teal-600" />
+            <FormInput size={20} className="text-blue-600" />
             <h3 className="text-sm font-bold text-slate-900">Formulários</h3>
-            <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-bold">{trackingForms.length}</span>
+            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{trackingForms.length}</span>
           </div>
 
           {trackingForms.length === 0 ? (
@@ -293,11 +293,11 @@ export const SiteTracking = () => {
                 const convCount = formConversions[form.name] || 0;
                 const leadFields = fields.filter((f: any) => ['email','phone','name'].includes(f.type));
                 return (
-                  <div key={form.id} className="border border-slate-200 rounded-xl p-3 hover:border-teal-300 transition-colors">
+                  <div key={form.id} className="border border-slate-200 rounded-xl p-3 hover:border-blue-300 transition-colors">
                     <div className="flex items-start justify-between mb-2">
                       <h4 className="text-xs font-bold text-slate-900 truncate flex-1 mr-2" title={form.name}>{form.name}</h4>
                       <div className="flex items-center gap-1 shrink-0">
-                        {convCount > 0 && <span className="text-[10px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded">{convCount} conv.</span>}
+                        {convCount > 0 && <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">{convCount} conv.</span>}
                         <button onClick={() => openMapping(form)} className="p-1 text-slate-300 hover:text-blue-500 rounded transition-colors" title="Combinar campos">
                           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
                         </button>
@@ -315,7 +315,7 @@ export const SiteTracking = () => {
                       {fields.length > 4 && <span className="text-[10px] text-slate-400">+{fields.length - 4}</span>}
                     </div>
                     <div className="flex items-center justify-between">
-                      {leadFields.length > 0 && <span className="text-[10px] font-bold text-teal-600">✓ Captura leads</span>}
+                      {leadFields.length > 0 && <span className="text-[10px] font-bold text-blue-600">✓ Captura leads</span>}
                       <span className="text-[10px] text-slate-400">{new Date(form.created_at).toLocaleDateString('pt-BR')}</span>
                     </div>
                   </div>
@@ -348,7 +348,7 @@ export const SiteTracking = () => {
                   <select
                     value={fieldMapping[f.name] || ''}
                     onChange={e => setFieldMapping(m => ({ ...m, [f.name]: e.target.value }))}
-                    className="flex-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                    className="flex-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   >
                     {CRM_FIELDS.map(cf => (
                       <option key={cf.value} value={cf.value}>{cf.label}</option>
@@ -360,7 +360,7 @@ export const SiteTracking = () => {
             </div>
             <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/50">
               <button onClick={() => setMappingForm(null)} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
-              <button onClick={saveMapping} className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold text-sm"><Save size={16} />Salvar</button>
+              <button onClick={saveMapping} className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-sm"><Save size={16} />Salvar</button>
             </div>
           </div>
         </div>

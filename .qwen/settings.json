@@ -10,7 +10,8 @@
       "Bash(rm *)",
       "Bash(git clone *)",
       "Bash(cp *)",
-      "Bash(npx *)"
+      "Bash(npx *)",
+      "Bash(kill *)"
     ]
   },
   "$version": 3
