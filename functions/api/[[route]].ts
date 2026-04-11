@@ -2412,6 +2412,32 @@ app.post('/segments/preview', async (c) => {
     console.log('[SEGMENTS/PREVIEW] rules:', rules.length, 'special:', hasSpecialRules, 'filledFormRules:', JSON.stringify(filledFormRules), 'visitedPageRules:', JSON.stringify(visitedPageRules));
 
     if (hasSpecialRules) {
+      // Ensure tables exist (auto-migrate)
+      try {
+        await c.env.DB.prepare(`
+          CREATE TABLE IF NOT EXISTS visitor_leads (
+            id TEXT PRIMARY KEY, account_id TEXT NOT NULL, visitor_id TEXT NOT NULL,
+            lead_id TEXT NOT NULL, email TEXT, first_seen TEXT DEFAULT (datetime('now')),
+            last_seen TEXT DEFAULT (datetime('now')), source TEXT DEFAULT 'form_submit',
+            UNIQUE(visitor_id, lead_id),
+            FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
+            FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+          );
+        `).run();
+      } catch(e) { /* exists or FK ignored */ }
+      try {
+        await c.env.DB.prepare(`
+          CREATE TABLE IF NOT EXISTS lead_visits (
+            id TEXT PRIMARY KEY, account_id TEXT NOT NULL, lead_id TEXT NOT NULL,
+            visitor_id TEXT, url TEXT NOT NULL, referrer TEXT, title TEXT,
+            duration_seconds INTEGER DEFAULT 0, visited_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
+            FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+          );
+        `).run();
+      } catch(e) { /* exists or FK ignored */ }
+      console.log('[SEGMENTS/PREVIEW] ensured tables exist');
+
       // Step 1: Collect visitor_ids that match special rules
       const matchingVisitorIds: string[] = [];
       const matchingLeadIds: string[] = [];
