@@ -2214,30 +2214,87 @@ app.get('/segments', async (c) => {
       let leadCount = 0;
 
       if (rules.length > 0) {
-        // Build WHERE clause from rules
-        let whereClause = 'account_id = ?';
-        const params: any[] = [accountId];
+        // Separate regular from special rules
+        const regularRules = rules.filter((r: any) => !['filled_form', 'visited_page'].includes(r.field));
+        const filledFormRules = rules.filter((r: any) => r.field === 'filled_form');
+        const visitedPageRules = rules.filter((r: any) => r.field === 'visited_page');
+        const hasSpecialRules = filledFormRules.length > 0 || visitedPageRules.length > 0;
 
-        for (const rule of rules) {
-          const { field, operator, value } = rule;
-          switch (operator) {
-            case 'equals': whereClause += ` AND ${field} = ?`; params.push(value); break;
-            case 'not_equals': whereClause += ` AND ${field} != ?`; params.push(value); break;
-            case 'contains': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}%`); break;
-            case 'not_contains': whereClause += ` AND ${field} NOT LIKE ?`; params.push(`%${value}%`); break;
-            case 'greater_than': whereClause += ` AND ${field} > ?`; params.push(parseFloat(value)); break;
-            case 'less_than': whereClause += ` AND ${field} < ?`; params.push(parseFloat(value)); break;
-            case 'starts_with': whereClause += ` AND ${field} LIKE ?`; params.push(`${value}%`); break;
-            case 'ends_with': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}`); break;
-            case 'is_empty': whereClause += ` AND (${field} IS NULL OR ${field} = '')`; break;
-            case 'is_not_empty': whereClause += ` AND ${field} IS NOT NULL AND ${field} != ''`; break;
+        try {
+          if (hasSpecialRules) {
+            let fromClause = 'leads l';
+            let whereClause = 'l.account_id = ?';
+            const params: any[] = [accountId];
+            let jc = 0;
+
+            for (const rule of filledFormRules) {
+              const alias = `vf${jc++}`;
+              fromClause += ` INNER JOIN visitor_leads ${alias} ON l.id = ${alias}.lead_id`;
+              whereClause += ` AND ${alias}.source = 'form_submit'`;
+              if (rule.value) {
+                const formRes = await c.env.DB.prepare('SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?').bind(rule.value, accountId).first();
+                if (formRes) {
+                  const va = `vf${jc++}`;
+                  fromClause += ` INNER JOIN tracking_events ${va} ON l.contact_email = JSON_EXTRACT(${va}.form_data, '$.fields.email')`;
+                  whereClause += ` AND ${va}.event_type = 'form' AND ${va}.account_id = ? AND ${va}.form_data LIKE ?`;
+                  params.push(accountId);
+                  params.push(`%"${formRes.name}"%`);
+                }
+              }
+            }
+            for (const rule of visitedPageRules) {
+              const alias = `lv${jc++}`;
+              fromClause += ` INNER JOIN lead_visits ${alias} ON l.id = ${alias}.lead_id`;
+              if (rule.value) { whereClause += ` AND ${alias}.url LIKE ?`; params.push(`%${rule.value}%`); }
+            }
+            regularRules.forEach((rule: any) => {
+              const { field, operator, value } = rule;
+              switch (operator) {
+                case 'equals': whereClause += ` AND l.${field} = ?`; params.push(value); break;
+                case 'not_equals': whereClause += ` AND l.${field} != ?`; params.push(value); break;
+                case 'contains': whereClause += ` AND l.${field} LIKE ?`; params.push(`%${value}%`); break;
+                case 'not_contains': whereClause += ` AND l.${field} NOT LIKE ?`; params.push(`%${value}%`); break;
+                case 'greater_than': whereClause += ` AND l.${field} > ?`; params.push(parseFloat(value)); break;
+                case 'less_than': whereClause += ` AND l.${field} < ?`; params.push(parseFloat(value)); break;
+                case 'starts_with': whereClause += ` AND l.${field} LIKE ?`; params.push(`${value}%`); break;
+                case 'ends_with': whereClause += ` AND l.${field} LIKE ?`; params.push(`%${value}`); break;
+                case 'is_empty': whereClause += ` AND (l.${field} IS NULL OR l.${field} = '')`; break;
+                case 'is_not_empty': whereClause += ` AND l.${field} IS NOT NULL AND l.${field} != ''`; break;
+              }
+            });
+
+            const cr: any = await c.env.DB.prepare(
+              `SELECT COUNT(DISTINCT l.id) as cnt FROM ${fromClause} WHERE ${whereClause}`
+            ).bind(...params).first();
+            leadCount = cr?.cnt || 0;
+          } else {
+            // Simple query - no special rules
+            let whereClause = 'account_id = ?';
+            const params: any[] = [accountId];
+            for (const rule of rules) {
+              const { field, operator, value } = rule;
+              switch (operator) {
+                case 'equals': whereClause += ` AND ${field} = ?`; params.push(value); break;
+                case 'not_equals': whereClause += ` AND ${field} != ?`; params.push(value); break;
+                case 'contains': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}%`); break;
+                case 'not_contains': whereClause += ` AND ${field} NOT LIKE ?`; params.push(`%${value}%`); break;
+                case 'greater_than': whereClause += ` AND ${field} > ?`; params.push(parseFloat(value)); break;
+                case 'less_than': whereClause += ` AND ${field} < ?`; params.push(parseFloat(value)); break;
+                case 'starts_with': whereClause += ` AND ${field} LIKE ?`; params.push(`${value}%`); break;
+                case 'ends_with': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}`); break;
+                case 'is_empty': whereClause += ` AND (${field} IS NULL OR ${field} = '')`; break;
+                case 'is_not_empty': whereClause += ` AND ${field} IS NOT NULL AND ${field} != ''`; break;
+              }
+            }
+            const cr: any = await c.env.DB.prepare(
+              `SELECT COUNT(*) as cnt FROM leads WHERE ${whereClause}`
+            ).bind(...params).first();
+            leadCount = cr?.cnt || 0;
           }
+        } catch (countErr: any) {
+          console.error('[SEGMENTS] Count error:', countErr.message);
+          leadCount = 0;
         }
-
-        const countResult: any = await c.env.DB.prepare(
-          `SELECT COUNT(*) as cnt FROM leads WHERE ${whereClause}`
-        ).bind(...params).first();
-        leadCount = countResult?.cnt || 0;
 
         // Update stored lead_count
         await c.env.DB.prepare(
