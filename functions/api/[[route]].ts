@@ -1602,6 +1602,10 @@ app.post('/tracking/events', async (c) => {
 
                   // Trigger new_lead automation
                   await triggerAutomations(settings.account_id, 'new_lead', crmLeadId, c.env.DB);
+                  
+                  // Trigger form_submit automation with form_id
+                  const formId = formData.fid || formName;
+                  await triggerAutomations(settings.account_id, 'form_submit', crmLeadId, c.env.DB, { form_id: formId });
                 } catch (autoErr: any) {
                   console.error('[TRACKING] Error auto-syncing / running automations:', autoErr.message);
                 }
@@ -2442,11 +2446,20 @@ app.post('/automations/:id/execute', async (c) => {
 });
 
 // Helper to trigger automations
-async function triggerAutomations(accountId: string, triggerType: string, leadId: string, db: any) {
+async function triggerAutomations(accountId: string, triggerType: string, leadId: string, db: any, extraConfig?: { form_id?: string }) {
   try {
-    const { results: automations } = await db.prepare(
+    let { results: automations } = await db.prepare(
       "SELECT * FROM automations WHERE account_id = ? AND trigger_type = ? AND is_active = 1"
     ).bind(accountId, triggerType).all();
+
+    // If triggerType is form_submit and form_id is provided, filter automations by form_id
+    if (triggerType === 'form_submit' && extraConfig?.form_id) {
+      automations = automations.filter((a: any) => {
+        const triggerConfig = a.trigger_config ? JSON.parse(a.trigger_config) : {};
+        // If automation has form_id filter, it must match; otherwise include it
+        return !triggerConfig.form_id || triggerConfig.form_id === extraConfig.form_id;
+      });
+    }
 
     for (const automation of automations) {
       if (!automation) continue;

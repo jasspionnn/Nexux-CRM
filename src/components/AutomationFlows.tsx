@@ -130,7 +130,7 @@ const FieldLabel: React.FC<{ label: string; hint?: string; children: React.React
   <div className="space-y-1"><label className="text-[11px] font-bold text-slate-600">{label}</label>{children}{hint && <p className="text-[10px] text-slate-400">{hint}</p>}</div>
 );
 
-const ConfigPanel: React.FC<{ node: FlowNode; onConfigChange: (nodeId: string, c: Record<string, any>) => void; stages: any[]; users: any[] }> = React.memo(({ node, onConfigChange, stages, users }) => {
+const ConfigPanel: React.FC<{ node: FlowNode; onConfigChange: (nodeId: string, c: Record<string, any>) => void; stages: any[]; users: any[]; forms: any[] }> = React.memo(({ node, onConfigChange, stages, users, forms }) => {
   const ic = "w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 bg-white";
   const set = (key: string, val: any) => onConfigChange(node.id, { [key]: val });
   const t = node.nodeType;
@@ -138,6 +138,10 @@ const ConfigPanel: React.FC<{ node: FlowNode; onConfigChange: (nodeId: string, c
   return (
     <div className="px-3 pt-3 pb-2 border-t border-slate-100 space-y-2.5">
       {t === 'new_lead' && <p className="text-xs text-slate-500 flex items-center gap-2"><Zap size={14} className="text-blue-500" />Dispara quando um novo lead é criado.</p>}
+      {t === 'form_submit' && (<>
+        <FieldLabel label="Formulário"><select value={node.config.form_id || ''} onChange={e => set('form_id', e.target.value)} className={ic}><option value="">Qualquer formulário</option>{forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}</select></FieldLabel>
+        <p className="text-[10px] text-slate-400">Selecione qual formulário deve disparar esta automação. Deixe vazio para qualquer um.</p>
+      </>)}
       {t === 'stage_change' && (<>
         <FieldLabel label="Origem"><select value={node.config.from_stage_id || ''} onChange={e => set('from_stage_id', e.target.value)} className={ic}><option value="">Qualquer</option>{stages.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></FieldLabel>
         <div className="flex justify-center text-slate-300"><ArrowRight size={16} className="rotate-90" /></div>
@@ -188,6 +192,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
   const [stages, setStages] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [autos, setAutos] = useState<Automation[]>([]);
+  const [forms, setForms] = useState<any[]>([]);
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ idx: number; sx: number; sy: number; ox: number; oy: number } | null>(null);
   const panRef = useRef<{ active: boolean; sx: number; sy: number; sl: number; st: number } | null>(null);
@@ -195,10 +200,11 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
   useEffect(() => {
     (async () => {
       try {
-        const [f, u, a] = await Promise.all([fetch('/api/funnels'), fetch(`/api/users?account_id=${accountId}`), fetch(`/api/automations?account_id=${accountId}`)]);
+        const [f, u, a, fm] = await Promise.all([fetch('/api/funnels'), fetch(`/api/users?account_id=${accountId}`), fetch(`/api/automations?account_id=${accountId}`), fetch(`/api/tracking-forms?account_id=${accountId}`)]);
         if (f.ok) { const d = await f.json(); setStages(d.flatMap((x: any) => x.stages || [])); }
         if (u.ok) setUsers(await u.json());
         if (a.ok) setAutos(await a.json());
+        if (fm.ok) setForms(await fm.json());
       } catch (e) { /* */ }
     })();
   }, [accountId]);
@@ -375,7 +381,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
                       <div className="flex-1 min-w-0"><p className="text-sm font-bold text-slate-900 truncate">{node.label}</p><p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">{node.type}</p></div>
                       <button onClick={e => { e.stopPropagation(); removeNode(idx); }} className="p-1 text-slate-300 hover:text-red-500 rounded shrink-0"><X size={14} /></button>
                     </div>
-                    {isSel && <ConfigPanel node={node} onConfigChange={onConfigChange} stages={stages} users={users} />}
+                    {isSel && <ConfigPanel node={node} onConfigChange={onConfigChange} stages={stages} users={users} forms={forms} />}
                     <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between" style={{ height: 38 }}>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{idx === 0 ? '🚀 Gatilho' : node.type === 'condition' ? '🔍 Condição' : node.type === 'delay' ? '⏱ Tempo' : '⚡ Ação'}</span>
                     </div>
