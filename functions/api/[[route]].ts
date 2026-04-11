@@ -2222,7 +2222,6 @@ app.get('/segments', async (c) => {
 
         try {
           if (hasSpecialRules) {
-            // Use custom_values LIKE (same as preview)
             let whereClause = 'account_id = ?';
             const params: any[] = [accountId];
 
@@ -2232,12 +2231,33 @@ app.get('/segments', async (c) => {
                   'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
                 ).bind(rule.value, accountId).first();
                 if (formRes) {
-                  whereClause += ` AND custom_values LIKE ?`;
-                  params.push(`%${formRes.name as string}%`);
+                  const formName = formRes.name as string;
+                  const subq = `(
+                    SELECT id FROM leads WHERE account_id = ? AND custom_values LIKE ?
+                    UNION
+                    SELECT DISTINCT l.id FROM leads l
+                    INNER JOIN tracking_events te ON LOWER(l.contact_email) = LOWER(JSON_EXTRACT(te.form_data, '$.fields.email'))
+                    WHERE te.account_id = ? AND te.event_type = 'form' AND te.form_data LIKE ?
+                    UNION
+                    SELECT DISTINCT l.id FROM leads l
+                    INNER JOIN marketing_leads ml ON LOWER(l.contact_email) = LOWER(ml.contact_email)
+                    WHERE ml.account_id = ? AND ml.form_name = ?
+                  )`;
+                  whereClause += ` AND id IN ${subq}`;
+                  params.push(accountId, `%${formName}%`);
+                  params.push(accountId, `%${formName}%`);
+                  params.push(accountId, formName);
                 }
               } else {
-                whereClause += ` AND custom_values LIKE ?`;
-                params.push(`%tracking_form%`);
+                whereClause += ` AND (
+                  custom_values LIKE '%tracking_form%'
+                  OR contact_email IN (
+                    SELECT DISTINCT LOWER(JSON_EXTRACT(te.form_data, '$.fields.email'))
+                    FROM tracking_events te
+                    WHERE te.account_id = ? AND te.event_type = 'form' AND te.form_data IS NOT NULL
+                  )
+                )`;
+                params.push(accountId);
               }
             }
 
@@ -2392,24 +2412,47 @@ app.post('/segments/preview', async (c) => {
       let whereClause = 'account_id = ?';
       const params: any[] = [account_id];
 
-      // Handle filled_form: check custom_values JSON for form_name
+      // Handle filled_form: find leads by email from tracking_events OR custom_values
       for (const rule of filledFormRules) {
         if (rule.value) {
-          // Lookup form name by ID
           const formRes = await c.env.DB.prepare(
             'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
           ).bind(rule.value, account_id).first();
           console.log('[SEGMENTS/PREVIEW] form lookup:', rule.value, '->', JSON.stringify(formRes));
 
           if (formRes) {
-            // Check custom_values contains this form_name (leads created from tracking store form_name in custom_values)
-            whereClause += ` AND custom_values LIKE ?`;
-            params.push(`%${formRes.name as string}%`);
+            const formName = formRes.name as string;
+            // Find leads who submitted this form via ANY of:
+            // 1. custom_values contains form_name (lead created from tracking)
+            // 2. tracking_events form_data contains email matching a lead
+            // 3. marketing_leads email matching a lead (if synced)
+            const subq = `(
+              SELECT id FROM leads WHERE account_id = ? AND custom_values LIKE ?
+              UNION
+              SELECT DISTINCT l.id FROM leads l
+              INNER JOIN tracking_events te ON LOWER(l.contact_email) = LOWER(JSON_EXTRACT(te.form_data, '$.fields.email'))
+              WHERE te.account_id = ? AND te.event_type = 'form' AND te.form_data LIKE ?
+              UNION
+              SELECT DISTINCT l.id FROM leads l
+              INNER JOIN marketing_leads ml ON LOWER(l.contact_email) = LOWER(ml.contact_email)
+              WHERE ml.account_id = ? AND ml.form_name = ?
+            )`;
+            whereClause += ` AND id IN ${subq}`;
+            params.push(account_id, `%${formName}%`);
+            params.push(account_id, `%${formName}%`);
+            params.push(account_id, formName);
           }
         } else {
-          // Any form - check custom_values has "tracking_form"
-          whereClause += ` AND custom_values LIKE ?`;
-          params.push(`%tracking_form%`);
+          // Any form
+          whereClause += ` AND (
+            custom_values LIKE '%tracking_form%'
+            OR contact_email IN (
+              SELECT DISTINCT LOWER(JSON_EXTRACT(te.form_data, '$.fields.email'))
+              FROM tracking_events te
+              WHERE te.account_id = ? AND te.event_type = 'form' AND te.form_data IS NOT NULL
+            )
+          )`;
+          params.push(account_id);
         }
       }
 
