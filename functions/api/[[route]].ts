@@ -2409,6 +2409,7 @@ app.post('/segments/preview', async (c) => {
 
     // Check if we have special rules that require JOINs
     const hasSpecialRules = filledFormRules.length > 0 || visitedPageRules.length > 0;
+    console.log('[SEGMENTS/PREVIEW] rules:', rules.length, 'special:', hasSpecialRules, 'filledFormRules:', JSON.stringify(filledFormRules), 'visitedPageRules:', JSON.stringify(visitedPageRules));
 
     if (hasSpecialRules) {
       // Step 1: Collect visitor_ids that match special rules
@@ -2422,12 +2423,14 @@ app.post('/segments/preview', async (c) => {
           const formRes = await c.env.DB.prepare(
             'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
           ).bind(rule.value, account_id).first();
+          console.log('[SEGMENTS/PREVIEW] form lookup for rule.value:', rule.value, '-> formRes:', JSON.stringify(formRes));
 
           if (formRes) {
             // Find tracking_events for this form (search form_data for form name)
             const { results: events } = await c.env.DB.prepare(
               "SELECT DISTINCT visitor_id FROM tracking_events WHERE account_id = ? AND event_type = 'form' AND form_data LIKE ?"
             ).bind(account_id, `%${formRes.name as string}%`).all();
+            console.log('[SEGMENTS/PREVIEW] tracking_events found:', (events as any[])?.length);
 
             if (events && (events as any[]).length > 0) {
               for (const ev of events as any[]) {
@@ -2458,6 +2461,7 @@ app.post('/segments/preview', async (c) => {
         const { results: vlResults } = await c.env.DB.prepare(
           `SELECT DISTINCT lead_id FROM visitor_leads WHERE account_id = ? AND visitor_id IN (${placeholders})`
         ).bind(account_id, ...matchingVisitorIds).all();
+        console.log('[SEGMENTS/PREVIEW] visitor_leads lookup:', (vlResults as any[])?.length, 'leads found');
         if (vlResults && (vlResults as any[]).length > 0) {
           for (const vl of vlResults as any[]) {
             if (vl.lead_id && !matchingLeadIds.includes(vl.lead_id)) {
@@ -2466,6 +2470,7 @@ app.post('/segments/preview', async (c) => {
           }
         }
       }
+      console.log('[SEGMENTS/PREVIEW] final matchingLeadIds:', matchingLeadIds.length, 'ids:', matchingLeadIds);
 
       // For visited_page: find lead_ids that visited this URL
       for (const rule of visitedPageRules) {
@@ -2517,6 +2522,7 @@ app.post('/segments/preview', async (c) => {
         `SELECT * FROM leads WHERE ${whereClause} ORDER BY created_at DESC LIMIT 500`
       ).bind(...params).all();
 
+      console.log('[SEGMENTS/PREVIEW] final query returned:', (results as any[])?.length, 'leads');
       return c.json({ leads: results, count: results.length });
     }
 
