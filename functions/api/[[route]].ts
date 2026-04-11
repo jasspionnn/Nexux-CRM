@@ -2279,43 +2279,37 @@ app.get('/segments', async (c) => {
 
             for (const rule of filledFormRules) {
               if (rule.value) {
-                // Extract emails from tracking_events matching this form_id
-                const { results: events } = await c.env.DB.prepare(
-                  "SELECT form_data FROM tracking_events WHERE account_id = ? AND event_type = 'form'"
-                ).bind(accountId).all();
-                if (events) {
-                  for (const ev of events as any[]) {
-                    try {
-                      const fd = typeof ev.form_data === 'string' ? JSON.parse(ev.form_data) : ev.form_data;
-                      if (fd) {
-                        const fid = fd.fid || '';
-                        const fname = fd.form_name || '';
-                        const formRes: any = await c.env.DB.prepare(
-                          'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
-                        ).bind(rule.value, accountId).first();
-                        if (formRes && (fid === rule.value || fname === formRes.name)) {
-                          if (fd.fields) {
-                            for (const key of Object.keys(fd.fields)) {
-                              const v = String(fd.fields[key]).toLowerCase();
-                              if (v.includes('@') && v.includes('.') && !emails.includes(fd.fields[key])) {
-                                emails.push(fd.fields[key]);
-                              }
-                            }
-                          }
-                        }
-                      }
-                    } catch(e) { /* skip */ }
-                  }
-                }
-
-                // Also get emails from leads with custom_values containing form_name
                 const formRes: any = await c.env.DB.prepare(
                   'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
                 ).bind(rule.value, accountId).first();
+
                 if (formRes) {
+                  const formName = formRes.name as string;
+
+                  // tracking_events where fid matches form_name
+                  const { results: events } = await c.env.DB.prepare(
+                    "SELECT form_data FROM tracking_events WHERE account_id = ? AND event_type = 'form'"
+                  ).bind(accountId).all();
+                  if (events) {
+                    for (const ev of events as any[]) {
+                      try {
+                        const fd = typeof ev.form_data === 'string' ? JSON.parse(ev.form_data) : ev.form_data;
+                        if (fd && fd.fid === formName && fd.fields) {
+                          for (const key of Object.keys(fd.fields)) {
+                            const v = String(fd.fields[key]).toLowerCase();
+                            if (v.includes('@') && v.includes('.') && !emails.includes(fd.fields[key])) {
+                              emails.push(fd.fields[key]);
+                            }
+                          }
+                        }
+                      } catch(e) { /* skip */ }
+                    }
+                  }
+
+                  // custom_values leads
                   const { results: cvLeads } = await c.env.DB.prepare(
                     'SELECT contact_email FROM leads WHERE account_id = ? AND custom_values LIKE ?'
-                  ).bind(accountId, `%${formRes.name}%`).all();
+                  ).bind(accountId, `%${formName}%`).all();
                   if (cvLeads) {
                     for (const row of cvLeads as any[]) {
                       if (row.contact_email && !emails.includes(row.contact_email)) emails.push(row.contact_email);
@@ -2489,57 +2483,44 @@ app.post('/segments/preview', async (c) => {
       // Handle filled_form: find leads by extracting emails from tracking_events for this form_id
       for (const rule of filledFormRules) {
         if (rule.value) {
-          // Collect all emails from tracking_events where form_data contains this form_id
           const emails: string[] = [];
 
-          // Source 1: tracking_events form_data — parse JSON and extract emails
-          const { results: events } = await c.env.DB.prepare(
-            "SELECT form_data FROM tracking_events WHERE account_id = ? AND event_type = 'form'"
-          ).bind(account_id).all();
-
-          if (events) {
-            for (const ev of events as any[]) {
-              try {
-                const fd = typeof ev.form_data === 'string' ? JSON.parse(ev.form_data) : ev.form_data;
-                if (fd) {
-                  // Match by form_id (fid in tracker) or form name
-                  const fid = fd.fid || '';
-                  const fname = fd.form_name || '';
-
-                  // Check if this event matches the selected form (by ID or name)
-                  const formRes: any = await c.env.DB.prepare(
-                    'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
-                  ).bind(rule.value, account_id).first();
-
-                  if (formRes && (fid === rule.value || fname === formRes.name)) {
-                    // Extract all emails from fields
-                    if (fd.fields) {
-                      for (const key of Object.keys(fd.fields)) {
-                        const v = String(fd.fields[key]).toLowerCase();
-                        if (v.includes('@') && v.includes('.') && !emails.includes(fd.fields[key])) {
-                          emails.push(fd.fields[key]);
-                        }
-                      }
-                    }
-                  }
-                }
-              } catch(e) { /* skip */ }
-            }
-          }
-
-          // Source 2: custom_values LIKE form_name
+          // Get form name from tracking_forms
           const formRes: any = await c.env.DB.prepare(
             'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
           ).bind(rule.value, account_id).first();
+
           if (formRes) {
+            const formName = formRes.name as string;
+
+            // Source 1: tracking_events where fid (form name from tracker) matches form_name
+            const { results: events } = await c.env.DB.prepare(
+              "SELECT form_data FROM tracking_events WHERE account_id = ? AND event_type = 'form'"
+            ).bind(account_id).all();
+
+            if (events) {
+              for (const ev of events as any[]) {
+                try {
+                  const fd = typeof ev.form_data === 'string' ? JSON.parse(ev.form_data) : ev.form_data;
+                  if (fd && fd.fid === formName && fd.fields) {
+                    for (const key of Object.keys(fd.fields)) {
+                      const v = String(fd.fields[key]).toLowerCase();
+                      if (v.includes('@') && v.includes('.') && !emails.includes(fd.fields[key])) {
+                        emails.push(fd.fields[key]);
+                      }
+                    }
+                  }
+                } catch(e) { /* skip */ }
+              }
+            }
+
+            // Source 2: leads with custom_values containing form_name
             const { results: cvLeads } = await c.env.DB.prepare(
               'SELECT contact_email FROM leads WHERE account_id = ? AND custom_values LIKE ?'
-            ).bind(account_id, `%${formRes.name}%`).all();
+            ).bind(account_id, `%${formName}%`).all();
             if (cvLeads) {
               for (const row of cvLeads as any[]) {
-                if (row.contact_email && !emails.includes(row.contact_email)) {
-                  emails.push(row.contact_email);
-                }
+                if (row.contact_email && !emails.includes(row.contact_email)) emails.push(row.contact_email);
               }
             }
           }
@@ -2552,7 +2533,6 @@ app.post('/segments/preview', async (c) => {
             whereClause += ` AND id = ''`;
           }
         } else {
-          // Any form — match all leads with tracking source
           whereClause += ` AND custom_values LIKE ?`;
           params.push(`%tracking_form%`);
         }
