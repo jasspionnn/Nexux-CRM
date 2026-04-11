@@ -2284,11 +2284,8 @@ app.get('/segments', async (c) => {
                   'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
                 ).bind(rule.value, accountId).first();
                 if (formRes) {
-                  const fn = formRes.name as string;
                   whereClause += ` AND custom_values LIKE ?`;
-                  params.push(`%"form_name"%`);
-                  whereClause += ` AND custom_values LIKE ?`;
-                  params.push(`%${fn}%`);
+                  params.push(`%${formRes.name as string}%`);
                 }
               } else {
                 whereClause += ` AND custom_values LIKE ?`;
@@ -2446,18 +2443,15 @@ app.post('/segments/preview', async (c) => {
       let whereClause = 'account_id = ?';
       const params: any[] = [account_id];
 
-      // Handle filled_form: just check custom_values LIKE form_name
+      // Handle filled_form: just check custom_values contains the form name
       for (const rule of filledFormRules) {
         if (rule.value) {
           const formRes = await c.env.DB.prepare(
             'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
           ).bind(rule.value, account_id).first();
           if (formRes) {
-            const fn = formRes.name as string;
             whereClause += ` AND custom_values LIKE ?`;
-            params.push(`%"form_name"%`);
-            whereClause += ` AND custom_values LIKE ?`;
-            params.push(`%${fn}%`);
+            params.push(`%${formRes.name as string}%`);
           }
         } else {
           whereClause += ` AND custom_values LIKE ?`;
