@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Download, Trash2, Check, X, RefreshCw, Send } from 'lucide-react';
+import { Users, Download, Trash2, Check, X, RefreshCw, Send, Eye } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
+import { LeadJourney } from './LeadJourney';
 
 export const MarketingLeads = () => {
   const { currentUser } = useCRM();
@@ -8,6 +9,7 @@ export const MarketingLeads = () => {
   const [leads, setLeads] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<any>(null);
 
   const accountId = currentUser?.account_id || 'acc_demo';
 
@@ -65,6 +67,8 @@ export const MarketingLeads = () => {
 
   const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+  if (selectedLead) return <LeadJourney lead={selectedLead} onBack={() => setSelectedLead(null)} />;
+
   if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-12 h-12 border-4 border-slate-900 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
@@ -100,7 +104,7 @@ export const MarketingLeads = () => {
                     <tr className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">
                       <th className="px-4 py-3 w-10"><input type="checkbox" checked={selectedIds.size === leads.length && leads.length > 0} onChange={toggleAll} className="rounded" /></th>
                       <th className="px-4 py-3">Nome</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Telefone</th>
-                      <th className="px-4 py-3">Formulário</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Data</th><th className="px-4 py-3 w-10"></th>
+                      <th className="px-4 py-3">Formulário</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Data</th><th className="px-4 py-3 w-20"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -127,7 +131,12 @@ export const MarketingLeads = () => {
                           )}
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-500">{formatDate(lead.created_at)}</td>
-                        <td className="px-4 py-3"><button onClick={() => handleDelete(lead.id)} className="p-1 text-slate-300 hover:text-red-500 rounded transition-colors"><Trash2 size={14} /></button></td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => setSelectedLead(lead)} className="p-1 text-slate-300 hover:text-blue-500 rounded transition-colors" title="Ver jornada"><Eye size={14} /></button>
+                            <button onClick={() => handleDelete(lead.id)} className="p-1 text-slate-300 hover:text-red-500 rounded transition-colors"><Trash2 size={14} /></button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
