@@ -401,17 +401,29 @@ export const Settings = () => {
                       <GripVertical size={20} />
                     </button>
                     
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-2">
                       {COLORS.map((color, index) => (
                         <button
                           key={index}
-                          onClick={() => handleUpdateStage(activeFunnel.id, stage.id, { color })}
+                          onClick={() => handleUpdateStage(activeFunnel.id, stage.id, { color, colorOpacity: stage.colorOpacity || '1a' })}
                           className={`w-6 h-6 rounded-full transition-all ${
                             stage.color === color ? 'ring-2 ring-offset-2 ring-slate-400' : 'opacity-50 hover:opacity-100'
                           }`}
                           style={{ backgroundColor: color }}
                         />
                       ))}
+                      <select
+                        value={stage.colorOpacity || '1a'}
+                        onChange={(e) => handleUpdateStage(activeFunnel.id, stage.id, { colorOpacity: e.target.value })}
+                        className="ml-1 text-[10px] font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      >
+                        <option value="0a">5%</option>
+                        <option value="1a">10%</option>
+                        <option value="29">16%</option>
+                        <option value="3d">24%</option>
+                        <option value="52">32%</option>
+                        <option value="66">40%</option>
+                      </select>
                     </div>
 
                     <div className="flex-1 ml-4">
@@ -964,26 +976,3 @@ export const Settings = () => {
                   : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
               }`}
             >
-              <tab.icon size={18} />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Main Content */}
-      {activeTab === 'funis' && renderFunnelsTab()}
-      {activeTab === 'campos' && renderCamposTab()}
-      {activeTab === 'webhooks' && renderWebhooksTab()}
-      {activeTab === 'equipes' && renderEquipesTab()}
-      {activeTab === 'plano' && renderPlanoTab()}
-    </div>
-  );
-};
-
-// Helper icon for Plano tab
-const Hexagon = ({ size }: { size: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
-  </svg>
-);

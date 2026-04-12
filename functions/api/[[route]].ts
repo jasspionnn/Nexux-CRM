@@ -630,8 +630,8 @@ app.post('/funnels/:funnelId/stages', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
   
-  await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)')
-    .bind(id, funnelId, body.name, body.color, body.order || 0)
+  await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, colorOpacity, "order") VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(id, funnelId, body.name, body.color, body.colorOpacity || '1a', body.order || 0)
     .run();
     
   return c.json({ id, funnel_id: funnelId, name: body.name, color: body.color, order: body.order || 0 });
@@ -641,8 +641,8 @@ app.put('/stages/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
   
-  await c.env.DB.prepare('UPDATE stages SET name = ?, color = ? WHERE id = ?')
-    .bind(body.name, body.color, id)
+  await c.env.DB.prepare('UPDATE stages SET name = ?, color = ?, colorOpacity = ? WHERE id = ?')
+    .bind(body.name, body.color, body.colorOpacity || '1a', id)
     .run();
     
   return c.json({ success: true });
@@ -1746,6 +1746,8 @@ app.delete('/tracking-forms/:id', async (c) => {
 // Add field_mapping column to tracking_forms
 app.get('/migrate-tracking-forms', async (c) => {
   try {
+    // Add colorOpacity to stages table
+    try { await c.env.DB.prepare('ALTER TABLE stages ADD COLUMN colorOpacity TEXT DEFAULT '1a'').run(); } catch (e) { /* column already exists */ }
     try { await c.env.DB.prepare('ALTER TABLE tracking_forms ADD COLUMN field_mapping TEXT').run(); } catch (e) { /* column already exists */ }
     // Create marketing_leads table if not exists
     try {

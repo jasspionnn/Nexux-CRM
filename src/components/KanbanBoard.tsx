@@ -428,8 +428,8 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                           onClick={() => onNavigate('lead-detail', lead.id)}
                           className="group p-5 rounded-2xl border transition-all cursor-pointer relative shadow-sm hover:shadow-md"
                           style={{
-                            backgroundColor: isWon ? '#f0fdf4' : stageColor + '1a',
-                            borderColor: isWon ? '#bbf7d0' : stageColor + '4d',
+                            backgroundColor: isWon ? '#f0fdf4' : stageColor + (stage.colorOpacity || '1a'),
+                            borderColor: isWon ? '#22c55e' : stageColor,
                           }}
                         >
                           <div className="flex items-center justify-between mb-3">
@@ -519,14 +519,4 @@ export const KanbanBoard = ({ onNavigate }: any) => {
   );
 };
 
-const FilterDateSection = ({ title, icon, value, onChange }: any) => (
-  <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-    <div className="flex items-center gap-2 mb-4">
-      <div className="w-7 h-7 bg-indigo-50 text-indigo-500 rounded-lg flex items-center justify-center border border-indigo-100/50">
-        {icon}
-      </div>
-      <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{title}</h3>
-    </div>
-    <DatePicker value={value} onChange={onChange} />
-  </div>
-);
+const FilterDateSection = ({ title, icon, v
