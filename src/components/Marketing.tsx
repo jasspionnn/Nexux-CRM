@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { MarketingDashboard } from './MarketingDashboard';
 import { SiteTracking } from './SiteTracking';
 import { LeadSegmentation } from './LeadSegmentation';
 import { AutomationFlows } from './AutomationFlows';
@@ -30,6 +31,10 @@ export const Marketing = () => {
     window.addEventListener('hashchange', h);
     return () => window.removeEventListener('hashchange', h);
   }, []);
+
+  if (activeSubView === '') {
+    return <MarketingDashboard />;
+  }
 
   return (
     <div className="flex flex-col h-full bg-slate-50/50">
