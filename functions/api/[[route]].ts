@@ -1746,7 +1746,6 @@ app.delete('/tracking-forms/:id', async (c) => {
 // Add field_mapping column to tracking_forms
 app.get('/migrate-tracking-forms', async (c) => {
   try {
-    // Add colorOpacity to stages table
     try { await c.env.DB.prepare('ALTER TABLE stages ADD COLUMN colorOpacity TEXT DEFAULT '1a'').run(); } catch (e) { /* column already exists */ }
     try { await c.env.DB.prepare('ALTER TABLE tracking_forms ADD COLUMN field_mapping TEXT').run(); } catch (e) { /* column already exists */ }
     // Create marketing_leads table if not exists

@@ -89,4 +89,103 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
   const catLabels: Record<string, string> = { atracao: 'Atração', relacionamento: 'Relacionamento', conversao: 'Conversão' };
 
   return (
-    <header className="h-16 bg-white borde
+    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0">
+      {appMode === 'crm' ? (
+        <nav className="flex h-full flex-1">
+          {crmItems.map(item => (
+            <button
+              key={item.id}
+              onClick={() => onChangeView(item.id)}
+              className={'flex items-center gap-2 px-5 h-full border-b-2 transition-colors ' + (currentView === item.id ? 'border-slate-900 text-slate-900 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
+            >
+              <item.icon size={18} className={item.color || ''} />
+              <span className={item.color || ''}>{item.label}</span>
+              {item.id === 'ai-bot' && <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 ml-1"></span>}
+            </button>
+          ))}
+          <button
+            onClick={handleMarketing}
+            className={'flex items-center gap-2 px-5 h-full border-b-2 transition-colors ' + (appMode === 'marketing' || currentView === 'marketing' ? 'border-purple-600 text-purple-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
+          >
+            <Megaphone size={18} className="text-purple-600" />
+            <span className="text-purple-600">Marketing</span>
+          </button>
+        </nav>
+      ) : (
+        <nav className="flex h-full flex-1 items-center" ref={dropRef}>
+          <button
+            onClick={handleDash}
+            className={'flex items-center gap-2 px-5 h-full border-b-2 transition-colors ' + (activeSub === '' ? 'border-purple-600 text-purple-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
+          >
+            <LayoutGrid size={16} />
+            <span>Início</span>
+          </button>
+          {Object.entries(MKT_CATEGORIES).map(([key, items]) => {
+            const Icon = items[0].icon;
+            const isActive = mktCategory === key;
+            const isOpen = openCat === key;
+            const hasActiveSub = items.some(i => i.sub === activeSub);
+            return (
+              <div key={key} className="relative h-full">
+                <button
+                  onClick={() => handleCatClick(key)}
+                  className={'flex items-center gap-2 px-5 h-full border-b-2 transition-colors ' + (isActive && hasActiveSub ? 'border-purple-600 text-purple-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
+                >
+                  <Icon size={16} />
+                  <span>{catLabels[key]}</span>
+                  <ChevronDown size={14} className={'transition-transform ' + (isOpen ? 'rotate-180' : '')} />
+                </button>
+                {isOpen && (
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50 min-w-[200px]">
+                    {items.map(item => {
+                      const I = item.icon;
+                      const isSubActive = activeSub === item.sub;
+                      return (
+                        <button
+                          key={item.sub}
+                          onClick={() => handleSub(item.sub)}
+                          className={'w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ' + (isSubActive ? 'bg-purple-50 text-purple-700 font-bold' : 'text-slate-600 hover:bg-slate-50')}
+                        >
+                          <I size={16} />
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <div className="w-px h-6 bg-slate-200 mx-2" />
+          <button
+            onClick={handleSales}
+            className="flex items-center gap-2 px-5 h-full border-b-2 border-transparent text-slate-900 hover:text-slate-700 font-semibold transition-colors"
+          >
+            <BarChart3 size={18} />
+            <span>Vendas</span>
+            <ChevronRight size={14} />
+          </button>
+        </nav>
+      )}
+
+      <div className="flex items-center gap-5">
+        <button className="text-slate-400 hover:text-slate-600"><Search size={20} /></button>
+        <button className="text-slate-400 hover:text-slate-600"><Bell size={20} /></button>
+        <button onClick={() => onChangeView('settings')} className={'text-slate-400 hover:text-slate-600 ' + (currentView === 'settings' ? 'text-slate-900' : '')}><SettingsIcon size={20} /></button>
+        <div className="h-8 w-px bg-gray-200 mx-1"></div>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <div className="text-sm font-bold text-slate-900 leading-none">{currentUser?.name || 'User'}</div>
+            <div className="text-[10px] font-bold text-slate-400 tracking-wider mt-1">{currentUser?.role === 'NEXUS_ADMIN' ? 'ADMIN' : 'CONTA PADRÃO'}</div>
+          </div>
+          <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white font-bold text-sm">
+            {currentUser?.name ? currentUser.name.substring(0, 2).toUpperCase() : 'US'}
+          </div>
+          <button onClick={logout} className="ml-2 text-slate-400 hover:text-red-600 transition-colors" title="Sair">
+            <LogOut size={20} />
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+};
