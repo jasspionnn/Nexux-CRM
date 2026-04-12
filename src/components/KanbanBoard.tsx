@@ -411,18 +411,19 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                     {stageLeads.map(lead => {
                       const isWon = lead.stage_id === activeFunnel?.default_won_stage_id;
                       const leadUser = users.find(u => String(u.id) === String(lead.assigned_user_id));
-                      
+                      const stageColor = stage.color || '#3b82f6';
+
                       return (
-                        <div 
-                          key={lead.id} 
+                        <div
+                          key={lead.id}
                           draggable
                           onDragStart={(e) => handleDragStart(e, lead.id)}
                           onClick={() => onNavigate('lead-detail', lead.id)}
-                          className={`group p-5 rounded-2xl border transition-all cursor-pointer relative ${
-                            isWon 
-                              ? 'bg-green-50/50 border-green-200 shadow-sm hover:shadow-md' 
-                              : 'bg-white border-slate-100 shadow-sm hover:shadow-md hover:border-slate-300'
-                          }`} 
+                          className="group p-5 rounded-2xl border transition-all cursor-pointer relative shadow-sm hover:shadow-md"
+                          style={{
+                            backgroundColor: isWon ? '#f0fdf4' : stageColor + '08',
+                            borderColor: isWon ? '#bbf7d0' : stageColor + '20',
+                          }}
                         >
                           <div className="flex items-center justify-between mb-3">
                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">

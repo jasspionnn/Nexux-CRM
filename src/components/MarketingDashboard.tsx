@@ -8,14 +8,16 @@ export const MarketingDashboard = () => {
     opportunities: 0,
     sales: 0,
   });
+  const [funnelColors, setFunnelColors] = useState<string[]>(['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981']);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const [visitsRes, formsRes] = await Promise.all([
+        const [visitsRes, formsRes, funnelsRes] = await Promise.all([
           fetch('/api/tracking/stats'),
           fetch('/api/tracking/events?type=form&limit=1000'),
+          fetch('/api/funnels'),
         ]);
 
         const visitsData = visitsRes.ok ? await visitsRes.json() : {};
@@ -27,6 +29,15 @@ export const MarketingDashboard = () => {
           opportunities: 0,
           sales: 0,
         });
+
+        // Get colors from funnel stages
+        if (funnelsRes.ok) {
+          const funnels = await funnelsRes.json();
+          const activeFunnel = funnels.find((f: any) => f.is_active || true);
+          if (activeFunnel?.stages?.length >= 4) {
+            setFunnelColors(activeFunnel.stages.slice(0, 4).map((s: any) => s.color || '#3b82f6'));
+          }
+        }
       } catch (e) {
         console.error(e);
       }
@@ -40,10 +51,10 @@ export const MarketingDashboard = () => {
   };
 
   const funnelSteps = [
-    { label: 'Visitas', value: stats.visits, icon: Eye, color: 'bg-blue-500', bg: 'bg-blue-50', textColor: 'text-blue-600' },
-    { label: 'Formulários', value: stats.forms, icon: FileText, color: 'bg-purple-500', bg: 'bg-purple-50', textColor: 'text-purple-600' },
-    { label: 'Oportunidades', value: stats.opportunities, icon: Target, color: 'bg-amber-500', bg: 'bg-amber-50', textColor: 'text-amber-600' },
-    { label: 'Vendas', value: stats.sales, icon: DollarSign, color: 'bg-green-500', bg: 'bg-green-50', textColor: 'text-green-600' },
+    { label: 'Visitas', value: stats.visits, icon: Eye, color: funnelColors[0] },
+    { label: 'Formulários', value: stats.forms, icon: FileText, color: funnelColors[1] },
+    { label: 'Oportunidades', value: stats.opportunities, icon: Target, color: funnelColors[2] },
+    { label: 'Vendas', value: stats.sales, icon: DollarSign, color: funnelColors[3] },
   ];
 
   const calcRate = (current: number, total: number) => {
@@ -81,20 +92,23 @@ export const MarketingDashboard = () => {
           <div className="flex items-end justify-between gap-2">
             {funnelSteps.map((step, i) => {
               const Icon = step.icon;
-              const widthPct = 100 - (i * 20);
+              const widthPct = 100 - (i * 18);
               const convRate = i === 0 ? '100%' : calcRate(step.value, funnelSteps[0].value);
+              const hexColor = step.color;
+              const lightBg = hexColor + '15';
+              const borderHex = hexColor + '40';
               return (
                 <React.Fragment key={step.label}>
                   <div className="flex-1 flex flex-col items-center">
                     <div
-                      className={`${step.bg} rounded-xl p-6 w-full flex flex-col items-center gap-3 transition-all hover:shadow-md`}
-                      style={{ maxWidth: widthPct + '%' }}
+                      className="rounded-xl p-6 w-full flex flex-col items-center gap-3 transition-all hover:shadow-lg hover:-translate-y-0.5 border-2"
+                      style={{ maxWidth: widthPct + '%', backgroundColor: lightBg, borderColor: borderHex }}
                     >
-                      <div className={`w-12 h-12 rounded-xl ${step.color} flex items-center justify-center text-white shadow-sm`}>
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-md" style={{ backgroundColor: hexColor }}>
                         <Icon size={22} />
                       </div>
                       <p className="text-3xl font-black text-slate-900">{step.value.toLocaleString('pt-BR')}</p>
-                      <p className={`text-xs font-bold uppercase tracking-wider ${step.textColor}`}>{step.label}</p>
+                      <p className="text-xs font-bold uppercase tracking-wider" style={{ color: hexColor }}>{step.label}</p>
                       {i > 0 && (
                         <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-100">
                           Taxa: {convRate}
