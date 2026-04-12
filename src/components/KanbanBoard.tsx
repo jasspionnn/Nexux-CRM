@@ -214,26 +214,19 @@ export const KanbanBoard = ({ onNavigate }: any) => {
         <div className="px-6 py-4 bg-white border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center p-1 bg-slate-100 rounded-xl">
-              <button
+              <button 
                 onClick={() => setActiveView('kanban')}
                 className={`p-2 rounded-lg transition-all ${activeView === 'kanban' ? 'bg-[#003B4F] text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
               >
                 <LayoutGrid size={18} />
               </button>
-              <button
+              <button 
                 onClick={() => setActiveView('list')}
                 className={`p-2 rounded-lg transition-all ${activeView === 'list' ? 'bg-cyan-100 text-cyan-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
               >
                 <List size={18} />
               </button>
             </div>
-            <button
-              onClick={fetchData}
-              className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
-              title="Recarregar negociações"
-            >
-              <RotateCcw size={16} />
-            </button>
           </div>
 
           <button 
@@ -418,19 +411,18 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                     {stageLeads.map(lead => {
                       const isWon = lead.stage_id === activeFunnel?.default_won_stage_id;
                       const leadUser = users.find(u => String(u.id) === String(lead.assigned_user_id));
-                      const stageColor = stage.color || '#3b82f6';
-
+                      
                       return (
-                        <div
-                          key={lead.id}
+                        <div 
+                          key={lead.id} 
                           draggable
                           onDragStart={(e) => handleDragStart(e, lead.id)}
                           onClick={() => onNavigate('lead-detail', lead.id)}
-                          className="group p-5 rounded-2xl border transition-all cursor-pointer relative shadow-sm hover:shadow-md"
-                          style={{
-                            backgroundColor: isWon ? '#f0fdf4' : stageColor + '08',
-                            borderColor: isWon ? '#bbf7d0' : stageColor + '20',
-                          }}
+                          className={`group p-5 rounded-2xl border transition-all cursor-pointer relative ${
+                            isWon 
+                              ? 'bg-green-50/50 border-green-200 shadow-sm hover:shadow-md' 
+                              : 'bg-white border-slate-100 shadow-sm hover:shadow-md hover:border-slate-300'
+                          }`} 
                         >
                           <div className="flex items-center justify-between mb-3">
                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
@@ -527,4 +519,6 @@ const FilterDateSection = ({ title, icon, value, onChange }: any) => (
       </div>
       <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{title}</h3>
     </div>
-    <DatePicker value={value} onChange=
+    <DatePicker value={value} onChange={onChange} />
+  </div>
+);
