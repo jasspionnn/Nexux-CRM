@@ -84,4 +84,55 @@ export const MarketingDashboard = () => {
               const widthPct = 100 - (i * 20);
               const convRate = i === 0 ? '100%' : calcRate(step.value, funnelSteps[0].value);
               return (
-                <React.Fragment key
+                <React.Fragment key={step.label}>
+                  <div className="flex-1 flex flex-col items-center">
+                    <div
+                      className={`${step.bg} rounded-xl p-6 w-full flex flex-col items-center gap-3 transition-all hover:shadow-md`}
+                      style={{ maxWidth: widthPct + '%' }}
+                    >
+                      <div className={`w-12 h-12 rounded-xl ${step.color} flex items-center justify-center text-white shadow-sm`}>
+                        <Icon size={22} />
+                      </div>
+                      <p className="text-3xl font-black text-slate-900">{step.value.toLocaleString('pt-BR')}</p>
+                      <p className={`text-xs font-bold uppercase tracking-wider ${step.textColor}`}>{step.label}</p>
+                      {i > 0 && (
+                        <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-100">
+                          Taxa: {convRate}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {i < funnelSteps.length - 1 && (
+                    <div className="flex items-center pb-8">
+                      <ArrowRight size={20} className="text-slate-300" />
+                    </div>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Quick Access */}
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
+          <h3 className="text-lg font-black text-slate-900 mb-4">Acesso Rápido</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {QUICK_ACTIONS.map(action => {
+              const Icon = action.icon;
+              return (
+                <button
+                  key={action.sub}
+                  onClick={() => handleNavigate(action.sub)}
+                  className={'flex flex-col items-center gap-2 p-4 rounded-xl ' + action.color + ' transition-colors font-bold text-sm'}
+                >
+                  <Icon size={24} />
+                  {action.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
