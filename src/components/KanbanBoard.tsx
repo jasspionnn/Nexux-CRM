@@ -413,6 +413,7 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                       const leadUser = users.find(u => String(u.id) === String(lead.assigned_user_id));
                       
                       const stageColor = stage.color || '#3b82f6';
+                      console.log('[KANBAN] Stage:', stage.name, '| Color:', stageColor, '| Lead:', lead.title);
                       return (
                         <div 
                           key={lead.id} 
@@ -421,8 +422,8 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                           onClick={() => onNavigate('lead-detail', lead.id)}
                           className="group p-5 rounded-2xl border transition-all cursor-pointer relative shadow-sm hover:shadow-md"
                           style={{
-                            backgroundColor: isWon ? '#f0fdf4' : stageColor + '08',
-                            borderColor: isWon ? '#bbf7d0' : stageColor + '20',
+                            backgroundColor: isWon ? '#f0fdf4' : stageColor + '30',
+                            borderColor: isWon ? '#bbf7d0' : stageColor + '60',
                           }}
                         >
                           <div className="flex items-center justify-between mb-3">
