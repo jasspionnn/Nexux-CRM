@@ -396,11 +396,12 @@ export const KanbanBoard = ({ onNavigate }: any) => {
               };
               const rawSC = stage.color || '#3b82f6';
               const sbc = colorMap[rawSC] || rawSC;
+              const bo = stage.borderOpacity || '4d';
               return (
                 <div 
                   key={stage.id} 
                   className="w-80 flex-shrink-0 flex flex-col h-full rounded-2xl bg-slate-100/10 bg-slate-100/10 p-1"
-                  style={{ border: `2px solid ${sbc}` }}
+                  style={{ border: `2px solid ${sbc}${bo}` }}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => handleDrop(e, stage.id)}
                 >

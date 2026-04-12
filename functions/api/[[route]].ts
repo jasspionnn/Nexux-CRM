@@ -633,8 +633,8 @@ app.post('/funnels/:funnelId/stages', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
   
-  await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, colorOpacity, "order") VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(id, funnelId, body.name, body.color, body.colorOpacity || '1a', body.order || 0)
+  await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, colorOpacity, borderOpacity, "order") VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, funnelId, body.name, body.color, body.colorOpacity || '1a', body.borderOpacity || '4d', body.order || 0)
     .run();
     
   return c.json({ id, funnel_id: funnelId, name: body.name, color: body.color, order: body.order || 0 });
@@ -644,8 +644,8 @@ app.put('/stages/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
   
-  await c.env.DB.prepare('UPDATE stages SET name = ?, color = ?, colorOpacity = ? WHERE id = ?')
-    .bind(body.name, body.color, body.colorOpacity || '1a', id)
+  await c.env.DB.prepare('UPDATE stages SET name = ?, color = ?, colorOpacity = ?, borderOpacity = ? WHERE id = ?')
+    .bind(body.name, body.color, body.colorOpacity || '1a', body.borderOpacity || '4d', id)
     .run();
     
   return c.json({ success: true });

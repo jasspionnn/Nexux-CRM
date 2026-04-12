@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS stages (
     name TEXT NOT NULL,
     color TEXT,
     colorOpacity TEXT DEFAULT '1a',
+    borderOpacity TEXT DEFAULT '4d',
     "order" INTEGER NOT NULL,
     FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE
 );

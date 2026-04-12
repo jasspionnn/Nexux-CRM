@@ -424,6 +424,21 @@ export const Settings = () => {
                         <option value="52">32%</option>
                         <option value="66">40%</option>
                       </select>
+                      <span className="text-[9px] text-slate-400">Borda</span>
+                      <select
+                        value={stage.borderOpacity || '4d'}
+                        onChange={(e) => handleUpdateStage(activeFunnel.id, stage.id, { borderOpacity: e.target.value })}
+                        className="ml-1 text-[10px] font-bold bg-white border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      >
+                        <option value="1a">10%</option>
+                        <option value="29">16%</option>
+                        <option value="3d">24%</option>
+                        <option value="4d" selected>30%</option>
+                        <option value="66">40%</option>
+                        <option value="80">50%</option>
+                        <option value="99">62%</option>
+                        <option value="cc">80%</option>
+                      </select>
                     </div>
 
                     <div className="flex-1 ml-4">
