@@ -69,48 +69,4 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
         </nav>
       ) : (
         <nav className="flex h-full flex-1">
-          {marketingItems.map(item => (
-            <button
-              key={item.sub}
-              onClick={() => handleMarketingItem(item.sub)}
-              className={`flex items-center gap-2 px-4 h-full border-b-2 transition-colors ${activeSub === item.sub ? 'border-purple-600 text-purple-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium'}`}
-            >
-              <item.icon size={16} />
-              <span>{item.label}</span>
-            </button>
-          ))}
-          <button
-            onClick={handleSales}
-            className="flex items-center gap-2 px-5 h-full border-b-2 border-transparent text-slate-900 hover:text-slate-700 font-semibold transition-colors"
-          >
-            <BarChart3 size={18} />
-            <span>Vendas</span>
-            <ChevronRight size={14} />
-          </button>
-        </nav>
-      )}
-
-      {/* Right */}
-      <div className="flex items-center gap-5">
-        <button className="text-slate-400 hover:text-slate-600"><Search size={20} /></button>
-        <button className="text-slate-400 hover:text-slate-600"><Bell size={20} /></button>
-        <button onClick={() => onChangeView('settings')} className={`text-slate-400 hover:text-slate-600 ${currentView === 'settings' ? 'text-slate-900' : ''}`}><SettingsIcon size={20} /></button>
-
-        <div className="h-8 w-px bg-gray-200 mx-1"></div>
-
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <div className="text-sm font-bold text-slate-900 leading-none">{currentUser?.name || 'User'}</div>
-            <div className="text-[10px] font-bold text-slate-400 tracking-wider mt-1">{currentUser?.role === 'NEXUS_ADMIN' ? 'ADMIN' : 'CONTA PADRÃO'}</div>
-          </div>
-          <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white font-bold text-sm">
-            {currentUser?.name ? currentUser.name.substring(0, 2).toUpperCase() : 'US'}
-          </div>
-          <button onClick={logout} className="ml-2 text-slate-400 hover:text-red-600 transition-colors" title="Sair">
-            <LogOut size={20} />
-          </button>
-        </div>
-      </div>
-    </header>
-  );
-};
+          {marketingIte
