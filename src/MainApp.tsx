@@ -17,12 +17,17 @@ import { Loader2 } from 'lucide-react';
 
 const AppContent = () => {
   const { currentUser, isLoading } = useCRM();
-  
+
   const [currentView, setCurrentView] = useState(() => {
     const hash = window.location.hash.replace(/^#\/?/, '');
     return hash ? hash.split('/')[0] : 'kanban';
   });
-  
+
+  const [appMode, setAppMode] = useState<'crm' | 'marketing'>(() => {
+    const hash = window.location.hash;
+    return hash.includes('marketing') ? 'marketing' : 'crm';
+  });
+
   const [viewData, setViewData] = useState<any>(() => {
     const hash = window.location.hash.replace(/^#\/?/, '');
     const parts = hash.split('/');
@@ -36,6 +41,8 @@ const AppContent = () => {
         const parts = hash.split('/');
         setCurrentView(parts[0]);
         setViewData(parts.length > 1 ? parts[1] : null);
+        if (hash.startsWith('marketing')) setAppMode('marketing');
+        else if (!hash.startsWith('admin')) setAppMode('crm');
       } else {
         if (currentUser?.role === UserRole.NEXUS_ADMIN) {
           setCurrentView('admin-accounts');
@@ -98,7 +105,7 @@ const AppContent = () => {
 
   return (
     <div className={`flex flex-col h-screen bg-slate-50 overflow-hidden`}>
-      {currentUser.role !== UserRole.NEXUS_ADMIN && <Navbar currentView={currentView} onChangeView={(view: string) => handleNavigate(view)} />}
+      {currentUser.role !== UserRole.NEXUS_ADMIN && <Navbar currentView={currentView} onChangeView={handleNavigate} appMode={appMode} setAppMode={setAppMode} />}
       <main className="flex-1 overflow-y-auto relative">
         {renderView()}
       </main>
