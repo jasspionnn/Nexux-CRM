@@ -6,8 +6,8 @@ import {
 } from 'lucide-react';
 
 const COLORS = [
-  'bg-blue-300', 'bg-green-300', 'bg-yellow-300', 'bg-red-300',
-  'bg-purple-300', 'bg-pink-300', 'bg-indigo-300', 'bg-slate-300',
+  '#3b82f6', '#22c55e', '#eab308', '#ef4444',
+  '#a855f7', '#ec4899', '#6366f1', '#64748b',
 ];
 
 export const Settings = () => {
@@ -406,9 +406,10 @@ export const Settings = () => {
                         <button
                           key={index}
                           onClick={() => handleUpdateStage(activeFunnel.id, stage.id, { color })}
-                          className={`w-6 h-6 rounded-full ${color} ${
+                          className={`w-6 h-6 rounded-full transition-all ${
                             stage.color === color ? 'ring-2 ring-offset-2 ring-slate-400' : 'opacity-50 hover:opacity-100'
-                          } transition-all`}
+                          }`}
+                          style={{ backgroundColor: color }}
                         />
                       ))}
                     </div>

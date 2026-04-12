@@ -412,7 +412,14 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                       const isWon = lead.stage_id === activeFunnel?.default_won_stage_id;
                       const leadUser = users.find(u => String(u.id) === String(lead.assigned_user_id));
                       
-                      const stageColor = stage.color || '#3b82f6';
+                      const colorMap: Record<string, string> = {
+                        'bg-blue-300': '#93c5fd', 'bg-green-300': '#86efac',
+                        'bg-yellow-300': '#fde047', 'bg-red-300': '#fca5a5',
+                        'bg-purple-300': '#d8b4fe', 'bg-pink-300': '#f9a8d4',
+                        'bg-indigo-300': '#a5b4fc', 'bg-slate-300': '#cbd5e1',
+                      };
+                      const rawColor = stage.color || '#3b82f6';
+                      const stageColor = colorMap[rawColor] || rawColor;
                       return (
                         <div 
                           key={lead.id} 
