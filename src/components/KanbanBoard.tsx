@@ -388,10 +388,19 @@ export const KanbanBoard = ({ onNavigate }: any) => {
               const stageLeads = filteredLeads.filter(l => l.stage_id === stage.id);
               const totalValue = stageLeads.reduce((sum, l) => sum + (Number(l.value) || 0), 0);
 
+              const colorMap: Record<string, string> = {
+                'bg-blue-300': '#93c5fd', 'bg-green-300': '#86efac',
+                'bg-yellow-300': '#fde047', 'bg-red-300': '#fca5a5',
+                'bg-purple-300': '#d8b4fe', 'bg-pink-300': '#f9a8d4',
+                'bg-indigo-300': '#a5b4fc', 'bg-slate-300': '#cbd5e1',
+              };
+              const rawSC = stage.color || '#3b82f6';
+              const sbc = colorMap[rawSC] || rawSC;
               return (
                 <div 
                   key={stage.id} 
-                  className="w-80 flex-shrink-0 flex flex-col h-full rounded-2xl bg-slate-100/10 border border-slate-200/40 p-1"
+                  className="w-80 flex-shrink-0 flex flex-col h-full rounded-2xl bg-slate-100/10 bg-slate-100/10 p-1"
+                  style={{ border: `2px solid ${sbc}` }}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => handleDrop(e, stage.id)}
                 >
