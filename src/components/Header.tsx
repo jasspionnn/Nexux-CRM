@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { LayoutGrid, BarChart2, Inbox, CheckSquare, Sparkles, Search, Bell, Settings as SettingsIcon, LogOut, Megaphone, Users, Target, Bot, Eye, Link, Mail, BarChart3, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { LayoutGrid, BarChart2, Inbox, CheckSquare, Sparkles, Search, Bell, Settings as SettingsIcon, LogOut, Megaphone, Users, Target, Bot, Eye, Link, Mail, BarChart3, ChevronRight, ChevronDown } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
-const MKT_CATEGORIES = {
+const MKT_CATEGORIES: Record<string, { sub: string; label: string; icon: React.ElementType }[]> = {
   atracao: [
     { sub: 'tracking', label: 'Tracking', icon: Eye },
     { sub: 'bio-links', label: 'Link na Bio', icon: Link },
@@ -21,6 +21,8 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
   const { currentUser, logout } = useCRM();
   const [activeSub, setActiveSub] = useState('');
   const [mktCategory, setMktCategory] = useState<string | null>(null);
+  const [openCat, setOpenCat] = useState<string | null>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const h = () => {
@@ -31,13 +33,23 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
         const found = Object.entries(MKT_CATEGORIES).find(([, items]) =>
           items.some(i => i.sub === sub)
         );
-        setMktCategory(found ? found[0] : sub === '' ? 'atracao' : null);
+        setMktCategory(found ? found[0] : null);
       }
     };
     h();
     window.addEventListener('hashchange', h);
     return () => window.removeEventListener('hashchange', h);
   }, [appMode]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
+        setOpenCat(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const crmItems = [
     { id: 'dashboard', label: 'Início', icon: LayoutGrid },
@@ -56,28 +68,29 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
   const handleSales = () => {
     setAppMode('crm');
     setMktCategory(null);
+    setOpenCat(null);
     window.location.hash = '#/kanban';
   };
 
-  const handleCategory = (cat: string) => {
-    setMktCategory(cat);
-    const items = MKT_CATEGORIES[cat as keyof typeof MKT_CATEGORIES];
-    if (items && items.length > 0) {
+  const handleCatClick = (cat: string) => {
+    setOpenCat(openCat === cat ? null : cat);
+    const items = MKT_CATEGORIES[cat];
+    if (items && items.length > 0 && mktCategory !== cat) {
+      setMktCategory(cat);
       window.location.hash = '#/marketing/' + items[0].sub;
     }
+  };
+
+  const handleSub = (sub: string) => {
+    window.location.hash = '#/marketing/' + sub;
+    setOpenCat(null);
   };
 
   const handleDash = () => {
     window.location.hash = '#/marketing';
   };
 
-  const handleSub = (sub: string) => {
-    window.location.hash = '#/marketing/' + sub;
-  };
-
-  const isActiveCat = (cat: string) => {
-    return mktCategory === cat;
-  };
+  const catLabels: Record<string, string> = { atracao: 'Atração', relacionamento: 'Relacionamento', conversao: 'Conversão' };
 
   return (
     <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0">
@@ -103,7 +116,7 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
           </button>
         </nav>
       ) : (
-        <nav className="flex h-full flex-1 items-center">
+        <nav className="flex h-full flex-1 items-center" ref={dropRef}>
           <button
             onClick={handleDash}
             className={'flex items-center gap-2 px-5 h-full border-b-2 transition-colors ' + (activeSub === '' ? 'border-purple-600 text-purple-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
@@ -112,32 +125,39 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
             <span>Início</span>
           </button>
           {Object.entries(MKT_CATEGORIES).map(([key, items]) => {
-            const catLabels: Record<string, string> = { atracao: 'Atração', relacionamento: 'Relacionamento', conversao: 'Conversão' };
-            const isCatActive = isActiveCat(key);
             const Icon = items[0].icon;
+            const isActive = mktCategory === key;
+            const isOpen = openCat === key;
+            const hasActiveSub = items.some(i => i.sub === activeSub);
             return (
-              <React.Fragment key={key}>
+              <div key={key} className="relative h-full">
                 <button
-                  onClick={() => handleCategory(key)}
-                  className={'flex items-center gap-2 px-4 h-full border-b-2 transition-colors ' + (isCatActive ? 'border-purple-600 text-purple-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
+                  onClick={() => handleCatClick(key)}
+                  className={'flex items-center gap-2 px-5 h-full border-b-2 transition-colors ' + (isActive && hasActiveSub ? 'border-purple-600 text-purple-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
                 >
                   <Icon size={16} />
                   <span>{catLabels[key]}</span>
+                  <ChevronDown size={14} className={'transition-transform ' + (isOpen ? 'rotate-180' : '')} />
                 </button>
-                {isCatActive && items.map(item => {
-                  const I = item.icon;
-                  return (
-                    <button
-                      key={item.sub}
-                      onClick={() => handleSub(item.sub)}
-                      className={'flex items-center gap-2 px-4 h-full border-b-2 transition-colors ' + (activeSub === item.sub ? 'border-purple-600 text-purple-600 font-semibold' : 'border-transparent text-slate-400 hover:text-slate-600 font-medium')}
-                    >
-                      <I size={14} />
-                      <span className="text-sm">{item.label}</span>
-                    </button>
-                  );
-                })}
-              </React.Fragment>
+                {isOpen && (
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50 min-w-[200px]">
+                    {items.map(item => {
+                      const I = item.icon;
+                      const isSubActive = activeSub === item.sub;
+                      return (
+                        <button
+                          key={item.sub}
+                          onClick={() => handleSub(item.sub)}
+                          className={'w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ' + (isSubActive ? 'bg-purple-50 text-purple-700 font-bold' : 'text-slate-600 hover:bg-slate-50')}
+                        >
+                          <I size={16} />
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
           <div className="w-px h-6 bg-slate-200 mx-2" />

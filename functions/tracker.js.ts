@@ -102,23 +102,4 @@ export const onRequestGet = async () => {
     'var el=e.target;',
     'while(el&&el.tagName!=="A"&&el.tagName!=="BUTTON"){el=el.parentElement;}',
     'if(!el)return;',
-    'var label=el.getAttribute("data-track")||el.textContent.trim().substring(0,50)||el.href||el.id||"";',
-    'if(label){',
-    'T._s("click",{en:"element_click",d:{label:label,tag:el.tagName.toLowerCase()},el_label:label,el_tag:el.tagName.toLowerCase(),url:w.location.href});',
-    '}',
-    '},true);',
-    '},',
-    '_h:function(s){var h=0;for(var i=0;i<(s||"").length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return Math.abs(h).toString(36).substr(0,6);}',
-    '};',
-    'w.NexuxTracker=T;',
-    '})(window);'
-  ].join('');
-
-  return new Response(script, {
-    headers: {
-      'Content-Type': 'application/javascript; charset=utf-8',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Access-Control-Allow-Origin': '*',
-    },
-  });
-};
+    'var label=el.getAttribute("data-track")||el.textContent.trim(
