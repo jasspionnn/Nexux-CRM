@@ -1495,35 +1495,6 @@ app.post('/tracking/events', async (c) => {
 
     console.log('[TRACKING] Event saved:', eventId);
 
-    // Save to lead_timeline if visitor_id is mapped to a lead (works for ANY event type)
-    try {
-      if (visitor_id) {
-        const { results: mappedLeads } = await c.env.DB.prepare(
-          'SELECT lead_id FROM visitor_leads WHERE visitor_id = ? AND account_id = ?'
-        ).bind(visitor_id, settings.account_id).all();
-
-        if (mappedLeads && mappedLeads.length > 0) {
-          for (const ml of mappedLeads as any[]) {
-            const tlId = crypto.randomUUID();
-            await c.env.DB.prepare(
-              'INSERT INTO lead_timeline (id, account_id, lead_id, visitor_id, event_type, event_data, url, referrer) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-            ).bind(
-              tlId,
-              settings.account_id,
-              ml.lead_id,
-              visitor_id,
-              event_type,
-              formDataStr || (body.data ? JSON.stringify(body.data) : null) || null,
-              url || null,
-              referrer || null
-            ).run();
-          }
-        }
-      }
-    } catch (tlErr: any) {
-      console.error('[TRACKING] Timeline save error:', tlErr.message);
-    }
-
     // Handle pageview: if visitor_id is mapped to a lead, save in lead_visits and trigger automations
     try {
       if (event_type === 'pageview' && visitor_id) {
@@ -1816,59 +1787,6 @@ app.get('/migrate-tracking-forms', async (c) => {
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });
 
-// Debug endpoint — see all tracking form data
-app.get('/debug-segment', async (c) => {
-  try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
-    const formId = c.req.query('form_id') || '';
-
-    const result: any = { account_id: accountId, form_id: formId };
-
-    // 1. All tracking forms
-    const { results: forms } = await c.env.DB.prepare(
-      'SELECT * FROM tracking_forms WHERE account_id = ?'
-    ).bind(accountId).all();
-    result.forms = forms;
-
-    // 2. If formId provided, find its name
-    if (formId) {
-      const formRes: any = await c.env.DB.prepare(
-        'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
-      ).bind(formId, accountId).first();
-      result.form_name = formRes?.name || null;
-
-      // 3. All tracking_events for this form
-      const { results: events } = await c.env.DB.prepare(
-        "SELECT id, visitor_id, form_data FROM tracking_events WHERE account_id = ? AND event_type = 'form' AND form_data LIKE ?"
-      ).bind(accountId, `%${formRes?.name || ''}%`).all();
-      result.tracking_events_count = (events as any[])?.length || 0;
-      result.tracking_events = (events as any[] || []).map((e: any) => {
-        try {
-          const fd = typeof e.form_data === 'string' ? JSON.parse(e.form_data) : e.form_data;
-          return { id: e.id, visitor_id: e.visitor_id, parsed_fields: fd?.fields || {} };
-        } catch(e) {
-          return { id: e.id, visitor_id: e.visitor_id, parse_error: true };
-        }
-      });
-
-      // 4. All leads
-      const { results: leads } = await c.env.DB.prepare(
-        'SELECT id, contact_email, custom_values FROM leads WHERE account_id = ?'
-      ).bind(accountId).all();
-      result.leads = leads;
-      result.leads_count = (leads as any[])?.length || 0;
-
-      // 5. Marketing leads
-      const { results: mleads } = await c.env.DB.prepare(
-        'SELECT contact_email, form_name FROM marketing_leads WHERE account_id = ? AND form_name = ?'
-      ).bind(accountId, formRes?.name || '').all();
-      result.marketing_leads = mleads;
-    }
-
-    return c.json(result);
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
-});
-
 // ==================== MARKETING LEADS ENDPOINTS ====================
 
 // ==================== LEAD VISITS ENDPOINTS ====================
@@ -1881,19 +1799,6 @@ app.get('/lead-visits', async (c) => {
       'SELECT * FROM lead_visits WHERE lead_id = ? ORDER BY visited_at DESC LIMIT 500'
     ).bind(leadId).all();
     return c.json(results);
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
-});
-
-// Lead timeline - full journey
-app.get('/lead-timeline', async (c) => {
-  try {
-    const leadId = c.req.query('lead_id');
-    if (!leadId) return c.json({ error: 'lead_id is required' }, 400);
-
-    const { results } = await c.env.DB.prepare(
-      'SELECT * FROM lead_timeline WHERE lead_id = ? ORDER BY created_at DESC LIMIT 1000'
-    ).bind(leadId).all();
-    return c.json((results as any[]).map(r => ({...r, event_data: r.event_data ? JSON.parse(r.event_data) : null})));
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });
 
@@ -2309,196 +2214,30 @@ app.get('/segments', async (c) => {
       let leadCount = 0;
 
       if (rules.length > 0) {
-        // Separate regular from special rules
-        const regularRules = rules.filter((r: any) => !['filled_form', 'visited_page'].includes(r.field));
-        const filledFormRules = rules.filter((r: any) => r.field === 'filled_form');
-        const visitedPageRules = rules.filter((r: any) => r.field === 'visited_page');
-        const hasSpecialRules = filledFormRules.length > 0 || visitedPageRules.length > 0;
+        // Build WHERE clause from rules
+        let whereClause = 'account_id = ?';
+        const params: any[] = [accountId];
 
-        try {
-          if (hasSpecialRules) {
-            const emails: string[] = [];
-
-            for (const rule of filledFormRules) {
-              if (rule.value) {
-                const formRes: any = await c.env.DB.prepare(
-                  'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
-                ).bind(rule.value, accountId).first();
-
-                if (formRes) {
-                  const formName = formRes.name as string;
-
-                  // tracking_events where fid matches form_name
-                  const { results: events } = await c.env.DB.prepare(
-                    "SELECT form_data FROM tracking_events WHERE account_id = ? AND event_type = 'form'"
-                  ).bind(accountId).all();
-                  if (events) {
-                    for (const ev of events as any[]) {
-                      try {
-                        const fd = typeof ev.form_data === 'string' ? JSON.parse(ev.form_data) : ev.form_data;
-                        if (fd && fd.fid === formName && fd.fields) {
-                          for (const key of Object.keys(fd.fields)) {
-                            const v = String(fd.fields[key]).toLowerCase();
-                            if (v.includes('@') && v.includes('.') && !emails.includes(fd.fields[key])) {
-                              emails.push(fd.fields[key]);
-                            }
-                          }
-                        }
-                      } catch(e) { /* skip */ }
-                    }
-                  }
-
-                  // custom_values leads
-                  const { results: cvLeads } = await c.env.DB.prepare(
-                    'SELECT contact_email FROM leads WHERE account_id = ? AND custom_values LIKE ?'
-                  ).bind(accountId, `%${formName}%`).all();
-                  if (cvLeads) {
-                    for (const row of cvLeads as any[]) {
-                      if (row.contact_email && !emails.includes(row.contact_email)) emails.push(row.contact_email);
-                    }
-                  }
-                }
-              }
-            }
-
-            let whereClause = 'account_id = ?';
-            const params: any[] = [accountId];
-
-            if (emails.length > 0) {
-              const ph = emails.map(() => '?').join(',');
-              whereClause += ` AND LOWER(contact_email) IN (${ph})`;
-              params.push(...emails.map(e => e.toLowerCase()));
-            } else {
-              whereClause += ` AND id = ''`;
-            }
-
-            for (const rule of visitedPageRules) {
-              if (rule.value) {
-                // Find visitor_ids who visited this URL
-                const pageVisitorIds: string[] = [];
-                const { results: pageviews } = await c.env.DB.prepare(
-                  "SELECT DISTINCT visitor_id FROM tracking_events WHERE account_id = ? AND event_type = 'pageview' AND url LIKE ?"
-                ).bind(accountId, `%${rule.value}%`).all();
-                if (pageviews) {
-                  for (const pv of pageviews as any[]) {
-                    if (pv.visitor_id && !pageVisitorIds.includes(pv.visitor_id)) pageVisitorIds.push(pv.visitor_id);
-                  }
-                }
-                // Find form submission emails from those visitor_ids
-                if (pageVisitorIds.length > 0) {
-                  const ph = pageVisitorIds.map(() => '?').join(',');
-                  const { results: formSubmissions } = await c.env.DB.prepare(
-                    `SELECT form_data FROM tracking_events WHERE account_id = ? AND event_type = 'form' AND visitor_id IN (${ph})`
-                  ).bind(accountId, ...pageVisitorIds).all();
-                  if (formSubmissions) {
-                    for (const fs of formSubmissions as any[]) {
-                      try {
-                        const fd = typeof fs.form_data === 'string' ? JSON.parse(fs.form_data) : fs.form_data;
-                        if (fd && fd.fields) {
-                          for (const key of Object.keys(fd.fields)) {
-                            const v = String(fd.fields[key]).toLowerCase();
-                            if (v.includes('@') && v.includes('.') && !emails.includes(fd.fields[key])) emails.push(fd.fields[key]);
-                          }
-                        }
-                      } catch(e) { /* skip */ }
-                    }
-                  }
-                }
-                // Also from lead_visits
-                const { results: visitLeads } = await c.env.DB.prepare(
-                  'SELECT DISTINCT lead_id FROM lead_visits WHERE account_id = ? AND url LIKE ?'
-                ).bind(accountId, `%${rule.value}%`).all();
-                if (visitLeads) {
-                  for (const vl of visitLeads as any[]) {
-                    const { results: le } = await c.env.DB.prepare(
-                      'SELECT contact_email FROM leads WHERE account_id = ? AND id = ?'
-                    ).bind(accountId, vl.lead_id).all();
-                    if (le && (le as any[]).length > 0 && (le as any[])[0].contact_email) {
-                      const ce = (le as any[])[0].contact_email;
-                      if (!emails.includes(ce)) emails.push(ce);
-                    }
-                  }
-                }
-              } else {
-                const pageVisitorIds: string[] = [];
-                const { results: pageviews } = await c.env.DB.prepare(
-                  "SELECT DISTINCT visitor_id FROM tracking_events WHERE account_id = ? AND event_type = 'pageview'"
-                ).bind(accountId).all();
-                if (pageviews) {
-                  for (const pv of pageviews as any[]) {
-                    if (pv.visitor_id && !pageVisitorIds.includes(pv.visitor_id)) pageVisitorIds.push(pv.visitor_id);
-                  }
-                }
-                if (pageVisitorIds.length > 0) {
-                  const ph = pageVisitorIds.map(() => '?').join(',');
-                  const { results: formSubmissions } = await c.env.DB.prepare(
-                    `SELECT form_data FROM tracking_events WHERE account_id = ? AND event_type = 'form' AND visitor_id IN (${ph})`
-                  ).bind(accountId, ...pageVisitorIds).all();
-                  if (formSubmissions) {
-                    for (const fs of formSubmissions as any[]) {
-                      try {
-                        const fd = typeof fs.form_data === 'string' ? JSON.parse(fs.form_data) : fs.form_data;
-                        if (fd && fd.fields) {
-                          for (const key of Object.keys(fd.fields)) {
-                            const v = String(fd.fields[key]).toLowerCase();
-                            if (v.includes('@') && v.includes('.') && !emails.includes(fd.fields[key])) emails.push(fd.fields[key]);
-                          }
-                        }
-                      } catch(e) { /* skip */ }
-                    }
-                  }
-                }
-              }
-            }
-
-            regularRules.forEach((rule: any) => {
-              const { field, operator, value } = rule;
-              switch (operator) {
-                case 'equals': whereClause += ` AND ${field} = ?`; params.push(value); break;
-                case 'not_equals': whereClause += ` AND ${field} != ?`; params.push(value); break;
-                case 'contains': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}%`); break;
-                case 'not_contains': whereClause += ` AND ${field} NOT LIKE ?`; params.push(`%${value}%`); break;
-                case 'greater_than': whereClause += ` AND ${field} > ?`; params.push(parseFloat(value)); break;
-                case 'less_than': whereClause += ` AND ${field} < ?`; params.push(parseFloat(value)); break;
-                case 'starts_with': whereClause += ` AND ${field} LIKE ?`; params.push(`${value}%`); break;
-                case 'ends_with': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}`); break;
-                case 'is_empty': whereClause += ` AND (${field} IS NULL OR ${field} = '')`; break;
-                case 'is_not_empty': whereClause += ` AND ${field} IS NOT NULL AND ${field} != ''`; break;
-              }
-            });
-
-            const cr: any = await c.env.DB.prepare(
-              `SELECT COUNT(*) as cnt FROM leads WHERE ${whereClause}`
-            ).bind(accountId, ...params).first();
-            leadCount = cr?.cnt || 0;
-          } else {
-            // Simple query - no special rules
-            let whereClause = 'account_id = ?';
-            const params: any[] = [accountId];
-            for (const rule of rules) {
-              const { field, operator, value } = rule;
-              switch (operator) {
-                case 'equals': whereClause += ` AND ${field} = ?`; params.push(value); break;
-                case 'not_equals': whereClause += ` AND ${field} != ?`; params.push(value); break;
-                case 'contains': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}%`); break;
-                case 'not_contains': whereClause += ` AND ${field} NOT LIKE ?`; params.push(`%${value}%`); break;
-                case 'greater_than': whereClause += ` AND ${field} > ?`; params.push(parseFloat(value)); break;
-                case 'less_than': whereClause += ` AND ${field} < ?`; params.push(parseFloat(value)); break;
-                case 'starts_with': whereClause += ` AND ${field} LIKE ?`; params.push(`${value}%`); break;
-                case 'ends_with': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}`); break;
-                case 'is_empty': whereClause += ` AND (${field} IS NULL OR ${field} = '')`; break;
-                case 'is_not_empty': whereClause += ` AND ${field} IS NOT NULL AND ${field} != ''`; break;
-              }
-            }
-            const cr: any = await c.env.DB.prepare(
-              `SELECT COUNT(*) as cnt FROM leads WHERE ${whereClause}`
-            ).bind(...params).first();
-            leadCount = cr?.cnt || 0;
+        for (const rule of rules) {
+          const { field, operator, value } = rule;
+          switch (operator) {
+            case 'equals': whereClause += ` AND ${field} = ?`; params.push(value); break;
+            case 'not_equals': whereClause += ` AND ${field} != ?`; params.push(value); break;
+            case 'contains': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}%`); break;
+            case 'not_contains': whereClause += ` AND ${field} NOT LIKE ?`; params.push(`%${value}%`); break;
+            case 'greater_than': whereClause += ` AND ${field} > ?`; params.push(parseFloat(value)); break;
+            case 'less_than': whereClause += ` AND ${field} < ?`; params.push(parseFloat(value)); break;
+            case 'starts_with': whereClause += ` AND ${field} LIKE ?`; params.push(`${value}%`); break;
+            case 'ends_with': whereClause += ` AND ${field} LIKE ?`; params.push(`%${value}`); break;
+            case 'is_empty': whereClause += ` AND (${field} IS NULL OR ${field} = '')`; break;
+            case 'is_not_empty': whereClause += ` AND ${field} IS NOT NULL AND ${field} != ''`; break;
           }
-        } catch (countErr: any) {
-          console.error('[SEGMENTS] Count error:', countErr.message);
-          leadCount = 0;
         }
+
+        const countResult: any = await c.env.DB.prepare(
+          `SELECT COUNT(*) as cnt FROM leads WHERE ${whereClause}`
+        ).bind(...params).first();
+        leadCount = countResult?.cnt || 0;
 
         // Update stored lead_count
         await c.env.DB.prepare(
@@ -2578,91 +2317,365 @@ app.post('/segments/preview', async (c) => {
       return c.json({ leads: [] });
     }
 
-    // Separate regular rules from special rules
-    const regularRules = rules.filter((r: any) => !['filled_form', 'visited_page'].includes(r.field));
-    const filledFormRules = rules.filter((r: any) => r.field === 'filled_form');
-    const visitedPageRules = rules.filter((r: any) => r.field === 'visited_page');
+    // Build SQL query from rules
+    let whereClause = 'account_id = ?';
+    const params: any[] = [account_id];
 
-    // Check if we have special rules that require JOINs
-    const hasSpecialRules = filledFormRules.length > 0 || visitedPageRules.length > 0;
+    rules.forEach((rule: any) => {
+      const { field, operator, value } = rule;
 
-    if (hasSpecialRules) {
-      // Build WHERE clause
-      let whereClause = 'account_id = ?';
-      const params: any[] = [account_id];
+      switch (operator) {
+        case 'equals':
+          whereClause += ` AND ${field} = ?`;
+          params.push(value);
+          break;
+        case 'not_equals':
+          whereClause += ` AND ${field} != ?`;
+          params.push(value);
+          break;
+        case 'contains':
+          whereClause += ` AND ${field} LIKE ?`;
+          params.push(`%${value}%`);
+          break;
+        case 'not_contains':
+          whereClause += ` AND ${field} NOT LIKE ?`;
+          params.push(`%${value}%`);
+          break;
+        case 'greater_than':
+          whereClause += ` AND ${field} > ?`;
+          params.push(parseFloat(value));
+          break;
+        case 'less_than':
+          whereClause += ` AND ${field} < ?`;
+          params.push(parseFloat(value));
+          break;
+        case 'starts_with':
+          whereClause += ` AND ${field} LIKE ?`;
+          params.push(`${value}%`);
+          break;
+        case 'ends_with':
+          whereClause += ` AND ${field} LIKE ?`;
+          params.push(`%${value}`);
+          break;
+        case 'is_empty':
+          whereClause += ` AND (${field} IS NULL OR ${field} = '')`;
+          break;
+        case 'is_not_empty':
+          whereClause += ` AND ${field} IS NOT NULL AND ${field} != ''`;
+          break;
+      }
+    });
 
-      // Handle filled_form: find leads by extracting emails from tracking_events for this form_id
-      for (const rule of filledFormRules) {
-        if (rule.value) {
-          const emails: string[] = [];
+    const { results } = await c.env.DB.prepare(
+      `SELECT * FROM leads WHERE ${whereClause} ORDER BY created_at DESC LIMIT 500`
+    ).bind(...params).all();
 
-          // Get form name from tracking_forms
-          const formRes: any = await c.env.DB.prepare(
-            'SELECT name FROM tracking_forms WHERE id = ? AND account_id = ?'
-          ).bind(rule.value, account_id).first();
+    return c.json({ leads: results, count: results.length });
+  } catch (error: any) {
+    console.error('Segment preview error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
 
-          if (formRes) {
-            const formName = formRes.name as string;
+// ==================== AUTOMATION ENDPOINTS ====================
 
-            // Source 1: tracking_events where fid (form name from tracker) matches form_name
-            const { results: events } = await c.env.DB.prepare(
-              "SELECT form_data FROM tracking_events WHERE account_id = ? AND event_type = 'form'"
-            ).bind(account_id).all();
+// Get all automations
+app.get('/automations', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+    const { results } = await c.env.DB.prepare(
+      'SELECT * FROM automations WHERE account_id = ? ORDER BY created_at DESC'
+    ).bind(accountId).all();
 
-            if (events) {
-              for (const ev of events as any[]) {
-                try {
-                  const fd = typeof ev.form_data === 'string' ? JSON.parse(ev.form_data) : ev.form_data;
-                  if (fd && fd.fid === formName && fd.fields) {
-                    for (const key of Object.keys(fd.fields)) {
-                      const v = String(fd.fields[key]).toLowerCase();
-                      if (v.includes('@') && v.includes('.') && !emails.includes(fd.fields[key])) {
-                        emails.push(fd.fields[key]);
-                      }
-                    }
-                  }
-                } catch(e) { /* skip */ }
-              }
-            }
+    const automations = results.map((a: any) => ({
+      ...a,
+      nodes: a.nodes ? JSON.parse(a.nodes) : [],
+      connections: a.connections ? JSON.parse(a.connections) : [],
+      trigger_config: a.trigger_config ? JSON.parse(a.trigger_config) : {}
+    }));
 
-            // Source 2: leads with custom_values containing form_name
-            const { results: cvLeads } = await c.env.DB.prepare(
-              'SELECT contact_email FROM leads WHERE account_id = ? AND custom_values LIKE ?'
-            ).bind(account_id, `%${formName}%`).all();
-            if (cvLeads) {
-              for (const row of cvLeads as any[]) {
-                if (row.contact_email && !emails.includes(row.contact_email)) emails.push(row.contact_email);
-              }
-            }
-          }
+    return c.json(automations);
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
 
-          if (emails.length > 0) {
-            const placeholders = emails.map(() => '?').join(',');
-            whereClause += ` AND LOWER(contact_email) IN (${placeholders})`;
-            params.push(...emails.map(e => e.toLowerCase()));
-          } else {
-            whereClause += ` AND id = ''`;
-          }
-        } else {
-          whereClause += ` AND custom_values LIKE ?`;
-          params.push(`%tracking_form%`);
-        }
+// Create automation
+app.post('/automations', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { account_id = 'acc_demo', name, description, is_active, trigger_type, trigger_config, nodes, connections } = body;
+
+    if (!name) return c.json({ error: 'name is required' }, 400);
+
+    const id = crypto.randomUUID();
+
+    await c.env.DB.prepare(
+      'INSERT INTO automations (id, account_id, name, description, is_active, trigger_type, trigger_config, nodes, connections) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      id, account_id, name, description || null, is_active ?? 1, trigger_type || '',
+      JSON.stringify(trigger_config || {}),
+      JSON.stringify(nodes || []),
+      JSON.stringify(connections || [])
+    ).run();
+
+    return c.json({ id, name, description, is_active: is_active ?? 1, trigger_type: trigger_type || '', trigger_config: trigger_config || {}, nodes: nodes || [], connections: connections || [] });
+  } catch (error: any) {
+    console.error('Create automation error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Update automation
+app.put('/automations/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const { name, description, is_active, trigger_type, trigger_config, nodes, connections } = body;
+
+    await c.env.DB.prepare(
+      'UPDATE automations SET name = ?, description = ?, is_active = ?, trigger_type = ?, trigger_config = ?, nodes = ?, connections = ?, updated_at = datetime(\'now\') WHERE id = ?'
+    ).bind(
+      name, description || null, is_active ?? 1, trigger_type || '',
+      JSON.stringify(trigger_config || {}),
+      JSON.stringify(nodes || []),
+      JSON.stringify(connections || []),
+      id
+    ).run();
+
+    return c.json({ success: true, id });
+  } catch (error: any) {
+    console.error('Update automation error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Delete automation
+app.delete('/automations/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM automations WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Execute automation manually (for testing)
+app.post('/automations/:id/execute', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const { lead_id } = body;
+
+    const automation: any = await c.env.DB.prepare(
+      'SELECT * FROM automations WHERE id = ?'
+    ).bind(id).first();
+
+    if (!automation) return c.json({ error: 'Automation not found' }, 404);
+    if (automation.is_active === 0) return c.json({ error: 'Automation is paused' }, 400);
+
+    const nodes = automation.nodes ? JSON.parse(automation.nodes) : [];
+    const connections = automation.connections ? JSON.parse(automation.connections) : [];
+
+    // Simple linear execution
+    const triggerNode = nodes.find((n: any) => n.type === 'trigger');
+    if (!triggerNode) return c.json({ error: 'No trigger node found' }, 400);
+
+    const executionId = crypto.randomUUID();
+    await c.env.DB.prepare(
+      'INSERT INTO automation_executions (id, automation_id, lead_id, status) VALUES (?, ?, ?, \'running\')'
+    ).bind(executionId, id, lead_id || null).run();
+
+    // Follow connections and execute actions
+    let currentId = triggerNode.id;
+    const executed: string[] = [];
+
+    while (currentId) {
+      const conn = connections.find((c: any) => c.from === currentId);
+      if (!conn) break;
+
+      const nextNode = nodes.find((n: any) => n.id === conn.to);
+      if (!nextNode || executed.includes(nextNode.id)) break;
+
+      executed.push(nextNode.id);
+
+      // Execute action
+      if (nextNode.type === 'action' && lead_id) {
+        await executeActionNode(nextNode, lead_id, c.env.DB);
       }
 
-      // Handle visited_page: find leads by cross-referencing pageview visitor_ids with form submission emails
-      for (const rule of visitedPageRules) {
-        if (rule.value) {
-          const pageVisitorIds: string[] = [];
+      currentId = nextNode.id;
+    }
 
-          // Step 1: Find all visitor_ids who visited this URL
-          const { results: pageviews } = await c.env.DB.prepare(
-            "SELECT DISTINCT visitor_id FROM tracking_events WHERE account_id = ? AND event_type = 'pageview' AND url LIKE ?"
-          ).bind(account_id, `%${rule.value}%`).all();
+    await c.env.DB.prepare(
+      'UPDATE automation_executions SET status = \'completed\' WHERE id = ?'
+    ).bind(executionId).run();
 
-          if (pageviews) {
-            for (const pv of pageviews as any[]) {
-              if (pv.visitor_id && !pageVisitorIds.includes(pv.visitor_id)) {
-                pageVisitorIds.push(pv.visitor_id);
-              }
-            }
-         
+    return c.json({ success: true, executed_nodes: executed.length });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Helper to trigger automations
+async function triggerAutomations(accountId: string, triggerType: string, leadId: string, db: any, extraConfig?: { form_id?: string }) {
+  try {
+    let { results: automations } = await db.prepare(
+      "SELECT * FROM automations WHERE account_id = ? AND trigger_type = ? AND is_active = 1"
+    ).bind(accountId, triggerType).all();
+
+    // If triggerType is form_submit and form_id is provided, filter automations by form_id
+    if (triggerType === 'form_submit' && extraConfig?.form_id) {
+      automations = automations.filter((a: any) => {
+        const triggerConfig = a.trigger_config ? JSON.parse(a.trigger_config) : {};
+        // If automation has form_id filter, it must match; otherwise include it
+        return !triggerConfig.form_id || triggerConfig.form_id === extraConfig.form_id;
+      });
+    }
+
+    // If triggerType is page_visit and url_pattern is provided, filter automations by url_pattern
+    if (triggerType === 'page_visit' && extraConfig?.url_pattern) {
+      automations = automations.filter((a: any) => {
+        const triggerConfig = a.trigger_config ? JSON.parse(a.trigger_config) : {};
+        // If automation has url_pattern filter, check if URL matches; otherwise include it
+        if (!triggerConfig.url_pattern) return true;
+        return (extraConfig.url_pattern || '').includes(triggerConfig.url_pattern);
+      });
+    }
+
+    for (const automation of automations) {
+      if (!automation) continue;
+      const nodes = automation.nodes ? JSON.parse(automation.nodes) : [];
+      const connections = automation.connections ? JSON.parse(automation.connections) : [];
+
+      const triggerNode = nodes.find(function(n: any) { return n.type === 'trigger'; });
+      if (!triggerNode) continue;
+
+      const executionId = crypto.randomUUID();
+      await db.prepare(
+        "INSERT INTO automation_executions (id, automation_id, lead_id, status) VALUES (?, ?, ?, 'running')"
+      ).bind(executionId, automation.id, leadId).run();
+
+      let currentId = triggerNode.id;
+      const executed: string[] = [];
+
+      while (currentId) {
+        const connItem = connections.find(function(c: any) { return c.from === currentId; });
+        if (!connItem) break;
+
+        const nextNode = nodes.find(function(n: any) { return n.id === connItem.to; });
+        if (!nextNode || executed.includes(nextNode.id)) break;
+
+        executed.push(nextNode.id);
+
+        if (nextNode.type === 'action' && leadId) {
+          await executeActionNode(nextNode, leadId, db);
+        }
+        currentId = nextNode.id;
+      }
+
+      await db.prepare(
+        "UPDATE automation_executions SET status = 'completed' WHERE id = ?"
+      ).bind(executionId).run();
+    }
+  } catch (err: any) {
+    console.error('[AUTOMATIONS] Trigger Error:', err.message);
+  }
+}
+
+// Helper to execute action nodes
+async function executeActionNode(node: any, leadId: string, db: any) {
+  const { nodeType, config } = node;
+
+  switch (nodeType) {
+    case 'move_stage':
+      if (config.to_stage_id) {
+        await db.prepare('UPDATE leads SET stage_id = ? WHERE id = ?').bind(config.to_stage_id, leadId).run();
+      }
+      break;
+    case 'create_task':
+      if (config.title) {
+        const taskId = crypto.randomUUID();
+        await db.prepare(
+          'INSERT INTO tasks (id, lead_id, title, due_date, assigned_user_id) VALUES (?, ?, ?, ?, ?)'
+        ).bind(taskId, leadId, config.title, config.due_date || null, config.assigned_user_id || null).run();
+      }
+      break;
+    case 'add_tag':
+      if (config.tag) {
+        const lead: any = await db.prepare('SELECT tags FROM leads WHERE id = ?').bind(leadId).first();
+        const tags = lead.tags ? lead.tags.split(',').filter(Boolean) : [];
+        if (!tags.includes(config.tag)) {
+          tags.push(config.tag);
+          await db.prepare('UPDATE leads SET tags = ? WHERE id = ?').bind(tags.join(','), leadId).run();
+        }
+      }
+      break;
+    case 'remove_tag':
+      if (config.tag) {
+        const lead: any = await db.prepare('SELECT tags FROM leads WHERE id = ?').bind(leadId).first();
+        const tags = lead.tags ? lead.tags.split(',').filter((t: string) => t !== config.tag) : [];
+        await db.prepare('UPDATE leads SET tags = ? WHERE id = ?').bind(tags.join(','), leadId).run();
+      }
+      break;
+    case 'create_note':
+      if (config.content) {
+        const noteId = crypto.randomUUID();
+        await db.prepare(
+          'INSERT INTO notes (id, lead_id, content, author_name) VALUES (?, ?, ?, ?)'
+        ).bind(noteId, leadId, config.content, 'Automação').run();
+      }
+      break;
+    case 'assign_user':
+      if (config.user_id) {
+        await db.prepare('UPDATE leads SET assigned_user_id = ? WHERE id = ?').bind(config.user_id, leadId).run();
+      }
+      break;
+    case 'send_webhook':
+      if (config.url) {
+        try {
+          await fetch(config.url, {
+            method: config.method || 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lead_id: leadId, ...config })
+          });
+        } catch (e) { console.error('Webhook send error:', e); }
+      }
+      break;
+    // send_email would require an email service integration
+    default:
+      console.log(`Unknown action type: ${nodeType}`);
+  }
+}
+
+app.post('/login', async (c) => {
+  try {
+    const { email, password } = await c.req.json();
+    
+    if (!email || !password) {
+      return c.json({ error: 'Email e senha são obrigatórios' }, 400);
+    }
+
+    const user: any = await c.env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
+    
+    if (!user) {
+      return c.json({ error: 'Usuário não encontrado' }, 401);
+    }
+
+    // Direct comparison for now as requested. 
+    // In a production app, we would use hashing.
+    if (user.password !== password) {
+      return c.json({ error: 'Senha incorreta' }, 401);
+    }
+
+    // Return user data without password
+    const { password: _, ...userWithoutPassword } = user;
+    return c.json(userWithoutPassword);
+  } catch (error: any) {
+    console.error('Login error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+export const onRequest = handle(app);
