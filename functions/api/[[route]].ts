@@ -581,6 +581,9 @@ app.get('/migrate-db', async (c) => {
 });
 
 app.get('/funnels', async (c) => {
+  // Auto-add colorOpacity column if missing
+  try { await c.env.DB.prepare("ALTER TABLE stages ADD COLUMN colorOpacity TEXT DEFAULT '1a'").run(); } catch (e) { /* column already exists */ }
+
   const { results } = await c.env.DB.prepare('SELECT * FROM funnels').all();
   
   // Get stages for all funnels
