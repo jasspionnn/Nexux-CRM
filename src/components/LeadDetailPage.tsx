@@ -137,11 +137,11 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
             <h1 className="text-2xl font-black text-gray-900 tracking-tight">{lead?.title}</h1>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            <EditableField label="Empresa" value={lead?.company} onSave={v => updateLead({ company: v })} />
-            <EditableField label="Valor" value={lead?.value} onSave={v => updateLead({ value: parseFloat(v) || 0 })} type="number" />
-            <EditableField label="Nome do Contato" value={lead?.contact_name} onSave={v => updateLead({ contact_name: v })} />
-            <EditableField label="Email" value={lead?.contact_email} onSave={v => updateLead({ contact_email: v })} />
-            <EditableField label="Telefone" value={lead?.contact_phone} onSave={v => updateLead({ contact_phone: v })} />
+            <EditableField label="Empresa" value={lead?.company} onSave={(v: string) => updateLead({ company: v })} />
+            <EditableField label="Valor" value={lead?.value} onSave={(v: string) => updateLead({ value: parseFloat(v) || 0 })} type="number" />
+            <EditableField label="Nome do Contato" value={lead?.contact_name} onSave={(v: string) => updateLead({ contact_name: v })} />
+            <EditableField label="Email" value={lead?.contact_email} onSave={(v: string) => updateLead({ contact_email: v })} />
+            <EditableField label="Telefone" value={lead?.contact_phone} onSave={(v: string) => updateLead({ contact_phone: v })} />
             <div><div className="text-[10px] font-bold text-gray-400 tracking-wider uppercase mb-1">Estágio</div>
               <div className="flex flex-wrap gap-2">
                 {funnel?.stages?.map((s: any) => (
