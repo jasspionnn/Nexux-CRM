@@ -105,4 +105,18 @@ const AppContent = () => {
 
   return (
     <div className={`flex flex-col h-screen bg-slate-50 overflow-hidden`}>
-      {currentUser.role !== UserRole.NEXUS_ADMIN && <Navbar cur
+      {currentUser.role !== UserRole.NEXUS_ADMIN && <Navbar currentView={currentView} onChangeView={handleNavigate} appMode={appMode} setAppMode={setAppMode} />}
+      <main className="flex-1 overflow-y-auto relative">
+        {renderView()}
+      </main>
+    </div>
+  );
+};
+
+export default function App() {
+  return (
+    <CRMProvider>
+      <AppContent />
+    </CRMProvider>
+  );
+}
