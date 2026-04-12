@@ -1,67 +1,43 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { LayoutGrid, BarChart2, Inbox, CheckSquare, Sparkles, Search, Bell, Settings as SettingsIcon, LogOut, Megaphone, Users, Target, Bot, Eye, Link, Mail, BarChart3, ChevronRight, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LayoutGrid, BarChart2, Inbox, CheckSquare, Sparkles, Search, Bell, Settings as SettingsIcon, LogOut, Megaphone, Users, Target, Bot, Eye, Link, Mail, BarChart3, ChevronRight } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
-type MktCategory = 'atracao' | 'relacionamento' | 'conversao';
-
-const CATEGORY_ITEMS: Record<MktCategory, { sub: string; label: string; icon: React.ElementType }[]> = {
+const MKT_CATEGORIES = {
   atracao: [
-    { sub: '', label: 'Início', icon: LayoutGrid },
     { sub: 'tracking', label: 'Tracking', icon: Eye },
     { sub: 'bio-links', label: 'Link na Bio', icon: Link },
   ],
   relacionamento: [
-    { sub: '', label: 'Início', icon: LayoutGrid },
     { sub: 'leads-db', label: 'Base de Leads', icon: Users },
     { sub: 'email-mkt', label: 'Email Mkt', icon: Mail },
   ],
   conversao: [
-    { sub: '', label: 'Início', icon: LayoutGrid },
     { sub: 'segmentation', label: 'Segmentação', icon: Target },
     { sub: 'automations', label: 'Automações', icon: Bot },
   ],
 };
 
-const CATEGORY_LABELS: Record<MktCategory, string> = {
-  atracao: 'Atração',
-  relacionamento: 'Relacionamento',
-  conversao: 'Conversão',
-};
-
-function subToCategory(sub: string): MktCategory {
-  if (sub === 'tracking' || sub === 'bio-links' || sub === '') return 'atracao';
-  if (sub === 'leads-db' || sub === 'email-mkt') return 'relacionamento';
-  return 'conversao';
-}
-
 export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) => {
   const { currentUser, logout } = useCRM();
   const [activeSub, setActiveSub] = useState('');
-  const [category, setCategory] = useState<MktCategory>('atracao');
-  const [catOpen, setCatOpen] = useState(false);
-  const catRef = useRef<HTMLDivElement>(null);
+  const [mktCategory, setMktCategory] = useState<string | null>(null);
 
   useEffect(() => {
     const h = () => {
       const m = window.location.hash.match(/#\/marketing\/(\w+)/);
       const sub = m ? m[1] : '';
       setActiveSub(sub);
-      setCategory(subToCategory(sub));
+      if (appMode === 'marketing') {
+        const found = Object.entries(MKT_CATEGORIES).find(([, items]) =>
+          items.some(i => i.sub === sub)
+        );
+        setMktCategory(found ? found[0] : sub === '' ? 'atracao' : null);
+      }
     };
     h();
     window.addEventListener('hashchange', h);
     return () => window.removeEventListener('hashchange', h);
-  }, []);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (catRef.current && !catRef.current.contains(e.target as Node)) {
-        setCatOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  }, [appMode]);
 
   const crmItems = [
     { id: 'dashboard', label: 'Início', icon: LayoutGrid },
@@ -73,27 +49,34 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
 
   const handleMarketing = () => {
     setAppMode('marketing');
+    setMktCategory('atracao');
     window.location.hash = '#/marketing/tracking';
   };
 
   const handleSales = () => {
     setAppMode('crm');
+    setMktCategory(null);
     window.location.hash = '#/kanban';
   };
 
-  const handleMktNav = (sub: string) => {
-    window.location.hash = sub ? '#/marketing/' + sub : '#/marketing';
-    setCatOpen(false);
+  const handleCategory = (cat: string) => {
+    setMktCategory(cat);
+    const items = MKT_CATEGORIES[cat as keyof typeof MKT_CATEGORIES];
+    if (items && items.length > 0) {
+      window.location.hash = '#/marketing/' + items[0].sub;
+    }
   };
 
-  const handleCategoryChange = (cat: MktCategory) => {
-    setCategory(cat);
-    setCatOpen(false);
-    const items = CATEGORY_ITEMS[cat];
-    if (items.length > 0) {
-      const first = items.find(i => i.sub !== '') || items[0];
-      window.location.hash = first.sub ? '#/marketing/' + first.sub : '#/marketing';
-    }
+  const handleDash = () => {
+    window.location.hash = '#/marketing';
+  };
+
+  const handleSub = (sub: string) => {
+    window.location.hash = '#/marketing/' + sub;
+  };
+
+  const isActiveCat = (cat: string) => {
+    return mktCategory === cat;
   };
 
   return (
@@ -121,49 +104,46 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
         </nav>
       ) : (
         <nav className="flex h-full flex-1 items-center">
-          {/* Category Selector */}
-          <div className="relative mr-4" ref={catRef}>
-            <button
-              onClick={() => setCatOpen(!catOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg text-sm font-bold hover:bg-purple-100 transition-colors"
-            >
-              <span>{CATEGORY_LABELS[category]}</span>
-              <ChevronDown size={14} className={'transition-transform ' + (catOpen ? 'rotate-180' : '')} />
-            </button>
-            {catOpen && (
-              <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg py-1 z-50 min-w-[180px]">
-                {(Object.keys(CATEGORY_ITEMS) as MktCategory[]).map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => handleCategoryChange(cat)}
-                    className={'w-full text-left px-4 py-2 text-sm font-medium transition-colors ' + (category === cat ? 'bg-purple-50 text-purple-700 font-bold' : 'text-slate-600 hover:bg-slate-50')}
-                  >
-                    {CATEGORY_LABELS[cat]}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Category Items */}
-          {CATEGORY_ITEMS[category].map(item => {
-            const Icon = item.icon;
-            const isActive = activeSub === item.sub;
+          <button
+            onClick={handleDash}
+            className={'flex items-center gap-2 px-5 h-full border-b-2 transition-colors ' + (activeSub === '' ? 'border-purple-600 text-purple-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
+          >
+            <LayoutGrid size={16} />
+            <span>Início</span>
+          </button>
+          {Object.entries(MKT_CATEGORIES).map(([key, items]) => {
+            const catLabels: Record<string, string> = { atracao: 'Atração', relacionamento: 'Relacionamento', conversao: 'Conversão' };
+            const isCatActive = isActiveCat(key);
+            const Icon = items[0].icon;
             return (
-              <button
-                key={item.sub}
-                onClick={() => handleMktNav(item.sub)}
-                className={'flex items-center gap-2 px-4 h-full border-b-2 transition-colors ' + (isActive ? 'border-purple-600 text-purple-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
-              >
-                <Icon size={16} />
-                <span>{item.label}</span>
-              </button>
+              <React.Fragment key={key}>
+                <button
+                  onClick={() => handleCategory(key)}
+                  className={'flex items-center gap-2 px-4 h-full border-b-2 transition-colors ' + (isCatActive ? 'border-purple-600 text-purple-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
+                >
+                  <Icon size={16} />
+                  <span>{catLabels[key]}</span>
+                </button>
+                {isCatActive && items.map(item => {
+                  const I = item.icon;
+                  return (
+                    <button
+                      key={item.sub}
+                      onClick={() => handleSub(item.sub)}
+                      className={'flex items-center gap-2 px-4 h-full border-b-2 transition-colors ' + (activeSub === item.sub ? 'border-purple-600 text-purple-600 font-semibold' : 'border-transparent text-slate-400 hover:text-slate-600 font-medium')}
+                    >
+                      <I size={14} />
+                      <span className="text-sm">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </React.Fragment>
             );
           })}
-
+          <div className="w-px h-6 bg-slate-200 mx-2" />
           <button
             onClick={handleSales}
-            className="flex items-center gap-2 px-5 h-full border-b-2 border-transparent text-slate-900 hover:text-slate-700 font-semibold transition-colors ml-2"
+            className="flex items-center gap-2 px-5 h-full border-b-2 border-transparent text-slate-900 hover:text-slate-700 font-semibold transition-colors"
           >
             <BarChart3 size={18} />
             <span>Vendas</span>
