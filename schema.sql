@@ -337,18 +337,3 @@ CREATE TABLE IF NOT EXISTS lead_visits (
     FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
-
--- Timeline completo do lead (pageviews, clicks, conversions, form submissions)
-CREATE TABLE IF NOT EXISTS lead_timeline (
-    id TEXT PRIMARY KEY,
-    account_id TEXT NOT NULL,
-    lead_id TEXT NOT NULL,
-    visitor_id TEXT,
-    event_type TEXT NOT NULL,
-    event_data TEXT,
-    url TEXT,
-    referrer TEXT,
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
-);
