@@ -15,7 +15,7 @@ export const Marketing = () => {
     if (hash.includes('leads-db') || hash.includes('marketing-leads')) return 'leads-db';
     if (hash.includes('bio-links')) return 'bio-links';
     if (hash.includes('email-mkt')) return 'email-mkt';
-    return 'tracking';
+    return '';
   });
 
   useEffect(() => {
@@ -26,7 +26,7 @@ export const Marketing = () => {
       else if (hash.includes('bio-links')) setActiveSubView('bio-links');
       else if (hash.includes('leads-db') || hash.includes('marketing-leads')) setActiveSubView('leads-db');
       else if (hash.includes('automations')) setActiveSubView('automations');
-      else setActiveSubView('tracking');
+      else setActiveSubView('');
     };
     window.addEventListener('hashchange', h);
     return () => window.removeEventListener('hashchange', h);
