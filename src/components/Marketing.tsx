@@ -15,7 +15,6 @@ export const Marketing = () => {
     if (hash.includes('leads-db') || hash.includes('marketing-leads')) return 'leads-db';
     if (hash.includes('bio-links')) return 'bio-links';
     if (hash.includes('email-mkt')) return 'email-mkt';
-    if (hash.includes('tracking')) return 'tracking';
     return '';
   });
 
@@ -27,7 +26,6 @@ export const Marketing = () => {
       else if (hash.includes('bio-links')) setActiveSubView('bio-links');
       else if (hash.includes('leads-db') || hash.includes('marketing-leads')) setActiveSubView('leads-db');
       else if (hash.includes('automations')) setActiveSubView('automations');
-      else if (hash.includes('tracking')) setActiveSubView('tracking');
       else setActiveSubView('');
     };
     window.addEventListener('hashchange', h);
