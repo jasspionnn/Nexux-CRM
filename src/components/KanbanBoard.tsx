@@ -214,19 +214,26 @@ export const KanbanBoard = ({ onNavigate }: any) => {
         <div className="px-6 py-4 bg-white border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center p-1 bg-slate-100 rounded-xl">
-              <button 
+              <button
                 onClick={() => setActiveView('kanban')}
                 className={`p-2 rounded-lg transition-all ${activeView === 'kanban' ? 'bg-[#003B4F] text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
               >
                 <LayoutGrid size={18} />
               </button>
-              <button 
+              <button
                 onClick={() => setActiveView('list')}
                 className={`p-2 rounded-lg transition-all ${activeView === 'list' ? 'bg-cyan-100 text-cyan-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
               >
                 <List size={18} />
               </button>
             </div>
+            <button
+              onClick={fetchData}
+              className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
+              title="Recarregar negociações"
+            >
+              <RotateCcw size={16} />
+            </button>
           </div>
 
           <button 
@@ -520,6 +527,4 @@ const FilterDateSection = ({ title, icon, value, onChange }: any) => (
       </div>
       <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{title}</h3>
     </div>
-    <DatePicker value={value} onChange={onChange} />
-  </div>
-);
+    <DatePicker value={value} onChange=
