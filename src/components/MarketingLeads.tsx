@@ -133,19 +133,4 @@ export const MarketingLeads = () => {
                         <td className="px-4 py-3 text-xs text-slate-500">{formatDate(lead.created_at)}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
-                            <button onClick={() => setSelectedLead(lead)} className="p-1 text-slate-300 hover:text-blue-500 rounded transition-colors" title="Ver jornada"><Eye size={14} /></button>
-                            <button onClick={() => handleDelete(lead.id)} className="p-1 text-slate-300 hover:text-red-500 rounded transition-colors"><Trash2 size={14} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
+                            <button onClick={() => setSelectedLead(lead)} 

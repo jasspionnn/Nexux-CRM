@@ -5,7 +5,6 @@ export const onRequestGet = async () => {
         if(T.id)return;
         T.id=t;
         T.b=e.replace(/\\/$/, '');
-        // Use persistent cookie (1 year) instead of sessionStorage
         T.v=T._gc('nx_v');
         if(!T.v){T.v='v'+Date.now().toString(36);T._sc('nx_v',T.v,365);}
         T._pv();
@@ -13,8 +12,19 @@ export const onRequestGet = async () => {
         T._clk();
         console.log('[NX] Ready',t);
       },
-      _gc:function(n){var m=document.cookie.match('(^|;)\\\\s*'+n+'\\\\s*=\\\\s*([^;]+)');return m?m.pop():null;},
-      _sc:function(n,v,d){var x=new Date();x.setTime(x.getTime()+d*864e5);document.cookie=n+'='+v+';expires='+x.toUTCString()+';path=/;SameSite=Lax';},
+      _gc:function(n){
+        var cookies=document.cookie.split(';');
+        for(var i=0;i<cookies.length;i++){
+          var c=cookies[i].trim();
+          if(c.indexOf(n+'=')===0) return c.substring(n.length+1);
+        }
+        return null;
+      },
+      _sc:function(n,v,d){
+        var x=new Date();
+        x.setTime(x.getTime()+d*864e5);
+        document.cookie=n+'='+v+';expires='+x.toUTCString()+';path=/;SameSite=Lax';
+      },
       track:function(n,d){
         d=d||{};
         if(d.form_fields){
@@ -87,7 +97,26 @@ export const onRequestGet = async () => {
         },true);
       },
       _clk:function(){
-        // Track clicks on buttons and links with data-track attribute
         document.addEventListener('click',function(e){
           var el=e.target;
-          while(el&&el.tagName!=='A'&&e
+          while(el&&el.tagName!=='A'&&el.tagName!=='BUTTON'){el=el.parentElement;}
+          if(!el)return;
+          var label=el.getAttribute('data-track')||el.textContent.trim().substring(0,50)||el.href||el.id||'';
+          if(label){
+            T._s('click',{en:'element_click',d:{label:label,tag:el.tagName.toLowerCase()},el_label:label,el_tag:el.tagName.toLowerCase(),url:w.location.href});
+          }
+        },true);
+      },
+      _h:function(s){var h=0;for(var i=0;i<(s||'').length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0;}return Math.abs(h).toString(36).substr(0,6);}
+    };
+    w.NexuxTracker=T;
+  })(window);`;
+
+  return new Response(script, {
+    headers: {
+      'Content-Type': 'application/javascript; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+};
