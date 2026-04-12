@@ -74,11 +74,7 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
 
   const handleCatClick = (cat: string) => {
     setOpenCat(openCat === cat ? null : cat);
-    const items = MKT_CATEGORIES[cat];
-    if (items && items.length > 0 && mktCategory !== cat) {
-      setMktCategory(cat);
-      window.location.hash = '#/marketing/' + items[0].sub;
-    }
+    setMktCategory(cat);
   };
 
   const handleSub = (sub: string) => {
