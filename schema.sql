@@ -337,4 +337,4 @@ CREATE TABLE IF NOT EXISTS lead_visits (
     duration_seconds INTEGER DEFAULT 0,
     visited_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
-    FOREIGN KEY (account_id) REFERENCE
+ 

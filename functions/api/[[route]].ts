@@ -583,6 +583,7 @@ app.get('/migrate-db', async (c) => {
 app.get('/funnels', async (c) => {
   // Auto-add colorOpacity column if missing
   try { await c.env.DB.prepare("ALTER TABLE stages ADD COLUMN colorOpacity TEXT DEFAULT '1a'").run(); } catch (e) { /* column already exists */ }
+  try { await c.env.DB.prepare("ALTER TABLE stages ADD COLUMN borderOpacity TEXT DEFAULT '4d'").run(); } catch (e) { /* column already exists */ }
 
   const { results } = await c.env.DB.prepare('SELECT * FROM funnels').all();
   
@@ -1750,6 +1751,7 @@ app.delete('/tracking-forms/:id', async (c) => {
 app.get('/migrate-tracking-forms', async (c) => {
   try {
     try { await c.env.DB.prepare("ALTER TABLE stages ADD COLUMN colorOpacity TEXT DEFAULT '1a'").run(); } catch (e) { /* column already exists */ }
+  try { await c.env.DB.prepare("ALTER TABLE stages ADD COLUMN borderOpacity TEXT DEFAULT '4d'").run(); } catch (e) { /* column already exists */ }
     try { await c.env.DB.prepare('ALTER TABLE tracking_forms ADD COLUMN field_mapping TEXT').run(); } catch (e) { /* column already exists */ }
     // Create marketing_leads table if not exists
     try {
