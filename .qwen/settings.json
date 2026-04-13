@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(sed *)",
+      "Bash(npm install)",
+      "Bash(rm *)",
+      "Bash(git clone *)",
+      "Bash(cp *)",
+      "Bash(npx *)",
+      "Bash(kill *)",
+      "Bash(git init)"
+    ]
+  },
+  "$version": 3
+}
