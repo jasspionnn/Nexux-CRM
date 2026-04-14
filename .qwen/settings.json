@@ -12,7 +12,8 @@
       "Bash(cp *)",
       "Bash(npx *)",
       "Bash(kill *)",
-      "Bash(git init)"
+      "Bash(git init)",
+      "Bash(git remote *)"
     ]
   },
   "$version": 3
