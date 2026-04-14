@@ -1707,11 +1707,12 @@ app.post('/tracking/events', async (c) => {
                   // Always record form submission for segmentation
                   try {
                     const fsId = crypto.randomUUID();
+                    const canonicalFormId = existing ? existing.id : (formData.fid || formName);
                     await c.env.DB.prepare(
                       'INSERT INTO form_submissions (id, account_id, form_id, lead_id, visitor_id, email, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
                     ).bind(
                       fsId, settings.account_id,
-                      formData.fid || existing.id,
+                      canonicalFormId,
                       crmLeadId, visitor_id || null,
                       mappedData.contact_email || null,
                       JSON.stringify(fields)
@@ -2384,27 +2385,26 @@ async function buildSegmentQuery(db: any, accountId: string, rules: any[]) {
 
     if (field === 'filled_form') {
       const formInfo: any = await db.prepare(
-        'SELECT id FROM tracking_forms WHERE (id = ? OR name = ?) AND account_id = ?'
+        'SELECT id, name FROM tracking_forms WHERE (id = ? OR name = ?) AND account_id = ?'
       ).bind(value, value, accountId).first();
 
       if (formInfo) {
-        const formSubmissions: any = await db.prepare(
-          'SELECT DISTINCT lead_id FROM form_submissions WHERE account_id = ? AND form_id = ? AND lead_id IS NOT NULL'
-        ).bind(accountId, formInfo.id).all();
-        const leadIds = formSubmissions.results.map((r: any) => r.lead_id).filter(Boolean);
-
+        // Match by lead_id OR contact_email to be robust
+        // Match by form_id UUID OR name to handle inconsistent tracking data correctly
         if (operator === 'equals') {
-          if (leadIds.length > 0) {
-            whereClause += ` AND id IN (${leadIds.map(() => '?').join(',')})`;
-            params.push(...leadIds);
-          } else {
-            whereClause += ` AND 1=0`;
-          }
+          whereClause += ` AND (
+            id IN (SELECT lead_id FROM form_submissions WHERE account_id = ? AND (form_id = ? OR form_id = ?) AND lead_id IS NOT NULL)
+            OR
+            contact_email IN (SELECT email FROM form_submissions WHERE account_id = ? AND (form_id = ? OR form_id = ?) AND email IS NOT NULL)
+          )`;
+          params.push(accountId, formInfo.id, formInfo.name, accountId, formInfo.id, formInfo.name);
         } else if (operator === 'not_equals') {
-          if (leadIds.length > 0) {
-            whereClause += ` AND id NOT IN (${leadIds.map(() => '?').join(',')})`;
-            params.push(...leadIds);
-          }
+          whereClause += ` AND (
+            id NOT IN (SELECT lead_id FROM form_submissions WHERE account_id = ? AND (form_id = ? OR form_id = ?) AND lead_id IS NOT NULL)
+            AND
+            contact_email NOT IN (SELECT email FROM form_submissions WHERE account_id = ? AND (form_id = ? OR form_id = ?) AND email IS NOT NULL)
+          )`;
+          params.push(accountId, formInfo.id, formInfo.name, accountId, formInfo.id, formInfo.name);
         }
       } else if (operator === 'equals') {
         whereClause += ` AND 1=0`;
