@@ -1704,6 +1704,23 @@ app.post('/tracking/events', async (c) => {
                     console.log('[TRACKING] Auto-synced lead to CRM:', crmLeadId);
                   }
 
+                  // Always record form submission for segmentation
+                  try {
+                    const fsId = crypto.randomUUID();
+                    await c.env.DB.prepare(
+                      'INSERT INTO form_submissions (id, account_id, form_id, lead_id, visitor_id, email, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+                    ).bind(
+                      fsId, settings.account_id,
+                      formData.fid || existing.id,
+                      crmLeadId, visitor_id || null,
+                      mappedData.contact_email || null,
+                      JSON.stringify(fields)
+                    ).run();
+                    console.log('[TRACKING] Recorded form submission:', fsId, '(lead:', crmLeadId, ')');
+                  } catch (fsErr) {
+                    console.error('[TRACKING] Error recording form submission:', fsErr.message);
+                  }
+
                   // Trigger new_lead automation
                   await triggerAutomations(settings.account_id, 'new_lead', crmLeadId, c.env.DB);
                   
@@ -1718,10 +1735,7 @@ app.post('/tracking/events', async (c) => {
                       await c.env.DB.prepare(
                         'INSERT OR IGNORE INTO visitor_leads (id, account_id, visitor_id, lead_id, email, source) VALUES (?, ?, ?, ?, ?, ?)'
                       ).bind(vlId, settings.account_id, visitor_id, crmLeadId, mappedData.contact_email || null, 'form_submit').run();
-                      console.log('[TRACKING] Mapped visitor to lead:', visitor_id, '->', crmLeadId);
-                    } catch (vlErr: any) {
-                      console.log('[TRACKING] Visitor already mapped:', visitor_id);
-                    }
+                    } catch (vlErr) { /* visitor_leads table may not exist yet */ }
                   }
                 } catch (autoErr: any) {
                   console.error('[TRACKING] Error auto-syncing / running automations:', autoErr.message);
@@ -2422,7 +2436,10 @@ app.post('/segments', async (c) => {
     const body = await c.req.json();
     const { account_id = 'acc_demo', name, description, rules } = body;
 
+    console.log('[SEGMENTS] Creating segment:', { account_id, name, rulesCount: rules?.length });
+
     if (!name || !rules || rules.length === 0) {
+      console.error('[SEGMENTS] Validation failed:', { name: !!name, rules: !!rules, rulesLength: rules?.length });
       return c.json({ error: 'name and rules are required' }, 400);
     }
 
@@ -2433,9 +2450,10 @@ app.post('/segments', async (c) => {
       'INSERT INTO segments (id, account_id, name, description, rules, lead_count) VALUES (?, ?, ?, ?, ?, 0)'
     ).bind(id, account_id, name, description || null, rulesJson).run();
 
+    console.log('[SEGMENTS] Created segment:', id);
     return c.json({ id, name, description, rules, lead_count: 0 });
   } catch (error: any) {
-    console.error('Create segment error:', error);
+    console.error('[SEGMENTS] Create segment error:', error);
     return c.json({ error: error.message }, 500);
   }
 });
@@ -2487,12 +2505,31 @@ app.post('/segments/preview', async (c) => {
 
       // Handle special fields
       if (field === 'filled_form') {
-        // Check if lead has form submissions
+        // value can be form_id (UUID) or form name
+        // First try to find the form by ID or name
+        const formInfo = await c.env.DB.prepare(
+          'SELECT id, name FROM tracking_forms WHERE (id = ? OR name = ?) AND account_id = ?'
+        ).bind(value, value, account_id).first();
+
+        let targetFormId = formInfo ? formInfo.id : value;
+        let targetFormName = formInfo ? formInfo.name : value;
+
+        // Find leads who submitted this form (by form_id matching UUID or by form_name in raw data)
         const formSubmissions = await c.env.DB.prepare(
-          'SELECT DISTINCT lead_id FROM form_submissions WHERE form_id = ? AND account_id = ?'
-        ).bind(value, account_id).all();
-        const leadIds = formSubmissions.results.map((r: any) => r.lead_id);
+          'SELECT DISTINCT lead_id FROM form_submissions WHERE account_id = ? AND (form_id = ? OR data LIKE ?)'
+        ).bind(account_id, targetFormId, `%"form_name":"${targetFormName}"%`).all();
         
+        let leadIds = formSubmissions.results.map((r: any) => r.lead_id).filter(Boolean);
+
+        // Also check marketing_leads for leads from this form that were synced to CRM
+        const marketingLeads = await c.env.DB.prepare(
+          'SELECT id FROM leads WHERE account_id = ? AND contact_email IN (SELECT contact_email FROM marketing_leads WHERE account_id = ? AND form_name = ?)'
+        ).bind(account_id, account_id, targetFormName).all();
+        
+        marketingLeads.results.forEach((r: any) => {
+          if (!leadIds.includes(r.id)) leadIds.push(r.id);
+        });
+
         if (operator === 'equals') {
           if (leadIds.length > 0) {
             whereClause += ` AND id IN (${leadIds.map(() => '?').join(',')})`;
