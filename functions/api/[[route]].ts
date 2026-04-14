@@ -403,6 +403,36 @@ app.get('/migrate-db', async (c) => {
       );
     `).run();
 
+    // Form Submissions table (for segment preview)
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS form_submissions (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          form_id TEXT NOT NULL,
+          lead_id TEXT,
+          visitor_id TEXT,
+          email TEXT,
+          data TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    // Page Views table (for segment preview)
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS page_views (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          visitor_id TEXT NOT NULL,
+          url TEXT NOT NULL,
+          referrer TEXT,
+          user_agent TEXT,
+          ip_address TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
     // Tracking forms table
     await c.env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS tracking_forms (
