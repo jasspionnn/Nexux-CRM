@@ -30,6 +30,19 @@ export const KanbanBoard = ({ onNavigate }: any) => {
   const userDropdownButtonRef = useRef<HTMLButtonElement>(null);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
 
+  // Dropdown states para outros filtros
+  const [showFunnelDropdown, setShowFunnelDropdown] = useState(false);
+  const funnelDropdownButtonRef = useRef<HTMLButtonElement>(null);
+  const [funnelDropdownPosition, setFunnelDropdownPosition] = useState<{ top: number; left: number } | null>(null);
+
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const statusDropdownButtonRef = useRef<HTMLButtonElement>(null);
+  const [statusDropdownPosition, setStatusDropdownPosition] = useState<{ top: number; left: number } | null>(null);
+
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const sortDropdownButtonRef = useRef<HTMLButtonElement>(null);
+  const [sortDropdownPosition, setSortDropdownPosition] = useState<{ top: number; left: number } | null>(null);
+
   useEffect(() => {
     if (showUserDropdown && userDropdownButtonRef.current) {
       const rect = userDropdownButtonRef.current.getBoundingClientRect();
@@ -38,7 +51,28 @@ export const KanbanBoard = ({ onNavigate }: any) => {
         left: rect.left
       });
     }
-  }, [showUserDropdown]);
+    if (showFunnelDropdown && funnelDropdownButtonRef.current) {
+      const rect = funnelDropdownButtonRef.current.getBoundingClientRect();
+      setFunnelDropdownPosition({
+        top: rect.bottom + 8,
+        left: rect.left
+      });
+    }
+    if (showStatusDropdown && statusDropdownButtonRef.current) {
+      const rect = statusDropdownButtonRef.current.getBoundingClientRect();
+      setStatusDropdownPosition({
+        top: rect.bottom + 8,
+        left: rect.left
+      });
+    }
+    if (showSortDropdown && sortDropdownButtonRef.current) {
+      const rect = sortDropdownButtonRef.current.getBoundingClientRect();
+      setSortDropdownPosition({
+        top: rect.bottom + 8,
+        left: rect.left
+      });
+    }
+  }, [showUserDropdown, showFunnelDropdown, showStatusDropdown, showSortDropdown]);
   
   // Date Filters
   const [filterCreation, setFilterCreation] = useState({ start: '', end: '' });
@@ -260,29 +294,73 @@ export const KanbanBoard = ({ onNavigate }: any) => {
         <div className="px-6 py-3 bg-white border-b border-slate-100 flex items-center justify-between gap-4">
           <div className="flex-1 flex items-center gap-3 overflow-x-auto no-scrollbar">
             
-            <div className="min-w-[180px] relative group">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-hover:text-indigo-600">
-                <Filter size={14} />
-              </div>
-              <select 
-                value={activeFunnelId} 
-                onChange={(e) => setActiveFunnelId(e.target.value)}
-                className="w-full pl-9 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 outline-none hover:border-slate-300 transition-all cursor-pointer appearance-none"
-              >
-                {funnels.map(f => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
-            </div>
-
-            {/* Invisible backdrop to close dropdown on outside click */}
-            {showUserDropdown && (
+            {/* Invisible backdrop to close dropdowns on outside click */}
+            {(showFunnelDropdown || showUserDropdown || showStatusDropdown || showSortDropdown) && (
               <div
                 className="fixed inset-0 z-[50]"
-                onClick={() => setShowUserDropdown(false)}
+                onClick={() => {
+                  setShowFunnelDropdown(false);
+                  setShowUserDropdown(false);
+                  setShowStatusDropdown(false);
+                  setShowSortDropdown(false);
+                }}
               />
             )}
+
+            {/* Funnel Dropdown */}
+            <div className="min-w-[180px] relative" style={{ zIndex: showFunnelDropdown ? 61 : 'auto' }}>
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
+                <Filter size={14} />
+              </div>
+              <button
+                ref={funnelDropdownButtonRef}
+                type="button"
+                onClick={() => setShowFunnelDropdown(prev => !prev)}
+                className={`w-full flex items-center justify-between pl-9 pr-3 py-2.5 bg-white border rounded-xl text-[11px] font-bold text-slate-700 hover:border-slate-300 transition-all cursor-pointer ${
+                  activeFunnelId ? 'border-indigo-400 text-indigo-700 bg-indigo-50' : 'border-slate-200'
+                }`}
+              >
+                <span className="truncate">
+                  {funnels.find(f => f.id === activeFunnelId)?.name || 'Todos os funis'}
+                </span>
+                <ChevronDown size={14} className={`text-slate-300 transition-transform ${showFunnelDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showFunnelDropdown && funnelDropdownPosition && createPortal(
+                <div
+                  className="w-64 bg-white border border-slate-100 rounded-2xl shadow-2xl p-2"
+                  style={{
+                    position: 'fixed',
+                    top: `${funnelDropdownPosition.top}px`,
+                    left: `${funnelDropdownPosition.left}px`,
+                    zIndex: 1000
+                  }}
+                >
+                  <div className="max-h-60 overflow-y-auto space-y-1 no-scrollbar">
+                    {funnels.map(funnel => (
+                      <div
+                        key={funnel.id}
+                        onClick={() => {
+                          setActiveFunnelId(funnel.id);
+                          setShowFunnelDropdown(false);
+                        }}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer ${
+                          activeFunnelId === funnel.id ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${
+                          activeFunnelId === funnel.id ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300'
+                        }`}>
+                          {activeFunnelId === funnel.id && <Check size={10} className="text-white" />}
+                        </div>
+                        <span className="text-[11px] font-bold">{funnel.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>,
+                document.body
+              )}
+            </div>
 
             <div className="min-w-[180px] relative" style={{ zIndex: showUserDropdown ? 61 : 'auto' }}>
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
@@ -341,36 +419,124 @@ export const KanbanBoard = ({ onNavigate }: any) => {
               )}
             </div>
 
-            <div className="min-w-[160px] relative">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+            {/* Status Dropdown */}
+            <div className="min-w-[180px] relative" style={{ zIndex: showStatusDropdown ? 61 : 'auto' }}>
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
                 <CheckCircle2 size={14} />
               </div>
-              <select 
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value as StatusFilter)}
-                className="w-full pl-9 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 outline-none hover:border-slate-300 transition-all cursor-pointer appearance-none"
+              <button
+                ref={statusDropdownButtonRef}
+                type="button"
+                onClick={() => setShowStatusDropdown(prev => !prev)}
+                className={`w-full flex items-center justify-between pl-9 pr-3 py-2.5 bg-white border rounded-xl text-[11px] font-bold text-slate-700 hover:border-slate-300 transition-all cursor-pointer ${
+                  filterStatus !== 'all' ? 'border-green-400 text-green-700 bg-green-50' : 'border-slate-200'
+                }`}
               >
-                <option value="all">Todos os status</option>
-                <option value="open">Aberto</option>
-                <option value="won">Ganhos</option>
-                <option value="lost">Perdidos</option>
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+                <span className="truncate">
+                  {filterStatus === 'all' ? 'Todos os status' : 
+                   filterStatus === 'open' ? 'Aberto' :
+                   filterStatus === 'won' ? 'Ganhos' : 'Perdidos'}
+                </span>
+                <ChevronDown size={14} className={`text-slate-300 transition-transform ${showStatusDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showStatusDropdown && statusDropdownPosition && createPortal(
+                <div
+                  className="w-64 bg-white border border-slate-100 rounded-2xl shadow-2xl p-2"
+                  style={{
+                    position: 'fixed',
+                    top: `${statusDropdownPosition.top}px`,
+                    left: `${statusDropdownPosition.left}px`,
+                    zIndex: 1000
+                  }}
+                >
+                  <div className="max-h-60 overflow-y-auto space-y-1 no-scrollbar">
+                    {[
+                      { value: 'all', label: 'Todos os status' },
+                      { value: 'open', label: 'Aberto' },
+                      { value: 'won', label: 'Ganhos' },
+                      { value: 'lost', label: 'Perdidos' }
+                    ].map(status => (
+                      <div
+                        key={status.value}
+                        onClick={() => {
+                          setFilterStatus(status.value as StatusFilter);
+                          setShowStatusDropdown(false);
+                        }}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer ${
+                          filterStatus === status.value ? 'bg-green-50 text-green-700' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${
+                          filterStatus === status.value ? 'bg-green-600 border-green-600' : 'border-slate-300'
+                        }`}>
+                          {filterStatus === status.value && <Check size={10} className="text-white" />}
+                        </div>
+                        <span className="text-[11px] font-bold">{status.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>,
+                document.body
+              )}
             </div>
 
-            <div className="min-w-[180px] relative">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+            {/* Sort Dropdown */}
+            <div className="min-w-[180px] relative" style={{ zIndex: showSortDropdown ? 61 : 'auto' }}>
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10">
                 <BarChart3 size={14} className="rotate-90" />
               </div>
-              <select 
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-                className="w-full pl-9 pr-8 py-2.5 bg-white border border-slate-200 rounded-xl text-[11px] font-bold text-slate-700 outline-none hover:border-slate-300 transition-all cursor-pointer appearance-none"
+              <button
+                ref={sortDropdownButtonRef}
+                type="button"
+                onClick={() => setShowSortDropdown(prev => !prev)}
+                className={`w-full flex items-center justify-between pl-9 pr-3 py-2.5 bg-white border rounded-xl text-[11px] font-bold text-slate-700 hover:border-slate-300 transition-all cursor-pointer ${
+                  sortOrder !== 'desc' ? 'border-purple-400 text-purple-700 bg-purple-50' : 'border-slate-200'
+                }`}
               >
-                <option value="desc">Criadas por último</option>
-                <option value="asc">Criadas primeiro</option>
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+                <span className="truncate">
+                  {sortOrder === 'desc' ? 'Criadas por último' : 'Criadas primeiro'}
+                </span>
+                <ChevronDown size={14} className={`text-slate-300 transition-transform ${showSortDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showSortDropdown && sortDropdownPosition && createPortal(
+                <div
+                  className="w-64 bg-white border border-slate-100 rounded-2xl shadow-2xl p-2"
+                  style={{
+                    position: 'fixed',
+                    top: `${sortDropdownPosition.top}px`,
+                    left: `${sortDropdownPosition.left}px`,
+                    zIndex: 1000
+                  }}
+                >
+                  <div className="max-h-60 overflow-y-auto space-y-1 no-scrollbar">
+                    {[
+                      { value: 'desc', label: 'Criadas por último' },
+                      { value: 'asc', label: 'Criadas primeiro' }
+                    ].map(sort => (
+                      <div
+                        key={sort.value}
+                        onClick={() => {
+                          setSortOrder(sort.value as SortOrder);
+                          setShowSortDropdown(false);
+                        }}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer ${
+                          sortOrder === sort.value ? 'bg-purple-50 text-purple-700' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-all ${
+                          sortOrder === sort.value ? 'bg-purple-600 border-purple-600' : 'border-slate-300'
+                        }`}>
+                          {sortOrder === sort.value && <Check size={10} className="text-white" />}
+                        </div>
+                        <span className="text-[11px] font-bold">{sort.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>,
+                document.body
+              )}
             </div>
 
           </div>
