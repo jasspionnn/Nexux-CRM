@@ -61,12 +61,41 @@ export const BioLinks = () => {
   const [bioPages, setBioPages] = useState<BioPage[]>([]);
   const [editing, setEditing] = useState<BioPage | null>(null);
   const [previewMode, setPreviewMode] = useState<'desktop' | 'mobile'>('mobile');
-  const [activeTab, setActiveTab] = useState<'content' | 'design'>('content');
+  const [activeTab, setActiveTab] = useState<'content' | 'design' | 'analytics'>('content');
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const accountId = currentUser?.account_id || 'acc_demo';
 
+  // Analytics states
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'custom'>('30d');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [showDateDropdown, setShowDateDropdown] = useState(false);
+  const dateDropdownRef = React.useRef<HTMLButtonElement>(null);
+
   useEffect(() => { fetchPages(); }, []);
+
+  useEffect(() => {
+    if (editing?.id) {
+      fetchAnalytics();
+    }
+  }, [editing?.id, dateRange, customStartDate, customEndDate]);
+
+  const getDateRange = () => {
+    const now = new Date();
+    let start: Date;
+    switch (dateRange) {
+      case '7d': start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); break;
+      case '30d': start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); break;
+      case '90d': start = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000); break;
+      case 'custom': start = new Date(customStartDate); break;
+      default: start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    }
+    const end = dateRange === 'custom' ? new Date(customEndDate) : now;
+    return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] };
+  };
 
   const fetchPages = async () => {
     setIsLoading(true);
@@ -75,6 +104,17 @@ export const BioLinks = () => {
       if (res.ok) setBioPages(await res.json());
     } catch (e) { console.error(e); }
     setIsLoading(false);
+  };
+
+  const fetchAnalytics = async () => {
+    if (!editing?.id) return;
+    setAnalyticsLoading(true);
+    try {
+      const { start, end } = getDateRange();
+      const res = await fetch(`/api/bio-links/${editing.id}/analytics?start_date=${start}&end_date=${end}`);
+      if (res.ok) setAnalytics(await res.json());
+    } catch (e) { console.error(e); }
+    setAnalyticsLoading(false);
   };
 
   const handleCreate = () => {
@@ -180,6 +220,9 @@ export const BioLinks = () => {
             </button>
             <button onClick={() => setActiveTab('design')} className={`flex-1 px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 border-b-2 transition-colors ${activeTab === 'design' ? 'border-slate-900 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
               <Palette size={16} />Design
+            </button>
+            <button onClick={() => { setActiveTab('analytics'); if (editing.id) fetchAnalytics(); }} className={`flex-1 px-4 py-3 text-sm font-bold flex items-center justify-center gap-2 border-b-2 transition-colors ${activeTab === 'analytics' ? 'border-slate-900 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              <BarChart3 size={16} />Analytics
             </button>
           </div>
 
@@ -327,6 +370,9 @@ export const BioLinks = () => {
                       { name: 'Rosa', bg: '#831843', text: '#fce7f3', btn: '#ec4899', btnText: '#ffffff' },
                       { name: 'Azul', bg: '#0c4a6e', text: '#e0f2fe', btn: '#0ea5e9', btnText: '#ffffff' },
                       { name: 'Verde', bg: '#052e16', text: '#dcfce7', btn: '#22c55e', btnText: '#ffffff' },
+                      { name: 'Laranja', bg: '#431407', text: '#ffedd5', btn: '#f97316', btnText: '#ffffff' },
+                      { name: 'Cinza', bg: '#18181b', text: '#f4f4f5', btn: '#a1a1aa', btnText: '#000000' },
+                      { name: 'Dourado', bg: '#451a03', text: '#fef3c7', btn: '#d97706', btnText: '#ffffff' },
                     ].map(preset => (
                       <button
                         key={preset.name}
@@ -342,8 +388,245 @@ export const BioLinks = () => {
                     ))}
                   </div>
                 </div>
+
+                {/* Font Family */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Type size={14} className="text-slate-400" />
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Fonte</label>
+                  </div>
+                  <select
+                    value={editing.font_family || 'Inter'}
+                    onChange={e => setEditing({ ...editing, font_family: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Inter">Inter (Padrão)</option>
+                    <option value="Poppins">Poppins</option>
+                    <option value="Roboto">Roboto</option>
+                    <option value="Montserrat">Montserrat</option>
+                    <option value="Open Sans">Open Sans</option>
+                    <option value="Lato">Lato</option>
+                  </select>
+                </div>
+
+                {/* Avatar Shape */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Formato do Avatar</label>
+                  <div className="flex gap-2">
+                    {['circle', 'square', 'rounded'].map(shape => (
+                      <button
+                        key={shape}
+                        onClick={() => setEditing({ ...editing, avatar_shape: shape })}
+                        className={`flex-1 px-3 py-2 border rounded-lg text-xs font-bold transition-colors ${
+                          (editing.avatar_shape || 'circle') === shape
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {shape === 'circle' ? '⭕ Círculo' : shape === 'square' ? '⬜ Quadrado' : '🔲 Arredondado'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Button Shadow */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Sombra do Botão</label>
+                  <div className="flex gap-2">
+                    {[
+                      { name: 'Nenhuma', value: 'none' },
+                      { name: 'Leve', value: 'sm' },
+                      { name: 'Média', value: 'md' },
+                      { name: 'Forte', value: 'lg' },
+                    ].map(shadow => (
+                      <button
+                        key={shadow.value}
+                        onClick={() => setEditing({ ...editing, button_shadow: shadow.value })}
+                        className={`flex-1 px-2 py-2 border rounded-lg text-[10px] font-bold transition-colors ${
+                          (editing.button_shadow || 'md') === shadow.value
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {shadow.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Button Animation */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Animação do Botão</label>
+                  <div className="flex gap-2">
+                    {[
+                      { name: 'Nenhuma', value: 'none' },
+                      { name: 'Scale', value: 'scale' },
+                      { name: 'Slide', value: 'slide' },
+                      { name: 'Fade', value: 'fade' },
+                    ].map(anim => (
+                      <button
+                        key={anim.value}
+                        onClick={() => setEditing({ ...editing, button_animation: anim.value })}
+                        className={`flex-1 px-2 py-2 border rounded-lg text-[10px] font-bold transition-colors ${
+                          (editing.button_animation || 'scale') === anim.value
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {anim.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-            )}
+            ) : activeTab === 'analytics' ? (
+              <div className="space-y-5">
+                {analyticsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : analytics ? (
+                  <>
+                    {/* Date Range Selector */}
+                    <div className="relative">
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Período</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {[
+                          { label: '7 dias', value: '7d' },
+                          { label: '30 dias', value: '30d' },
+                          { label: '90 dias', value: '90d' },
+                          { label: 'Personalizado', value: 'custom' },
+                        ].map(range => (
+                          <button
+                            key={range.value}
+                            onClick={() => setDateRange(range.value as any)}
+                            className={`flex-1 min-w-[80px] px-3 py-2 border rounded-lg text-xs font-bold transition-colors ${
+                              dateRange === range.value
+                                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            {range.label}
+                          </button>
+                        ))}
+                      </div>
+                      {dateRange === 'custom' && (
+                        <div className="flex gap-2 mt-3">
+                          <div className="flex-1">
+                            <label className="block text-[10px] font-bold text-slate-400 mb-1">Data início</label>
+                            <input
+                              type="date"
+                              value={customStartDate}
+                              onChange={e => setCustomStartDate(e.target.value)}
+                              className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="block text-[10px] font-bold text-slate-400 mb-1">Data fim</label>
+                            <input
+                              type="date"
+                              value={customEndDate}
+                              onChange={e => setCustomEndDate(e.target.value)}
+                              className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Stats Cards */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl">
+                        <div className="flex items-center gap-2 mb-1">
+                          <MousePointer size={14} className="text-blue-600" />
+                          <span className="text-[10px] font-bold text-blue-600 uppercase">Total Cliques</span>
+                        </div>
+                        <div className="text-2xl font-black text-blue-900">{analytics.total_stats?.total_clicks || 0}</div>
+                      </div>
+                      <div className="p-4 bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Users size={14} className="text-green-600" />
+                          <span className="text-[10px] font-bold text-green-600 uppercase">Cliques Únicos</span>
+                        </div>
+                        <div className="text-2xl font-black text-green-900">{analytics.total_stats?.total_unique_clicks || 0}</div>
+                      </div>
+                      <div className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl">
+                        <div className="flex items-center gap-2 mb-1">
+                          <TrendingUp size={14} className="text-purple-600" />
+                          <span className="text-[10px] font-bold text-purple-600 uppercase">Links Ativos</span>
+                        </div>
+                        <div className="text-2xl font-black text-purple-900">{analytics.total_stats?.total_links_clicked || 0}</div>
+                      </div>
+                    </div>
+
+                    {/* Clicks by Link */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Cliques por Link</label>
+                      <div className="space-y-2">
+                        {analytics.clicks_by_link?.length === 0 ? (
+                          <div className="text-center py-8 text-slate-400 text-xs">Nenhum clique registrado neste período</div>
+                        ) : (
+                          analytics.clicks_by_link?.map((link: any, idx: number) => (
+                            <div key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-bold text-slate-900">{link.link_label}</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-sm font-black text-blue-600">{link.click_count}</span>
+                                  <span className="text-[10px] text-slate-400 ml-1">cliques</span>
+                                </div>
+                              </div>
+                              <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-500"
+                                  style={{ width: `${(link.click_count / analytics.total_stats?.total_clicks) * 100 || 0}%` }}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between mt-1 text-[10px] text-slate-400">
+                                <span>{link.unique_clicks} únicos</span>
+                                <span className="font-mono truncate max-w-[200px] ml-2">{link.link_url}</span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Daily Clicks Chart */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Cliques por Dia</label>
+                      <div className="space-y-1 max-h-48 overflow-y-auto no-scrollbar">
+                        {analytics.daily_clicks?.length === 0 ? (
+                          <div className="text-center py-8 text-slate-400 text-xs">Nenhum dado disponível</div>
+                        ) : (
+                          analytics.daily_clicks?.map((day: any, idx: number) => (
+                            <div key={idx} className="flex items-center gap-3 text-xs">
+                              <div className="w-20 text-slate-500 font-mono text-[10px]">
+                                {new Date(day.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                              </div>
+                              <div className="flex-1 bg-slate-100 rounded-full h-4 overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all duration-300"
+                                  style={{ width: `${(day.click_count / Math.max(...analytics.daily_clicks.map((d: any) => d.click_count))) * 100}%` }}
+                                />
+                              </div>
+                              <div className="w-16 text-right font-bold text-slate-700">{day.click_count}</div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-12">
+                    <BarChart3 size={48} className="mx-auto text-slate-300 mb-3" />
+                    <p className="text-slate-400 font-bold text-sm">Analytics indisponível</p>
+                    <p className="text-slate-400 text-xs mt-1">Salve a página primeiro para ver estatísticas</p>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
 
