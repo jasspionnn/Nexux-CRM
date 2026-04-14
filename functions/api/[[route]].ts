@@ -2501,53 +2501,48 @@ app.post('/segments/preview', async (c) => {
     // Build SQL query from rules
     let whereClause = 'account_id = ?';
     const params: any[] = [account_id];
+    const debugInfo: any = { rulesProcessed: 0, filledFormChecks: [] };
 
     for (const rule of rules) {
       let { field, operator, value } = rule;
-
-      console.log('[SEGMENTS PREVIEW] Processing rule:', { field, operator, value });
+      debugInfo.rulesProcessed++;
 
       // Handle special fields
       if (field === 'filled_form') {
-        // value = form_id (UUID) or form name selected in UI
-        // Find the tracking form
         const formInfo = await c.env.DB.prepare(
           'SELECT id, name FROM tracking_forms WHERE (id = ? OR name = ?) AND account_id = ?'
         ).bind(value, value, account_id).first();
 
-        console.log('[SEGMENTS PREVIEW] formInfo lookup:', { value, formInfo });
+        const debugCheck: any = { ruleValue: value, formFound: !!formInfo };
 
         if (!formInfo) {
-          // Form not found - no leads match
+          debugCheck.reason = 'Form not found in tracking_forms';
+          debugInfo.filledFormChecks.push(debugCheck);
           if (operator === 'equals') {
             whereClause += ` AND 1=0`;
           }
           continue;
         }
 
-        // ONLY use form_submissions table - exact match on form_id
+        debugCheck.formId = formInfo.id;
+        debugCheck.formName = formInfo.name;
+
         const formSubmissions = await c.env.DB.prepare(
           'SELECT DISTINCT lead_id, form_id FROM form_submissions WHERE account_id = ? AND form_id = ? AND lead_id IS NOT NULL'
         ).bind(account_id, formInfo.id).all();
 
         let leadIds = formSubmissions.results.map((r: any) => r.lead_id).filter(Boolean);
 
-        console.log('[SEGMENTS PREVIEW] form_submissions query:', {
-          formId: formInfo.id,
-          formName: formInfo.name,
-          submissionCount: formSubmissions.results.length,
-          submissions: formSubmissions.results,
-          leadIdsFiltered: leadIds
-        });
+        debugCheck.submissionCount = formSubmissions.results.length;
+        debugCheck.leadIds = leadIds;
 
-        // DEBUG: Show ALL form_submissions for this account
+        // Show ALL submissions for this account to debug
         const allSubmissions = await c.env.DB.prepare(
           'SELECT id, form_id, lead_id, email FROM form_submissions WHERE account_id = ?'
         ).bind(account_id).all();
-        console.log('[SEGMENTS PREVIEW] ALL form_submissions for account:', {
-          total: allSubmissions.results.length,
-          submissions: allSubmissions.results
-        });
+        debugCheck.allAccountSubmissions = allSubmissions.results;
+
+        debugInfo.filledFormChecks.push(debugCheck);
 
         if (operator === 'equals') {
           if (leadIds.length > 0) {
@@ -2637,7 +2632,13 @@ app.post('/segments/preview', async (c) => {
       `SELECT * FROM leads WHERE ${whereClause} ORDER BY created_at DESC LIMIT 500`
     ).bind(...params).all();
 
-    return c.json({ leads: results, count: results.length });
+    console.log('[SEGMENTS PREVIEW] Final query:', { whereClause, paramsCount: params.length, resultCount: results.length });
+
+    return c.json({ 
+      leads: results, 
+      count: results.length,
+      _debug: debugInfo
+    });
   } catch (error: any) {
     console.error('Segment preview error:', error);
     return c.json({ error: error.message }, 500);

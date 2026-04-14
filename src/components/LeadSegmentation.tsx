@@ -145,7 +145,8 @@ export const LeadSegmentation = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        console.log('Preview results:', data);
+        console.log('Preview results:', data.count, 'leads');
+        console.log('Preview DEBUG:', data._debug);
         setPreviewLeads(data.leads || []);
       } else {
         const err = await res.json();
