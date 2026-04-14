@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Plus, Check, Filter, X, 
-  Calendar, Clock, Target, CheckCircle2, 
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  Plus, Check, Filter, X,
+  Calendar, Clock, Target, CheckCircle2,
   LayoutGrid, List, ChevronDown, BarChart3, User,
   Building2, DollarSign, GripVertical, RotateCcw
 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 import { DatePicker } from './ui/DatePicker';
+import { createPortal } from 'react-dom';
 
 type SortOrder = 'desc' | 'asc';
 type StatusFilter = 'all' | 'open' | 'won' | 'lost';
@@ -26,6 +27,18 @@ export const KanbanBoard = ({ onNavigate }: any) => {
   const [filterStatus, setFilterStatus] = useState<StatusFilter>('all');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const userDropdownButtonRef = useRef<HTMLButtonElement>(null);
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (showUserDropdown && userDropdownButtonRef.current) {
+      const rect = userDropdownButtonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 8,
+        left: rect.left
+      });
+    }
+  }, [showUserDropdown]);
   
   // Date Filters
   const [filterCreation, setFilterCreation] = useState({ start: '', end: '' });
@@ -276,6 +289,7 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                 <User size={14} />
               </div>
               <button
+                ref={userDropdownButtonRef}
                 type="button"
                 onClick={() => {
                   console.log('Toggle user dropdown, users:', users);
@@ -291,8 +305,16 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                 <ChevronDown size={14} className={`text-slate-300 transition-transform ${showUserDropdown ? 'rotate-180' : ''}`} />
               </button>
 
-              {showUserDropdown && (
-                <div className="absolute top-[calc(100%+8px)] left-0 w-64 bg-white border border-slate-100 rounded-2xl shadow-2xl p-2 z-[62]">
+              {showUserDropdown && dropdownPosition && createPortal(
+                <div
+                  className="w-64 bg-white border border-slate-100 rounded-2xl shadow-2xl p-2"
+                  style={{
+                    position: 'fixed',
+                    top: `${dropdownPosition.top}px`,
+                    left: `${dropdownPosition.left}px`,
+                    zIndex: 1000
+                  }}
+                >
                   <div className="max-h-60 overflow-y-auto space-y-1 no-scrollbar">
                     {users.length === 0 && (
                       <p className="text-[11px] text-slate-400 text-center py-3">Nenhum usuário encontrado</p>
@@ -314,7 +336,8 @@ export const KanbanBoard = ({ onNavigate }: any) => {
                       </div>
                     ))}
                   </div>
-                </div>
+                </div>,
+                document.body
               )}
             </div>
 
