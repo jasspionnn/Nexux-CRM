@@ -75,7 +75,16 @@ export const BioLinks = () => {
   const [showDateDropdown, setShowDateDropdown] = useState(false);
   const dateDropdownRef = React.useRef<HTMLButtonElement>(null);
 
+  // Analytics dashboard mode
+  const [analyticsDashboard, setAnalyticsDashboard] = useState<BioPage | null>(null);
+
   useEffect(() => { fetchPages(); }, []);
+
+  useEffect(() => {
+    if (analyticsDashboard?.id) {
+      fetchAnalyticsForDashboard();
+    }
+  }, [analyticsDashboard?.id, dateRange, customStartDate, customEndDate]);
 
   useEffect(() => {
     if (editing?.id) {
@@ -112,6 +121,17 @@ export const BioLinks = () => {
     try {
       const { start, end } = getDateRange();
       const res = await fetch(`/api/bio-links/${editing.id}/analytics?start_date=${start}&end_date=${end}`);
+      if (res.ok) setAnalytics(await res.json());
+    } catch (e) { console.error(e); }
+    setAnalyticsLoading(false);
+  };
+
+  const fetchAnalyticsForDashboard = async () => {
+    if (!analyticsDashboard?.id) return;
+    setAnalyticsLoading(true);
+    try {
+      const { start, end } = getDateRange();
+      const res = await fetch(`/api/bio-links/${analyticsDashboard.id}/analytics?start_date=${start}&end_date=${end}`);
       if (res.ok) setAnalytics(await res.json());
     } catch (e) { console.error(e); }
     setAnalyticsLoading(false);
@@ -188,6 +208,237 @@ export const BioLinks = () => {
   };
 
   if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-12 h-12 border-4 border-slate-900 border-t-transparent rounded-full animate-spin" /></div>;
+
+  // Analytics Dashboard Mode
+  if (analyticsDashboard) {
+    return (
+      <div className="h-full bg-slate-50/50 flex flex-col overflow-hidden">
+        {/* Dashboard Header */}
+        <div className="px-6 py-5 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => { setAnalyticsDashboard(null); setAnalytics(null); }} 
+              className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              <X size={20} className="text-slate-600" />
+            </button>
+            <div>
+              <h2 className="text-xl font-black text-slate-900 flex items-center gap-3">
+                <BarChart3 size={24} className="text-purple-600" />
+                Analytics - {analyticsDashboard.title}
+              </h2>
+              <p className="text-sm text-slate-500 font-medium mt-0.5">
+                <a href={`/bio/${analyticsDashboard.slug}`} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-600 hover:underline">
+                  /bio/{analyticsDashboard.slug}
+                </a>
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={() => handleEdit(analyticsDashboard)} 
+            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold transition-colors"
+          >
+            Editar Página
+          </button>
+        </div>
+
+        {/* Dashboard Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="max-w-5xl mx-auto space-y-6">
+            {analyticsLoading ? (
+              <div className="flex items-center justify-center py-24">
+                <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : analytics ? (
+              <>
+                {/* Date Range Selector */}
+                <div className="bg-white p-5 border border-slate-200 rounded-2xl shadow-sm">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Período de Análise</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {[
+                      { label: '7 dias', value: '7d' },
+                      { label: '30 dias', value: '30d' },
+                      { label: '90 dias', value: '90d' },
+                      { label: 'Personalizado', value: 'custom' },
+                    ].map(range => (
+                      <button
+                        key={range.value}
+                        onClick={() => setDateRange(range.value as any)}
+                        className={`flex-1 min-w-[100px] px-4 py-2.5 border rounded-xl text-sm font-bold transition-colors ${
+                          dateRange === range.value
+                            ? 'border-purple-500 bg-purple-50 text-purple-700'
+                            : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {range.label}
+                      </button>
+                    ))}
+                  </div>
+                  {dateRange === 'custom' && (
+                    <div className="flex gap-3 mt-4">
+                      <div className="flex-1">
+                        <label className="block text-[10px] font-bold text-slate-400 mb-1.5">Data início</label>
+                        <input
+                          type="date"
+                          value={customStartDate}
+                          onChange={e => setCustomStartDate(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div className="flex items-end pb-2">
+                        <span className="text-slate-400 text-sm">até</span>
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-[10px] font-bold text-slate-400 mb-1.5">Data fim</label>
+                        <input
+                          type="date"
+                          value={customEndDate}
+                          onChange={e => setCustomEndDate(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Stats Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-6 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl shadow-lg text-white">
+                    <div className="flex items-center gap-3 mb-3">
+                      <MousePointer size={24} className="opacity-80" />
+                      <span className="text-sm font-bold opacity-90">Total de Cliques</span>
+                    </div>
+                    <div className="text-4xl font-black">{analytics.total_stats?.total_clicks || 0}</div>
+                    <div className="text-xs mt-2 opacity-70">Cliques em todos os botões</div>
+                  </div>
+                  <div className="p-6 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl shadow-lg text-white">
+                    <div className="flex items-center gap-3 mb-3">
+                      <Users size={24} className="opacity-80" />
+                      <span className="text-sm font-bold opacity-90">Visitantes Únicos</span>
+                    </div>
+                    <div className="text-4xl font-black">{analytics.total_stats?.total_unique_clicks || 0}</div>
+                    <div className="text-xs mt-2 opacity-70">IPs diferentes</div>
+                  </div>
+                  <div className="p-6 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl shadow-lg text-white">
+                    <div className="flex items-center gap-3 mb-3">
+                      <TrendingUp size={24} className="opacity-80" />
+                      <span className="text-sm font-bold opacity-90">Links com Cliques</span>
+                    </div>
+                    <div className="text-4xl font-black">{analytics.total_stats?.total_links_clicked || 0}</div>
+                    <div className="text-xs mt-2 opacity-70">De {analyticsDashboard.links?.length || 0} links ativos</div>
+                  </div>
+                </div>
+
+                {/* Clicks by Link - Detailed */}
+                <div className="bg-white p-6 border border-slate-200 rounded-2xl shadow-sm">
+                  <h3 className="text-lg font-black text-slate-900 mb-5 flex items-center gap-2">
+                    <MousePointer size={20} className="text-blue-600" />
+                    Desempenho por Link
+                  </h3>
+                  <div className="space-y-4">
+                    {analytics.clicks_by_link?.length === 0 ? (
+                      <div className="text-center py-16 text-slate-400">
+                        <MousePointer size={48} className="mx-auto mb-3 opacity-30" />
+                        <p className="font-bold text-sm">Nenhum clique registrado neste período</p>
+                        <p className="text-xs mt-1">Compartilhe seu link na bio para começar a receber cliques</p>
+                      </div>
+                    ) : (
+                      analytics.clicks_by_link?.map((link: any, idx: number) => {
+                        const percentage = analytics.total_stats?.total_clicks > 0 
+                          ? ((link.click_count / analytics.total_stats.total_clicks) * 100).toFixed(1) 
+                          : 0;
+                        return (
+                          <div key={idx} className="p-5 bg-gradient-to-r from-slate-50 to-white border border-slate-200 rounded-xl hover:shadow-md transition-shadow">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-black text-sm">
+                                  #{idx + 1}
+                                </div>
+                                <div>
+                                  <span className="text-base font-bold text-slate-900">{link.link_label}</span>
+                                  <div className="text-xs text-slate-400 font-mono truncate max-w-[300px]">{link.link_url}</div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-2xl font-black text-blue-600">{link.click_count}</div>
+                                <div className="text-xs text-slate-500">cliques ({percentage}%)</div>
+                              </div>
+                            </div>
+                            <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-700 ease-out rounded-full"
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between mt-2 text-xs text-slate-500">
+                              <span>{link.unique_clicks} visitantes únicos</span>
+                              <div className="flex gap-4">
+                                <span>Primeiro: {link.first_click ? new Date(link.first_click).toLocaleDateString('pt-BR') : '-'}</span>
+                                <span>Último: {link.last_click ? new Date(link.last_click).toLocaleDateString('pt-BR') : '-'}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* Daily Clicks Timeline */}
+                <div className="bg-white p-6 border border-slate-200 rounded-2xl shadow-sm">
+                  <h3 className="text-lg font-black text-slate-900 mb-5 flex items-center gap-2">
+                    <Calendar size={20} className="text-indigo-600" />
+                    Linha do Tempo - Cliques por Dia
+                  </h3>
+                  {analytics.daily_clicks?.length === 0 ? (
+                    <div className="text-center py-16 text-slate-400">
+                      <Calendar size={48} className="mx-auto mb-3 opacity-30" />
+                      <p className="font-bold text-sm">Nenhum dado disponível</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-96 overflow-y-auto no-scrollbar">
+                      {analytics.daily_clicks?.map((day: any, idx: number) => {
+                        const maxClicks = Math.max(...analytics.daily_clicks.map((d: any) => d.click_count));
+                        const percentage = maxClicks > 0 ? (day.click_count / maxClicks) * 100 : 0;
+                        return (
+                          <div key={idx} className="flex items-center gap-4 p-3 hover:bg-slate-50 rounded-lg transition-colors">
+                            <div className="w-24 text-slate-600 font-bold text-sm">
+                              {new Date(day.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                            </div>
+                            <div className="flex-1 bg-slate-100 rounded-full h-8 overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-500 ease-out rounded-full flex items-center justify-end pr-3"
+                                style={{ width: `${Math.max(percentage, 8)}%` }}
+                              >
+                                {day.click_count > 0 && (
+                                  <span className="text-white font-black text-xs">{day.click_count}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="w-20 text-right">
+                              <div className="flex items-center gap-1 text-sm">
+                                <Users size={12} className="text-slate-400" />
+                                <span className="font-bold text-slate-700">{day.unique_clicks}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-24">
+                <BarChart3 size={64} className="mx-auto text-slate-300 mb-4" />
+                <p className="text-slate-400 font-bold text-lg">Carregando analytics...</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Editing mode
   if (editing) {
@@ -748,6 +999,9 @@ export const BioLinks = () => {
                     <span className="font-mono text-[10px] bg-slate-100 px-2 py-0.5 rounded">/bio/{page.slug}</span>
                   </div>
                   <div className="flex items-center gap-2">
+                    <button onClick={() => { setAnalyticsDashboard(page); setAnalytics(null); setActiveTab('analytics'); }} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-xs font-bold transition-colors">
+                      <BarChart3 size={14} />Analytics
+                    </button>
                     <button onClick={() => copyLink(page.slug)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">
                       {copied ? <><Eye size={14} />Copiado!</> : <><Copy size={14} />Copiar Link</>}
                     </button>
