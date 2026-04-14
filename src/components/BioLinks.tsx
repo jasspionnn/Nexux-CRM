@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Link, Plus, Trash2, Eye, Copy, Save, Palette, Type, Layout, ExternalLink, Smartphone, Monitor } from 'lucide-react';
+import { Link, Plus, Trash2, Copy, Save, Palette, Type, Layout, ExternalLink, Smartphone, Monitor, BarChart3, Calendar, TrendingUp, MousePointer, Users, Clock, Download, ChevronDown, Check, X } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
+import { createPortal } from 'react-dom';
 
 interface BioLink {
   id: string;
@@ -23,6 +24,15 @@ interface BioPage {
   links: BioLink[];
   is_active: number;
   click_count?: number;
+  // New design options
+  font_family?: string;
+  bg_gradient?: boolean;
+  bg_gradient_color?: string;
+  bg_pattern?: string;
+  button_shadow?: string;
+  button_animation?: string;
+  avatar_shape?: string;
+  show_powered_by?: boolean;
 }
 
 const ICON_OPTIONS = ['🔗', '📱', '📧', '🌐', '💼', '🎯', '📸', '🎵', '🎬', '📺', '💬', '🛒', '⭐', '🚀', ''];

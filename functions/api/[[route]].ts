@@ -521,6 +521,22 @@ app.get('/migrate-db', async (c) => {
       );
     `).run();
 
+    // Bio Link Click Analytics
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS bio_link_clicks (
+          id TEXT PRIMARY KEY,
+          bio_link_id TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          link_label TEXT NOT NULL,
+          link_url TEXT NOT NULL,
+          clicked_at TEXT DEFAULT (datetime('now')),
+          referrer TEXT,
+          user_agent TEXT,
+          ip_address TEXT,
+          FOREIGN KEY (bio_link_id) REFERENCES bio_links(id) ON DELETE CASCADE
+      );
+    `).run();
+
     // Email marketing tables
     await c.env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS email_templates (
@@ -1979,6 +1995,84 @@ app.delete('/bio-links/:id', async (c) => {
     const id = c.req.param('id');
     await c.env.DB.prepare('DELETE FROM bio_links WHERE id = ?').bind(id).run();
     return c.json({ success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+// Track link click
+app.post('/bio-links/:id/click', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const clickId = crypto.randomUUID();
+    
+    await c.env.DB.prepare(
+      'INSERT INTO bio_link_clicks (id, bio_link_id, account_id, link_label, link_url, referrer, user_agent, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(
+      clickId, id, body.account_id, body.link_label, body.link_url,
+      body.referrer || '', body.user_agent || '', body.ip_address || ''
+    ).run();
+
+    // Increment total click count
+    await c.env.DB.prepare(
+      'UPDATE bio_links SET click_count = click_count + 1 WHERE id = ?'
+    ).bind(id).run();
+
+    return c.json({ success: true, click_id: clickId });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+// Get analytics for a bio link page
+app.get('/bio-links/:id/analytics', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const startDate = c.req.query('start_date');
+    const endDate = c.req.query('end_date');
+
+    let dateFilter = '';
+    if (startDate && endDate) {
+      dateFilter = `AND clicked_at BETWEEN '${startDate}' AND '${endDate}'`;
+    } else if (startDate) {
+      dateFilter = `AND clicked_at >= '${startDate}'`;
+    } else if (endDate) {
+      dateFilter = `AND clicked_at <= '${endDate}'`;
+    }
+
+    // Total clicks per link label
+    const clicksByLink = await c.env.DB.prepare(
+      `SELECT link_label, link_url, COUNT(*) as click_count, 
+              COUNT(DISTINCT ip_address) as unique_clicks,
+              MIN(clicked_at) as first_click,
+              MAX(clicked_at) as last_click
+       FROM bio_link_clicks 
+       WHERE bio_link_id = ? ${dateFilter}
+       GROUP BY link_label, link_url
+       ORDER BY click_count DESC`
+    ).bind(id).all();
+
+    // Daily clicks
+    const dailyClicks = await c.env.DB.prepare(
+      `SELECT DATE(clicked_at) as date, COUNT(*) as click_count,
+              COUNT(DISTINCT ip_address) as unique_clicks
+       FROM bio_link_clicks 
+       WHERE bio_link_id = ? ${dateFilter}
+       GROUP BY DATE(clicked_at)
+       ORDER BY date ASC`
+    ).bind(id).all();
+
+    // Total stats
+    const totalStats = await c.env.DB.prepare(
+      `SELECT COUNT(*) as total_clicks,
+              COUNT(DISTINCT ip_address) as total_unique_clicks,
+              COUNT(DISTINCT link_label) as total_links_clicked
+       FROM bio_link_clicks 
+       WHERE bio_link_id = ? ${dateFilter}`
+    ).bind(id).first();
+
+    return c.json({
+      clicks_by_link: clicksByLink.results || [],
+      daily_clicks: dailyClicks.results || [],
+      total_stats: totalStats || { total_clicks: 0, total_unique_clicks: 0, total_links_clicked: 0 }
+    });
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });
 

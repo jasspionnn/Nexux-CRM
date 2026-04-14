@@ -36,7 +36,7 @@ export async function onRequest(context: any) {
     const linksHTML = links
       .filter((l: any) => l.label && l.url)
       .map((link: any) => `
-        <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" class="link-btn" style="background-color: ${page.button_color}; color: ${page.button_text_color}; border-radius: ${page.button_radius}px;">
+        <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" class="link-btn" data-link-id="${page.id}" data-link-label="${escapeHtml(link.label)}" data-link-url="${escapeHtml(link.url)}" style="background-color: ${page.button_color}; color: ${page.button_text_color}; border-radius: ${page.button_radius}px;">
           ${link.icon ? `<span class="link-icon">${escapeHtml(link.icon)}</span>` : ''}
           <span class="link-label">${escapeHtml(link.label)}</span>
         </a>
@@ -80,6 +80,25 @@ export async function onRequest(context: any) {
         <div class="footer" style="color: ${page.text_color}">Feito com Nexux CRM</div>
       </div>
     </div>
+    <script>
+      // Track link clicks
+      document.querySelectorAll('.link-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+          const data = {
+            account_id: '${page.account_id}',
+            link_label: this.dataset.linkLabel,
+            link_url: this.dataset.linkUrl,
+            referrer: document.referrer || '',
+            user_agent: navigator.userAgent || ''
+          };
+          fetch('/api/bio-links/${page.id}/click', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          }).catch(() => {});
+        });
+      });
+    </script>
   </body>
 </html>`;
 

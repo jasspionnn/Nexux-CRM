@@ -122,6 +122,90 @@ export const KanbanBoard = ({ onNavigate }: any) => {
   const activeFunnel = funnels.find(f => f.id === activeFunnelId);
   const stages = activeFunnel?.stages || [];
 
+  // List view helper
+  const ListTableView = () => {
+    const getStageName = (stageId: string) => {
+      const stage = stages.find((s: any) => s.id === stageId);
+      return stage ? stage.name : '-';
+    };
+
+    const getStageColor = (stageId: string) => {
+      const stage = stages.find((s: any) => s.id === stageId);
+      return stage?.color || '#3b82f6';
+    };
+
+    return (
+      <div className="flex-1 overflow-auto p-6">
+        <table className="w-full text-left border-collapse">
+          <thead className="bg-slate-50 sticky top-0 z-10">
+            <tr>
+              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Título</th>
+              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Empresa</th>
+              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Etapa</th>
+              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Responsável</th>
+              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Valor</th>
+              <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider text-center">Criado em</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 bg-white rounded-xl border border-slate-200">
+            {filteredLeads.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
+                  Nenhuma negociação encontrada.
+                </td>
+              </tr>
+            ) : (
+              filteredLeads.map(lead => {
+                const leadUser = users.find(u => String(u.id) === String(lead.assigned_user_id));
+                const stageColor = getStageColor(lead.stage_id);
+                return (
+                  <tr 
+                    key={lead.id} 
+                    className="hover:bg-slate-50 cursor-pointer transition-colors"
+                    onClick={() => onNavigate('lead-detail', lead.id)}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-900 text-sm">{lead.title}</div>
+                      {lead.contact_name && <div className="text-xs text-slate-400">{lead.contact_name}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600">{lead.company || '-'}</td>
+                    <td className="px-4 py-3">
+                      <span 
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold"
+                        style={{ backgroundColor: `${stageColor}20`, color: stageColor }}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: stageColor }}></span>
+                        {getStageName(lead.stage_id)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {leadUser ? (
+                        <div className="flex items-center gap-2 text-sm">
+                          <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
+                            {leadUser.name?.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="text-slate-700">{leadUser.name}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 text-sm">Não atribuído</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-slate-700 text-sm">
+                      R$ {(lead.value || 0).toLocaleString('pt-BR')}
+                    </td>
+                    <td className="px-4 py-3 text-center text-xs text-slate-500">
+                      {lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR') : '-'}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   const isDateInRange = (dateStr: string | null, range: { start: string, end: string }) => {
     if (!range.start && !range.end) return true;
     if (!dateStr) return false;
@@ -578,12 +662,13 @@ export const KanbanBoard = ({ onNavigate }: any) => {
           )}
         </div>
 
-        {/* Kanban Board */}
-        <div className="flex-1 overflow-x-auto overflow-y-hidden p-6 custom-scrollbar">
-          <div className="flex gap-6 h-full items-start">
-            {stages.map((stage: any) => {
-              const stageLeads = filteredLeads.filter(l => l.stage_id === stage.id);
-              const totalValue = stageLeads.reduce((sum, l) => sum + (Number(l.value) || 0), 0);
+        {/* Content Area */}
+        {activeView === 'kanban' ? (
+          <div className="flex-1 overflow-x-auto overflow-y-hidden p-6 custom-scrollbar">
+            <div className="flex gap-6 h-full items-start">
+              {stages.map((stage: any) => {
+                const stageLeads = filteredLeads.filter(l => l.stage_id === stage.id);
+                const totalValue = stageLeads.reduce((sum, l) => sum + (Number(l.value) || 0), 0);
 
               const colorMap: Record<string, string> = {
                 'bg-blue-300': '#93c5fd', 'bg-green-300': '#86efac',
@@ -690,6 +775,9 @@ export const KanbanBoard = ({ onNavigate }: any) => {
             })}
           </div>
         </div>
+        ) : (
+          <ListTableView />
+        )}
       </div>
 
       {/* Advanced Filter Drawer */}
