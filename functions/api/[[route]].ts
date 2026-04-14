@@ -2505,37 +2505,36 @@ app.post('/segments/preview', async (c) => {
 
       // Handle special fields
       if (field === 'filled_form') {
-        // value can be form_id (UUID) or form name
-        // First try to find the form by ID or name
+        // value = form_id (UUID) or form name selected in UI
+        // Find the tracking form
         const formInfo = await c.env.DB.prepare(
           'SELECT id, name FROM tracking_forms WHERE (id = ? OR name = ?) AND account_id = ?'
         ).bind(value, value, account_id).first();
 
-        let targetFormId = formInfo ? formInfo.id : value;
-        let targetFormName = formInfo ? formInfo.name : value;
+        if (!formInfo) {
+          // Form not found - no leads match
+          if (operator === 'equals') {
+            whereClause += ` AND 1=0`;
+          }
+          continue;
+        }
 
-        // Find leads who submitted this form (by form_id matching UUID or by form_name in raw data)
+        // ONLY use form_submissions table - exact match on form_id
         const formSubmissions = await c.env.DB.prepare(
-          'SELECT DISTINCT lead_id FROM form_submissions WHERE account_id = ? AND (form_id = ? OR data LIKE ?)'
-        ).bind(account_id, targetFormId, `%"form_name":"${targetFormName}"%`).all();
-        
+          'SELECT DISTINCT lead_id FROM form_submissions WHERE account_id = ? AND form_id = ? AND lead_id IS NOT NULL'
+        ).bind(account_id, formInfo.id).all();
+
         let leadIds = formSubmissions.results.map((r: any) => r.lead_id).filter(Boolean);
 
-        // Also check marketing_leads for leads from this form that were synced to CRM
-        const marketingLeads = await c.env.DB.prepare(
-          'SELECT id FROM leads WHERE account_id = ? AND contact_email IN (SELECT contact_email FROM marketing_leads WHERE account_id = ? AND form_name = ?)'
-        ).bind(account_id, account_id, targetFormName).all();
-        
-        marketingLeads.results.forEach((r: any) => {
-          if (!leadIds.includes(r.id)) leadIds.push(r.id);
-        });
+        console.log('[SEGMENTS] filled_form filter:', { formId: formInfo.id, formName: formInfo.name, leadIdsFound: leadIds.length });
 
         if (operator === 'equals') {
           if (leadIds.length > 0) {
-            whereClause += ` AND id IN (${leadIds.map(() => '?').join(',')})`;
+            whereClause = `id IN (${leadIds.map(() => '?').join(',')})`;
+            params.length = 0;
             params.push(...leadIds);
           } else {
-            whereClause += ` AND 1=0`; // No leads match
+            whereClause += ` AND 1=0`;
           }
         } else if (operator === 'not_equals') {
           if (leadIds.length > 0) {
