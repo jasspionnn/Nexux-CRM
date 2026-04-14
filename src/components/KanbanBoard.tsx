@@ -57,11 +57,16 @@ export const KanbanBoard = ({ onNavigate }: any) => {
           setActiveFunnelId(funnelsData[0].id);
         }
       }
-      
+
       if (Array.isArray(leadsData)) setLeads(leadsData);
-      if (Array.isArray(usersData)) setUsers(usersData);
+      if (Array.isArray(usersData)) {
+        console.log('Users loaded:', usersData);
+        setUsers(usersData);
+      } else {
+        console.error('Users data is not an array:', usersData);
+      }
     } catch (error) {
-      console.error(error);
+      console.error('Error fetching data:', error);
     } finally {
       setIsLoading(false);
     }
@@ -272,7 +277,10 @@ export const KanbanBoard = ({ onNavigate }: any) => {
               </div>
               <button
                 type="button"
-                onClick={() => setShowUserDropdown(prev => !prev)}
+                onClick={() => {
+                  console.log('Toggle user dropdown, users:', users);
+                  setShowUserDropdown(prev => !prev);
+                }}
                 className={`w-full flex items-center justify-between pl-9 pr-3 py-2.5 bg-white border rounded-xl text-[11px] font-bold text-slate-700 hover:border-slate-300 transition-all cursor-pointer ${
                   filterUsers.length > 0 ? 'border-indigo-400 text-indigo-700 bg-indigo-50' : 'border-slate-200'
                 }`}
