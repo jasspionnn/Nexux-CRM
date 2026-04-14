@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, Plus, Trash2, Copy, Save, Palette, Type, Layout, ExternalLink, Smartphone, Monitor, BarChart3, Calendar, TrendingUp, MousePointer, Users, Clock, Download, ChevronDown, Check, X } from 'lucide-react';
+import { Link, Plus, Trash2, Copy, Save, Palette, Type, Layout, ExternalLink, Smartphone, Monitor, BarChart3, Calendar, TrendingUp, MousePointer, Users, Clock, Download, ChevronDown, Check, X, Eye } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 import { createPortal } from 'react-dom';
 
@@ -228,7 +228,7 @@ export const BioLinks = () => {
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-6">
-            {activeTab === 'content' ? (
+            {activeTab === 'content' && (
               <div className="space-y-5">
                 {/* Basic Info */}
                 <div>
@@ -302,7 +302,9 @@ export const BioLinks = () => {
                   </div>
                 </div>
               </div>
-            ) : (
+            )}
+
+            {activeTab === 'design' && (
               <div className="space-y-5">
                 {/* Colors */}
                 <div>
@@ -479,7 +481,9 @@ export const BioLinks = () => {
                   </div>
                 </div>
               </div>
-            ) : activeTab === 'analytics' ? (
+            )}
+
+            {activeTab === 'analytics' && (
               <div className="space-y-5">
                 {analyticsLoading ? (
                   <div className="flex items-center justify-center py-12">
@@ -626,7 +630,7 @@ export const BioLinks = () => {
                   </div>
                 )}
               </div>
-            ) : null}
+            )}
           </div>
         </div>
 
