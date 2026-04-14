@@ -134,6 +134,7 @@ export const LeadSegmentation = () => {
     if (builderRules.length === 0) return;
     setPreviewLoading(true);
     try {
+      console.log('Previewing segment with rules:', builderRules);
       const res = await fetch('/api/segments/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -144,10 +145,16 @@ export const LeadSegmentation = () => {
       });
       if (res.ok) {
         const data = await res.json();
+        console.log('Preview results:', data);
         setPreviewLeads(data.leads || []);
+      } else {
+        const err = await res.json();
+        console.error('Preview API error:', err);
+        alert('Erro no preview: ' + (err.error || 'Erro desconhecido'));
       }
     } catch (error) {
       console.error('Preview error:', error);
+      alert('Erro ao carregar preview');
     } finally {
       setPreviewLoading(false);
     }
@@ -159,6 +166,8 @@ export const LeadSegmentation = () => {
     try {
       const method = editingSegment ? 'PUT' : 'POST';
       const url = editingSegment ? `/api/segments/${editingSegment}` : '/api/segments';
+
+      console.log('Saving segment:', { name: builderName, rules: builderRules, accountId });
 
       const res = await fetch(url, {
         method,
@@ -173,9 +182,13 @@ export const LeadSegmentation = () => {
 
       if (!res.ok) {
         const err = await res.json();
+        console.error('Save segment API error:', err);
         alert('Erro ao salvar: ' + (err.error || 'Erro desconhecido'));
         return;
       }
+
+      const data = await res.json();
+      console.log('Segment saved successfully:', data);
 
       // Clear preview
       setPreviewLeads([]);
@@ -185,6 +198,7 @@ export const LeadSegmentation = () => {
       setShowBuilder(false);
       setEditingSegment(null);
       fetchData();
+      alert('Segmentação salva com sucesso!');
     } catch (error) {
       console.error('Save segment error:', error);
       alert('Erro ao salvar segmentação');

@@ -2421,9 +2421,58 @@ app.post('/segments/preview', async (c) => {
     let whereClause = 'account_id = ?';
     const params: any[] = [account_id];
 
-    rules.forEach((rule: any) => {
-      const { field, operator, value } = rule;
+    for (const rule of rules) {
+      let { field, operator, value } = rule;
 
+      // Handle special fields
+      if (field === 'filled_form') {
+        // Check if lead has form submissions
+        const formSubmissions = await c.env.DB.prepare(
+          'SELECT DISTINCT lead_id FROM form_submissions WHERE form_id = ? AND account_id = ?'
+        ).bind(value, account_id).all();
+        const leadIds = formSubmissions.results.map((r: any) => r.lead_id);
+        
+        if (operator === 'equals') {
+          if (leadIds.length > 0) {
+            whereClause += ` AND id IN (${leadIds.map(() => '?').join(',')})`;
+            params.push(...leadIds);
+          } else {
+            whereClause += ` AND 1=0`; // No leads match
+          }
+        } else if (operator === 'not_equals') {
+          if (leadIds.length > 0) {
+            whereClause += ` AND id NOT IN (${leadIds.map(() => '?').join(',')})`;
+            params.push(...leadIds);
+          }
+        }
+        continue;
+      }
+
+      if (field === 'visited_page') {
+        // Check page visits in tracking data
+        const pageVisits = await c.env.DB.prepare(
+          'SELECT DISTINCT visitor_id FROM page_views WHERE url LIKE ? AND account_id = ?'
+        ).bind(`%${value}%`, account_id).all();
+        const visitorIds = pageVisits.results.map((r: any) => r.visitor_id);
+        
+        // Match leads by tracking info (if available)
+        if (visitorIds.length > 0 && operator === 'equals') {
+          const visitedLeads = await c.env.DB.prepare(
+            `SELECT id FROM leads WHERE account_id = ? AND (contact_email IN (SELECT email FROM form_submissions WHERE visitor_id IN (${visitorIds.map(() => '?').join(',')})) OR id IN (SELECT lead_id FROM form_submissions WHERE visitor_id IN (${visitorIds.map(() => '?').join(',')})))`
+          ).bind(account_id, ...visitorIds, ...visitorIds).all();
+          const leadIds = visitedLeads.results.map((r: any) => r.id);
+          if (leadIds.length > 0) {
+            whereClause = `id IN (${leadIds.map(() => '?').join(',')})`;
+            params.length = 0;
+            params.push(...leadIds);
+          } else {
+            whereClause += ` AND 1=0`;
+          }
+        }
+        continue;
+      }
+
+      // Handle regular fields
       switch (operator) {
         case 'equals':
           whereClause += ` AND ${field} = ?`;
@@ -2464,7 +2513,7 @@ app.post('/segments/preview', async (c) => {
           whereClause += ` AND ${field} IS NOT NULL AND ${field} != ''`;
           break;
       }
-    });
+    }
 
     const { results } = await c.env.DB.prepare(
       `SELECT * FROM leads WHERE ${whereClause} ORDER BY created_at DESC LIMIT 500`
