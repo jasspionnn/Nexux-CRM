@@ -431,6 +431,37 @@ app.get('/migrate-db', async (c) => {
       await c.env.DB.prepare('ALTER TABLE tracking_forms ADD COLUMN field_mapping TEXT').run();
     } catch (e) { /* column already exists */ }
 
+    // Form Submissions table (for segment tracking)
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS form_submissions (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          form_id TEXT NOT NULL,
+          lead_id TEXT,
+          visitor_id TEXT,
+          email TEXT,
+          data TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+          FOREIGN KEY (form_id) REFERENCES tracking_forms(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    // Page Views table (for segment tracking)
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS page_views (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          visitor_id TEXT NOT NULL,
+          url TEXT NOT NULL,
+          referrer TEXT,
+          user_agent TEXT,
+          ip_address TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
     // Marketing leads table
     await c.env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS marketing_leads (
