@@ -2370,7 +2370,17 @@ async function buildSegmentQuery(db: any, accountId: string, rules: any[]) {
   const params: any[] = [accountId];
 
   for (const rule of rules) {
-    const { field, operator, value } = rule;
+    let { field, operator, value } = rule;
+
+    // The UI hides the operator dropdown for special fields, meaning it often defaults to 'contains'
+    // or whatever was last selected. We must normalize it to 'equals' (affirmative) or 'not_equals' (negative).
+    if (field === 'filled_form' || field === 'visited_page') {
+      if (operator !== 'not_equals' && operator !== 'not_contains') {
+        operator = 'equals';
+      } else {
+        operator = 'not_equals';
+      }
+    }
 
     if (field === 'filled_form') {
       const formInfo: any = await db.prepare(
