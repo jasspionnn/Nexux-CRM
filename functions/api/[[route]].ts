@@ -2492,6 +2492,8 @@ app.post('/segments/preview', async (c) => {
     const body = await c.req.json();
     const { account_id = 'acc_demo', rules } = body;
 
+    console.log('[SEGMENTS PREVIEW] Input:', { account_id, rulesCount: rules?.length, rules: JSON.stringify(rules) });
+
     if (!rules || rules.length === 0) {
       return c.json({ leads: [] });
     }
@@ -2503,6 +2505,8 @@ app.post('/segments/preview', async (c) => {
     for (const rule of rules) {
       let { field, operator, value } = rule;
 
+      console.log('[SEGMENTS PREVIEW] Processing rule:', { field, operator, value });
+
       // Handle special fields
       if (field === 'filled_form') {
         // value = form_id (UUID) or form name selected in UI
@@ -2510,6 +2514,8 @@ app.post('/segments/preview', async (c) => {
         const formInfo = await c.env.DB.prepare(
           'SELECT id, name FROM tracking_forms WHERE (id = ? OR name = ?) AND account_id = ?'
         ).bind(value, value, account_id).first();
+
+        console.log('[SEGMENTS PREVIEW] formInfo lookup:', { value, formInfo });
 
         if (!formInfo) {
           // Form not found - no leads match
@@ -2521,12 +2527,27 @@ app.post('/segments/preview', async (c) => {
 
         // ONLY use form_submissions table - exact match on form_id
         const formSubmissions = await c.env.DB.prepare(
-          'SELECT DISTINCT lead_id FROM form_submissions WHERE account_id = ? AND form_id = ? AND lead_id IS NOT NULL'
+          'SELECT DISTINCT lead_id, form_id FROM form_submissions WHERE account_id = ? AND form_id = ? AND lead_id IS NOT NULL'
         ).bind(account_id, formInfo.id).all();
 
         let leadIds = formSubmissions.results.map((r: any) => r.lead_id).filter(Boolean);
 
-        console.log('[SEGMENTS] filled_form filter:', { formId: formInfo.id, formName: formInfo.name, leadIdsFound: leadIds.length });
+        console.log('[SEGMENTS PREVIEW] form_submissions query:', {
+          formId: formInfo.id,
+          formName: formInfo.name,
+          submissionCount: formSubmissions.results.length,
+          submissions: formSubmissions.results,
+          leadIdsFiltered: leadIds
+        });
+
+        // DEBUG: Show ALL form_submissions for this account
+        const allSubmissions = await c.env.DB.prepare(
+          'SELECT id, form_id, lead_id, email FROM form_submissions WHERE account_id = ?'
+        ).bind(account_id).all();
+        console.log('[SEGMENTS PREVIEW] ALL form_submissions for account:', {
+          total: allSubmissions.results.length,
+          submissions: allSubmissions.results
+        });
 
         if (operator === 'equals') {
           if (leadIds.length > 0) {
