@@ -2413,26 +2413,39 @@ async function buildSegmentQuery(db: any, accountId: string, rules: any[]) {
     }
 
     if (field === 'visited_page') {
-      const pageVisits: any = await db.prepare(
-        'SELECT DISTINCT visitor_id FROM page_views WHERE url LIKE ? AND account_id = ?'
-      ).bind(`%${value}%`, accountId).all();
-      const visitorIds = pageVisits.results.map((r: any) => r.visitor_id);
-
+      // Find visitor IDs that visited the page
+      // We use tracking_events which is the source of truth for all hits
       if (operator === 'equals') {
-        if (visitorIds.length > 0) {
-          const visitedLeads: any = await db.prepare(
-            `SELECT id FROM leads WHERE account_id = ? AND (contact_email IN (SELECT email FROM form_submissions WHERE visitor_id IN (${visitorIds.map(() => '?').join(',')})) OR id IN (SELECT lead_id FROM form_submissions WHERE visitor_id IN (${visitorIds.map(() => '?').join(',')})))`
-          ).bind(accountId, ...visitorIds, ...visitorIds).all();
-          const leadIds = visitedLeads.results.map((r: any) => r.id);
-          if (leadIds.length > 0) {
-            whereClause += ` AND id IN (${leadIds.map(() => '?').join(',')})`;
-            params.push(...leadIds);
-          } else {
-            whereClause += ` AND 1=0`;
-          }
-        } else {
-          whereClause += ` AND 1=0`;
-        }
+        whereClause += ` AND (
+          id IN (
+            SELECT lead_id FROM visitor_leads 
+            WHERE account_id = ? AND visitor_id IN (
+              SELECT visitor_id FROM tracking_events 
+              WHERE account_id = ? AND event_type = 'pageview' AND url LIKE ?
+            )
+          )
+          OR
+          id IN (
+            SELECT lead_id FROM form_submissions 
+            WHERE account_id = ? AND visitor_id IN (
+              SELECT visitor_id FROM tracking_events 
+              WHERE account_id = ? AND event_type = 'pageview' AND url LIKE ?
+            ) AND lead_id IS NOT NULL
+          )
+          OR
+          contact_email IN (
+            SELECT email FROM form_submissions 
+            WHERE account_id = ? AND visitor_id IN (
+              SELECT visitor_id FROM tracking_events 
+              WHERE account_id = ? AND event_type = 'pageview' AND url LIKE ?
+            ) AND email IS NOT NULL
+          )
+        )`;
+        params.push(
+          accountId, accountId, `%${value}%`, 
+          accountId, accountId, `%${value}%`,
+          accountId, accountId, `%${value}%`
+        );
       }
       continue;
     }

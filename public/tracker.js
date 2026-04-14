@@ -189,11 +189,11 @@
      * @returns {string}
      */
     _generateVisitorId: function() {
-      var id = sessionStorage.getItem('nexus_visitor_id');
+      var id = localStorage.getItem('nexus_visitor_id');
       if (!id) {
         id = 'vis_' + Math.random().toString(36).substring(2, 15) + 
              Date.now().toString(36);
-        sessionStorage.setItem('nexus_visitor_id', id);
+        localStorage.setItem('nexus_visitor_id', id);
       }
       return id;
     }
