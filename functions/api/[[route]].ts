@@ -1587,8 +1587,12 @@ app.post('/tracking/events', async (c) => {
           for (const ml of mappedLeads as any[]) {
             const visitId = crypto.randomUUID();
             await c.env.DB.prepare(
+              'UPDATE visitor_leads SET last_seen = datetime(\'now\') WHERE visitor_id = ? AND account_id = ?'
+            ).bind(visitor_id, settings.account_id).run();
+
+            await c.env.DB.prepare(
               'INSERT INTO lead_visits (id, account_id, lead_id, visitor_id, url, referrer, title) VALUES (?, ?, ?, ?, ?, ?, ?)'
-            ).bind(visitId, settings.account_id, ml.lead_id, visitor_id, url || null, referrer || null, body.title || null).run();
+            ).bind(visitId, settings.account_id, ml.lead_id, visitor_id, url || null, referrer || null, body.page_title || body.title || null).run();
 
             // Trigger page_visit automation
             await triggerAutomations(settings.account_id, 'page_visit', ml.lead_id, c.env.DB, { url_pattern: url });
@@ -2413,10 +2417,15 @@ async function buildSegmentQuery(db: any, accountId: string, rules: any[]) {
     }
 
     if (field === 'visited_page') {
-      // Find visitor IDs that visited the page
-      // We use tracking_events which is the source of truth for all hits
+      // Find leads that visited the page
+      // We check THREE sources to be 100% robust:
+      // 1. lead_visits: Identified visits (direct)
+      // 2. visitor_leads + tracking_events: Persistent device tracking
+      // 3. form_submissions + tracking_events: Identity correlation fallback
       if (operator === 'equals') {
         whereClause += ` AND (
+          id IN (SELECT lead_id FROM lead_visits WHERE account_id = ? AND url LIKE ?)
+          OR
           id IN (
             SELECT lead_id FROM visitor_leads 
             WHERE account_id = ? AND visitor_id IN (
@@ -2442,6 +2451,7 @@ async function buildSegmentQuery(db: any, accountId: string, rules: any[]) {
           )
         )`;
         params.push(
+          accountId, `%${value}%`,
           accountId, accountId, `%${value}%`, 
           accountId, accountId, `%${value}%`,
           accountId, accountId, `%${value}%`
