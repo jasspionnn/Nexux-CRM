@@ -38,7 +38,6 @@ const FIELDS = [
   { value: 'tags', label: 'Tags', type: 'text' },
   { value: 'created_at', label: 'Data de Criação', type: 'date' },
   { value: 'filled_form', label: 'Preencheu Formulário', type: 'special' },
-  { value: 'visited_page', label: 'Visitou Página', type: 'special' },
 ];
 
 const OPERATORS: { value: Operator; label: string; showValue: boolean }[] = [

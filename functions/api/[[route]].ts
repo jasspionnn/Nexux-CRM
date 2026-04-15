@@ -2387,6 +2387,8 @@ async function buildSegmentQuery(db: any, accountId: string, rules: any[]) {
       }
     }
 
+    if (field === 'visited_page') continue; // Temporarily removed from logic
+
     if (field === 'filled_form') {
       const formInfo: any = await db.prepare(
         'SELECT id, name FROM tracking_forms WHERE (id = ? OR name = ?) AND account_id = ?'
