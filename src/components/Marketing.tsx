@@ -6,10 +6,12 @@ import { AutomationFlows } from './AutomationFlows';
 import { MarketingLeads } from './MarketingLeads';
 import { BioLinks } from './BioLinks';
 import { EmailMarketing } from './EmailMarketing';
+import { LeadScoring } from './LeadScoring';
 
 export const Marketing = () => {
   const [activeSubView, setActiveSubView] = useState(() => {
     const hash = window.location.hash;
+    if (hash.includes('lead-scoring')) return 'lead-scoring';
     if (hash.includes('segmentation')) return 'segmentation';
     if (hash.includes('automations')) return 'automations';
     if (hash.includes('leads-db') || hash.includes('marketing-leads')) return 'leads-db';
@@ -22,7 +24,8 @@ export const Marketing = () => {
   useEffect(() => {
     const h = () => {
       const hash = window.location.hash;
-      if (hash.includes('segmentation')) setActiveSubView('segmentation');
+      if (hash.includes('lead-scoring')) setActiveSubView('lead-scoring');
+      else if (hash.includes('segmentation')) setActiveSubView('segmentation');
       else if (hash.includes('email-mkt')) setActiveSubView('email-mkt');
       else if (hash.includes('bio-links')) setActiveSubView('bio-links');
       else if (hash.includes('leads-db') || hash.includes('marketing-leads')) setActiveSubView('leads-db');
@@ -41,6 +44,7 @@ export const Marketing = () => {
   return (
     <div className="flex flex-col h-full bg-slate-50/50">
       <main className="flex-1 overflow-y-auto">
+        {activeSubView === 'lead-scoring' && <LeadScoring />}
         {activeSubView === 'tracking' && <SiteTracking />}
         {activeSubView === 'segmentation' && <LeadSegmentation />}
         {activeSubView === 'automations' && <AutomationFlows />}

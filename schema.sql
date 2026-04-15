@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS leads (
     probability INTEGER DEFAULT 0,
     tags TEXT,
     custom_values TEXT,
+    score_profile REAL DEFAULT 0,
+    score_interest INTEGER DEFAULT 0,
+    score_grade TEXT DEFAULT 'D',
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
     FOREIGN KEY (funnel_id) REFERENCES funnels(id) ON DELETE CASCADE,
@@ -336,5 +339,70 @@ CREATE TABLE IF NOT EXISTS lead_visits (
     title TEXT,
     duration_seconds INTEGER DEFAULT 0,
     visited_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE
+);
+
+-- Regras de Lead Scoring - Perfil (campos personalizados com peso e estrela)
+CREATE TABLE IF NOT EXISTS scoring_profile_rules (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+-- Campos personalizados vinculados a regras de perfil
+CREATE TABLE IF NOT EXISTS scoring_profile_fields (
+    id TEXT PRIMARY KEY,
+    rule_id TEXT NOT NULL,
+    custom_field_id TEXT NOT NULL,
+    weight_percentage INTEGER NOT NULL DEFAULT 50, -- 1% a 100%
+    star_rating INTEGER NOT NULL DEFAULT 5, -- 1 a 10 estrelas
+    condition_type TEXT DEFAULT 'any', -- 'any', 'equals', 'contains', 'greater_than', 'less_than', 'in_range'
+    condition_value TEXT, -- valor para comparação (JSON se necessário)
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (rule_id) REFERENCES scoring_profile_rules(id) ON DELETE CASCADE,
+    FOREIGN KEY (custom_field_id) REFERENCES custom_fields(id) ON DELETE CASCADE
+);
+
+-- Regras de Lead Scoring - Interesse (conversões com pontos)
+CREATE TABLE IF NOT EXISTS scoring_interest_rules (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+-- Conversões vinculadas a regras de interesse (segmentação por formulários/eventos)
+CREATE TABLE IF NOT EXISTS scoring_interest_conversions (
+    id TEXT PRIMARY KEY,
+    rule_id TEXT NOT NULL,
+    conversion_name TEXT NOT NULL,
+    points INTEGER NOT NULL DEFAULT 10, -- pontos que esta conversão vale
+    event_type TEXT DEFAULT 'form_submit', -- 'form_submit', 'page_view', 'custom_event'
+    event_ids TEXT, -- JSON com IDs dos formulários/eventos vinculados
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (rule_id) REFERENCES scoring_interest_rules(id) ON DELETE CASCADE
+);
+
+-- Histórico de scores calculados por lead
+CREATE TABLE IF NOT EXISTS lead_score_history (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    lead_id TEXT NOT NULL,
+    score_profile REAL DEFAULT 0,
+    score_interest INTEGER DEFAULT 0,
+    score_total REAL DEFAULT 0,
+    score_grade TEXT DEFAULT 'D',
+    calculated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
  

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutGrid, BarChart2, Inbox, CheckSquare, Sparkles, Search, Bell, Settings as SettingsIcon, LogOut, Megaphone, Users, Target, Bot, Eye, Link, Mail, BarChart3, ChevronRight, ChevronDown } from 'lucide-react';
+import { LayoutGrid, BarChart2, Inbox, CheckSquare, Sparkles, Search, Bell, Settings as SettingsIcon, LogOut, Megaphone, Users, Target, Bot, Eye, Link, Mail, BarChart3, ChevronRight, ChevronDown, Award } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 const MKT_CATEGORIES: Record<string, { sub: string; label: string; icon: React.ElementType }[]> = {
@@ -12,6 +12,7 @@ const MKT_CATEGORIES: Record<string, { sub: string; label: string; icon: React.E
     { sub: 'email-mkt', label: 'Email Mkt', icon: Mail },
   ],
   conversao: [
+    { sub: 'lead-scoring', label: 'Lead Scoring', icon: Award },
     { sub: 'segmentation', label: 'Segmentação', icon: Target },
     { sub: 'automations', label: 'Automações', icon: Bot },
   ],

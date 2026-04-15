@@ -2840,18 +2840,18 @@ async function executeActionNode(node: any, leadId: string, db: any) {
 app.post('/login', async (c) => {
   try {
     const { email, password } = await c.req.json();
-    
+
     if (!email || !password) {
       return c.json({ error: 'Email e senha são obrigatórios' }, 400);
     }
 
     const user: any = await c.env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
-    
+
     if (!user) {
       return c.json({ error: 'Usuário não encontrado' }, 401);
     }
 
-    // Direct comparison for now as requested. 
+    // Direct comparison for now as requested.
     // In a production app, we would use hashing.
     if (user.password !== password) {
       return c.json({ error: 'Senha incorreta' }, 401);
@@ -2862,6 +2862,357 @@ app.post('/login', async (c) => {
     return c.json(userWithoutPassword);
   } catch (error: any) {
     console.error('Login error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ========================================
+// LEAD SCORING API
+// ========================================
+
+// Profile Rules CRUD
+app.get('/scoring/profile-rules', async (c) => {
+  try {
+    const account_id = 'acc_demo';
+    const { results: rules } = await c.env.DB.prepare(
+      'SELECT * FROM scoring_profile_rules WHERE account_id = ? ORDER BY created_at DESC'
+    ).bind(account_id).all();
+
+    // Load fields for each rule
+    const rulesWithFields = await Promise.all(
+      (rules || []).map(async (rule: any) => {
+        const { results: fields } = await c.env.DB.prepare(
+          `SELECT spf.*, cf.name as custom_field_name, cf.type as custom_field_type 
+           FROM scoring_profile_fields spf 
+           LEFT JOIN custom_fields cf ON spf.custom_field_id = cf.id 
+           WHERE spf.rule_id = ?`
+        ).bind(rule.id).all();
+
+        return { ...rule, is_active: rule.is_active === 1, fields: fields || [] };
+      })
+    );
+
+    return c.json(rulesWithFields);
+  } catch (error: any) {
+    console.error('Error loading profile rules:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post('/scoring/profile-rules', async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = crypto.randomUUID();
+    const account_id = 'acc_demo';
+
+    await c.env.DB.prepare(
+      'INSERT INTO scoring_profile_rules (id, account_id, name, description, is_active) VALUES (?, ?, ?, ?, ?)'
+    ).bind(id, account_id, body.name, body.description || null, body.is_active !== false ? 1 : 0).run();
+
+    return c.json({ id, name: body.name, is_active: true, fields: [] });
+  } catch (error: any) {
+    console.error('Error creating profile rule:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.put('/scoring/profile-rules/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+
+    await c.env.DB.prepare(
+      'UPDATE scoring_profile_rules SET name = ?, description = ?, is_active = ?, updated_at = datetime(\'now\') WHERE id = ?'
+    ).bind(body.name, body.description || null, body.is_active !== false ? 1 : 0, id).run();
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    console.error('Error updating profile rule:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.delete('/scoring/profile-rules/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM scoring_profile_rules WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting profile rule:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post('/scoring/profile-rules/:id/fields', async (c) => {
+  try {
+    const ruleId = c.req.param('id');
+    const body = await c.req.json();
+    const fields = body.fields || [];
+
+    // Delete existing fields for this rule
+    await c.env.DB.prepare('DELETE FROM scoring_profile_fields WHERE rule_id = ?').bind(ruleId).run();
+
+    // Insert new fields
+    for (const field of fields) {
+      if (field.custom_field_id) {
+        const fieldId = crypto.randomUUID();
+        await c.env.DB.prepare(
+          'INSERT INTO scoring_profile_fields (id, rule_id, custom_field_id, weight_percentage, star_rating, condition_type, condition_value) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).bind(
+          fieldId,
+          ruleId,
+          field.custom_field_id,
+          field.weight_percentage || 50,
+          field.star_rating || 5,
+          field.condition_type || 'any',
+          field.condition_value || null
+        ).run();
+      }
+    }
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    console.error('Error saving profile rule fields:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Interest Rules CRUD
+app.get('/scoring/interest-rules', async (c) => {
+  try {
+    const account_id = 'acc_demo';
+    const { results: rules } = await c.env.DB.prepare(
+      'SELECT * FROM scoring_interest_rules WHERE account_id = ? ORDER BY created_at DESC'
+    ).bind(account_id).all();
+
+    // Load conversions for each rule
+    const rulesWithConversions = await Promise.all(
+      (rules || []).map(async (rule: any) => {
+        const { results: conversions } = await c.env.DB.prepare(
+          'SELECT * FROM scoring_interest_conversions WHERE rule_id = ? ORDER BY created_at'
+        ).bind(rule.id).all();
+
+        return { ...rule, is_active: rule.is_active === 1, conversions: conversions || [] };
+      })
+    );
+
+    return c.json(rulesWithConversions);
+  } catch (error: any) {
+    console.error('Error loading interest rules:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post('/scoring/interest-rules', async (c) => {
+  try {
+    const body = await c.req.json();
+    const id = crypto.randomUUID();
+    const account_id = 'acc_demo';
+
+    await c.env.DB.prepare(
+      'INSERT INTO scoring_interest_rules (id, account_id, name, description, is_active) VALUES (?, ?, ?, ?, ?)'
+    ).bind(id, account_id, body.name, body.description || null, body.is_active !== false ? 1 : 0).run();
+
+    return c.json({ id, name: body.name, is_active: true, conversions: [] });
+  } catch (error: any) {
+    console.error('Error creating interest rule:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.put('/scoring/interest-rules/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+
+    await c.env.DB.prepare(
+      'UPDATE scoring_interest_rules SET name = ?, description = ?, is_active = ?, updated_at = datetime(\'now\') WHERE id = ?'
+    ).bind(body.name, body.description || null, body.is_active !== false ? 1 : 0, id).run();
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    console.error('Error updating interest rule:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.delete('/scoring/interest-rules/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM scoring_interest_rules WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting interest rule:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post('/scoring/interest-rules/:id/conversions', async (c) => {
+  try {
+    const ruleId = c.req.param('id');
+    const body = await c.req.json();
+    const conversions = body.conversions || [];
+
+    // Delete existing conversions for this rule
+    await c.env.DB.prepare('DELETE FROM scoring_interest_conversions WHERE rule_id = ?').bind(ruleId).run();
+
+    // Insert new conversions
+    for (const conversion of conversions) {
+      if (conversion.conversion_name) {
+        const conversionId = crypto.randomUUID();
+        await c.env.DB.prepare(
+          'INSERT INTO scoring_interest_conversions (id, rule_id, conversion_name, points, event_type, event_ids) VALUES (?, ?, ?, ?, ?, ?)'
+        ).bind(
+          conversionId,
+          ruleId,
+          conversion.conversion_name,
+          conversion.points || 10,
+          conversion.event_type || 'form_submit',
+          conversion.event_ids || '[]'
+        ).run();
+      }
+    }
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    console.error('Error saving interest rule conversions:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Get leads with scores
+app.get('/scoring/leads', async (c) => {
+  try {
+    const account_id = 'acc_demo';
+    const { results: leads } = await c.env.DB.prepare(
+      'SELECT id, title, contact_email, score_profile, score_interest, score_grade FROM leads WHERE account_id = ? ORDER BY (score_profile + score_interest) DESC'
+    ).bind(account_id).all();
+
+    return c.json(leads || []);
+  } catch (error: any) {
+    console.error('Error loading leads with scores:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Recalculate scores for all leads
+app.post('/scoring/recalculate', async (c) => {
+  try {
+    const account_id = 'acc_demo';
+
+    // Get all leads for this account
+    const { results: leads } = await c.env.DB.prepare(
+      'SELECT * FROM leads WHERE account_id = ?'
+    ).bind(account_id).all();
+
+    // Get all active profile rules with fields
+    const { results: profileRules } = await c.env.DB.prepare(
+      'SELECT * FROM scoring_profile_rules WHERE account_id = ? AND is_active = 1'
+    ).bind(account_id).all();
+
+    const profileFieldsByRule: any = {};
+    for (const rule of profileRules || []) {
+      const { results: fields } = await c.env.DB.prepare(
+        'SELECT * FROM scoring_profile_fields WHERE rule_id = ?'
+      ).bind(rule.id).all();
+      profileFieldsByRule[rule.id] = fields || [];
+    }
+
+    // Get all active interest rules with conversions
+    const { results: interestRules } = await c.env.DB.prepare(
+      'SELECT * FROM scoring_interest_rules WHERE account_id = ? AND is_active = 1'
+    ).bind(account_id).all();
+
+    const interestConversionsByRule: any = {};
+    for (const rule of interestRules || []) {
+      const { results: conversions } = await c.env.DB.prepare(
+        'SELECT * FROM scoring_interest_conversions WHERE rule_id = ?'
+      ).bind(rule.id).all();
+      interestConversionsByRule[rule.id] = conversions || [];
+    }
+
+    // Calculate scores for each lead
+    for (const lead of leads || []) {
+      let profileScore = 0;
+      let interestScore = 0;
+
+      // Calculate profile score
+      const customValues: any = lead.custom_values ? JSON.parse(lead.custom_values) : {};
+
+      for (const ruleId in profileFieldsByRule) {
+        const fields = profileFieldsByRule[ruleId];
+        for (const field of fields) {
+          // Check if lead has a value for this custom field
+          const leadValue = customValues[field.custom_field_id];
+          if (leadValue !== undefined && leadValue !== null && leadValue !== '') {
+            // Add weighted score based on star rating
+            const weightFactor = field.weight_percentage / 100;
+            const starScore = field.star_rating / 10; // 1-10 stars -> 0.1-1.0
+            profileScore += starScore * weightFactor * 100;
+          }
+        }
+      }
+
+      // Calculate interest score
+      for (const ruleId in interestConversionsByRule) {
+        const conversions = interestConversionsByRule[ruleId];
+        for (const conversion of conversions) {
+          // Get events for this lead
+          const eventIds: string[] = conversion.event_ids ? JSON.parse(conversion.event_ids) : [];
+          
+          if (eventIds.length > 0) {
+            // Count how many of these events/forms this lead has
+            for (const eventId of eventIds) {
+              const { total: eventCount } = await c.env.DB.prepare(
+                'SELECT COUNT(*) as total FROM tracking_events WHERE visitor_id IN (SELECT visitor_id FROM visitor_leads WHERE lead_id = ?) AND (form_data LIKE ? OR id IN (SELECT id FROM tracking_events WHERE visitor_id IN (SELECT visitor_id FROM visitor_leads WHERE lead_id = ?)))'
+              ).bind(lead.id, `%${eventId}%`, lead.id).first();
+
+              if (eventCount > 0) {
+                interestScore += conversion.points * eventCount;
+              }
+            }
+          }
+        }
+      }
+
+      // Calculate total and grade
+      const totalScore = profileScore + interestScore;
+      let grade = 'E';
+      if (totalScore >= 80) grade = 'A';
+      else if (totalScore >= 60) grade = 'B';
+      else if (totalScore >= 40) grade = 'C';
+      else if (totalScore >= 20) grade = 'D';
+
+      // Update lead with new scores
+      await c.env.DB.prepare(
+        'UPDATE leads SET score_profile = ?, score_interest = ?, score_grade = ? WHERE id = ?'
+      ).bind(profileScore, interestScore, grade, lead.id).run();
+
+      // Save to history
+      const historyId = crypto.randomUUID();
+      await c.env.DB.prepare(
+        'INSERT INTO lead_score_history (id, account_id, lead_id, score_profile, score_interest, score_total, score_grade) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).bind(historyId, account_id, lead.id, profileScore, interestScore, totalScore, grade).run();
+    }
+
+    return c.json({ success: true, recalculated: leads?.length || 0 });
+  } catch (error: any) {
+    console.error('Error recalculating scores:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Tracking Forms (needed for scoring)
+app.get('/tracking-forms', async (c) => {
+  try {
+    const account_id = 'acc_demo';
+    const { results } = await c.env.DB.prepare(
+      'SELECT * FROM tracking_forms WHERE account_id = ? AND is_active = 1'
+    ).bind(account_id).all();
+
+    return c.json(results || []);
+  } catch (error: any) {
+    console.error('Error loading tracking forms:', error);
     return c.json({ error: error.message }, 500);
   }
 });
