@@ -2882,13 +2882,22 @@ app.get('/scoring/profile-rules', async (c) => {
     const rulesWithFields = await Promise.all(
       (rules || []).map(async (rule: any) => {
         const { results: fields } = await c.env.DB.prepare(
-          `SELECT spf.*, cf.name as custom_field_name, cf.type as custom_field_type 
+          `SELECT spf.*, cf.name as custom_field_name, cf.type as custom_field_type, cf.options as custom_field_options 
            FROM scoring_profile_fields spf 
            LEFT JOIN custom_fields cf ON spf.custom_field_id = cf.id 
            WHERE spf.rule_id = ?`
         ).bind(rule.id).all();
 
-        return { ...rule, is_active: rule.is_active === 1, fields: fields || [] };
+        // Parse answer_scores JSON string -> object
+        const parsedFields = (fields || []).map((f: any) => ({
+          ...f,
+          answer_scores: (() => {
+            try { return f.answer_scores ? JSON.parse(f.answer_scores) : {}; }
+            catch { return {}; }
+          })(),
+        }));
+
+        return { ...rule, is_active: rule.is_active === 1, fields: parsedFields };
       })
     );
 
@@ -2952,20 +2961,21 @@ app.post('/scoring/profile-rules/:id/fields', async (c) => {
     // Delete existing fields for this rule
     await c.env.DB.prepare('DELETE FROM scoring_profile_fields WHERE rule_id = ?').bind(ruleId).run();
 
-    // Insert new fields
+    // Insert new fields using answer_scores JSON
     for (const field of fields) {
       if (field.custom_field_id) {
         const fieldId = crypto.randomUUID();
+        const answerScores = field.answer_scores
+          ? (typeof field.answer_scores === 'string' ? field.answer_scores : JSON.stringify(field.answer_scores))
+          : '{}';
         await c.env.DB.prepare(
-          'INSERT INTO scoring_profile_fields (id, rule_id, custom_field_id, weight_percentage, star_rating, condition_type, condition_value) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          'INSERT INTO scoring_profile_fields (id, rule_id, custom_field_id, weight_percentage, answer_scores) VALUES (?, ?, ?, ?, ?)'
         ).bind(
           fieldId,
           ruleId,
           field.custom_field_id,
           field.weight_percentage || 50,
-          field.star_rating || 5,
-          field.condition_type || 'any',
-          field.condition_value || null
+          answerScores
         ).run();
       }
     }
@@ -3136,7 +3146,7 @@ app.post('/scoring/recalculate', async (c) => {
       let profileScore = 0;
       let interestScore = 0;
 
-      // Calculate profile score
+      // Calculate profile score using answer_scores
       const customValues: any = lead.custom_values ? JSON.parse(lead.custom_values) : {};
 
       for (const ruleId in profileFieldsByRule) {
@@ -3144,12 +3154,33 @@ app.post('/scoring/recalculate', async (c) => {
         for (const field of fields) {
           // Check if lead has a value for this custom field
           const leadValue = customValues[field.custom_field_id];
-          if (leadValue !== undefined && leadValue !== null && leadValue !== '') {
-            // Add weighted score based on star rating
-            const weightFactor = field.weight_percentage / 100;
-            const starScore = field.star_rating / 10; // 1-10 stars -> 0.1-1.0
-            profileScore += starScore * weightFactor * 100;
+          if (leadValue === undefined || leadValue === null || leadValue === '') continue;
+
+          const weightFactor = (field.weight_percentage || 50) / 100;
+
+          // Parse answer_scores: { "OptionLabel": starRating1-10, "__filled__": starRating }
+          let answerScores: Record<string, number> = {};
+          try {
+            answerScores = field.answer_scores ? JSON.parse(field.answer_scores) : {};
+          } catch { answerScores = {}; }
+
+          let starScore = 0;
+          // leadValue may be a string (single answer) or array (checkbox)
+          const values: string[] = Array.isArray(leadValue) ? leadValue : [String(leadValue)];
+
+          // Find the best matching star rating among the lead's answer values
+          let bestStar = 0;
+          for (const val of values) {
+            const matched = answerScores[val] ?? answerScores['__filled__'] ?? 0;
+            if (matched > bestStar) bestStar = matched;
           }
+          // Fallback: if no options matched but field is filled, use __filled__ key
+          if (bestStar === 0 && answerScores['__filled__']) {
+            bestStar = answerScores['__filled__'];
+          }
+
+          starScore = bestStar / 10; // 1-10 -> 0.1-1.0
+          profileScore += starScore * weightFactor * 100;
         }
       }
 

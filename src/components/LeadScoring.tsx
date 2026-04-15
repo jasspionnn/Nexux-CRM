@@ -16,24 +16,26 @@ import {
   Settings,
   Activity,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Search,
+  Sliders,
+  ListChecks
 } from 'lucide-react';
 
 interface CustomField {
   id: string;
   name: string;
   type: string;
-  options?: string;
+  options?: string; // JSON array string of option labels
 }
 
 interface ProfileField {
   id: string;
   custom_field_id: string;
   custom_field_name?: string;
+  custom_field_type?: string;
   weight_percentage: number;
-  star_rating: number;
-  condition_type: string;
-  condition_value: string;
+  answer_scores: Record<string, number>; // { "Sim": 9, "Não": 2 }
 }
 
 interface ProfileRule {
@@ -294,20 +296,30 @@ export const LeadScoring = () => {
     }
   };
 
-  const handleAddProfileField = (ruleId: string) => {
+  const handleAddProfileField = (ruleId: string, cf: CustomField) => {
     setProfileRules(prev => prev.map(rule => {
       if (rule.id === ruleId) {
+        // Avoid duplicates
+        if (rule.fields.some(f => f.custom_field_id === cf.id)) return rule;
+        // Build initial answer_scores based on field options
+        const initialScores: Record<string, number> = {};
+        if (cf.options) {
+          try {
+            const opts: string[] = JSON.parse(cf.options);
+            opts.forEach(opt => { initialScores[opt] = 5; });
+          } catch {}
+        }
         return {
           ...rule,
           fields: [
             ...rule.fields,
             {
               id: `temp-${Date.now()}`,
-              custom_field_id: '',
+              custom_field_id: cf.id,
+              custom_field_name: cf.name,
+              custom_field_type: cf.type,
               weight_percentage: 50,
-              star_rating: 5,
-              condition_type: 'any',
-              condition_value: '',
+              answer_scores: initialScores,
             }
           ]
         };
@@ -502,6 +514,18 @@ export const LeadScoring = () => {
     }
   };
 
+  // Field picker state per rule
+  const [fieldPickerRuleId, setFieldPickerRuleId] = useState<string | null>(null);
+  const [fieldPickerSearch, setFieldPickerSearch] = useState('');
+
+  const getFieldOptions = (cf: CustomField): string[] => {
+    if (!cf.options) return [];
+    try { return JSON.parse(cf.options); } catch { return []; }
+  };
+
+  const getSelectedCf = (field: ProfileField): CustomField | undefined =>
+    customFields.find(cf => cf.id === field.custom_field_id);
+
   // Render Profile Tab
   const renderProfileTab = () => (
     <div className="space-y-6">
@@ -510,7 +534,7 @@ export const LeadScoring = () => {
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Perfil do Lead</h2>
           <p className="text-sm text-slate-500 mt-1">
-            Configure campos personalizados com pesos e pontuações por estrela
+            Selecione campos personalizados, defina o peso e a pontuação por resposta
           </p>
         </div>
         <button
@@ -526,7 +550,7 @@ export const LeadScoring = () => {
         </button>
       </div>
 
-      {/* New Rule Form */}
+      {/* New / Edit Rule Form */}
       {(newProfileRule || editingProfileRule) && (
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">
@@ -572,11 +596,7 @@ export const LeadScoring = () => {
                 <span>{saving ? 'Salvando...' : 'Salvar'}</span>
               </button>
               <button
-                onClick={() => {
-                  setNewProfileRule(false);
-                  setEditingProfileRule(null);
-                  setProfileRuleForm({});
-                }}
+                onClick={() => { setNewProfileRule(false); setEditingProfileRule(null); setProfileRuleForm({}); }}
                 className="flex items-center gap-2 px-4 py-2 text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 <X size={16} />
@@ -597,108 +617,229 @@ export const LeadScoring = () => {
           <p className="text-slate-500">Crie sua primeira regra para começar a pontuar leads por perfil</p>
         </div>
       ) : (
-        profileRules.map(rule => (
-          <div key={rule.id} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
+        profileRules.map(rule => {
+          const alreadyAdded = new Set(rule.fields.map(f => f.custom_field_id));
+          const availableFields = customFields.filter(
+            cf => !alreadyAdded.has(cf.id) &&
+              (fieldPickerSearch === '' ||
+                cf.name.toLowerCase().includes(fieldPickerSearch.toLowerCase()))
+          );
+
+          return (
+            <div key={rule.id} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+              {/* Rule Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
                 <div className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full ${rule.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
-                  <h3 className="text-lg font-semibold text-slate-900">{rule.name}</h3>
+                  <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${rule.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
+                  <h3 className="font-semibold text-slate-900">{rule.name}</h3>
                   {rule.description && (
-                    <span className="text-sm text-slate-500">— {rule.description}</span>
+                    <span className="text-sm text-slate-400">— {rule.description}</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <button
-                    onClick={() => {
-                      setEditingProfileRule(rule.id);
-                      setNewProfileRule(false);
-                      setProfileRuleForm(rule);
-                    }}
-                    className="p-2 text-slate-500 hover:text-teal-600 transition-colors"
+                    onClick={() => { setEditingProfileRule(rule.id); setNewProfileRule(false); setProfileRuleForm(rule); }}
+                    className="p-2 text-slate-400 hover:text-teal-600 rounded-lg hover:bg-teal-50 transition-colors"
+                    title="Editar regra"
                   >
-                    <Edit3 size={16} />
+                    <Edit3 size={15} />
                   </button>
                   <button
                     onClick={() => handleDeleteProfileRule(rule.id)}
-                    className="p-2 text-slate-500 hover:text-red-600 transition-colors"
+                    className="p-2 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
+                    title="Excluir regra"
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={15} />
                   </button>
                 </div>
               </div>
 
-              {/* Fields */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-slate-700">Campos Personalizados</h4>
-                  <button
-                    onClick={() => handleAddProfileField(rule.id)}
-                    className="flex items-center gap-1 text-sm text-teal-600 hover:text-teal-700"
-                  >
-                    <Plus size={14} />
-                    <span>Adicionar Campo</span>
-                  </button>
-                </div>
+              <div className="p-6 space-y-5">
+                {/* ── Field Picker Button ── */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <ListChecks size={16} className="text-teal-600" />
+                      <span className="text-sm font-semibold text-slate-700">Campos selecionados</span>
+                      <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{rule.fields.length}</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setFieldPickerRuleId(fieldPickerRuleId === rule.id ? null : rule.id);
+                        setFieldPickerSearch('');
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-teal-600 border border-teal-200 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors"
+                    >
+                      <Plus size={14} />
+                      Adicionar Campo
+                    </button>
+                  </div>
 
-                {rule.fields.length === 0 ? (
-                  <p className="text-sm text-slate-400 py-4 text-center">Nenhum campo adicionado</p>
-                ) : (
-                  <div className="space-y-2">
-                    {rule.fields.map((field, idx) => (
-                      <div key={field.id} className="border border-slate-200 rounded-lg p-4 bg-slate-50">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                          <div className="md:col-span-1">
-                            <label className="block text-xs font-medium text-slate-600 mb-1">Campo</label>
-                            <select
-                              value={field.custom_field_id}
-                              onChange={(e) => handleUpdateProfileField(rule.id, field.id, { custom_field_id: e.target.value })}
-                              className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
-                            >
-                              <option value="">Selecione...</option>
-                              {customFields.map(cf => (
-                                <option key={cf.id} value={cf.id}>{cf.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">Peso (%)</label>
-                            <input
-                              type="number"
-                              min="1"
-                              max="100"
-                              value={field.weight_percentage}
-                              onChange={(e) => handleUpdateProfileField(rule.id, field.id, { weight_percentage: parseInt(e.target.value) || 50 })}
-                              className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-slate-600 mb-1">Estrelas (1-10)</label>
-                            <StarRating
-                              rating={field.star_rating}
-                              onChange={(r) => handleUpdateProfileField(rule.id, field.id, { star_rating: r })}
-                            />
-                          </div>
-                          <div className="flex items-end gap-2">
-                            <button
-                              onClick={() => handleRemoveProfileField(rule.id, field.id)}
-                              className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
+                  {/* Field Picker Dropdown */}
+                  {fieldPickerRuleId === rule.id && (
+                    <div className="border border-slate-200 rounded-xl bg-white shadow-lg mb-4 overflow-hidden">
+                      {/* Search */}
+                      <div className="p-3 border-b border-slate-100">
+                        <div className="relative">
+                          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            value={fieldPickerSearch}
+                            onChange={e => setFieldPickerSearch(e.target.value)}
+                            placeholder="Buscar campos personalizados..."
+                            className="w-full pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-400 focus:border-teal-400 outline-none"
+                            autoFocus
+                          />
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
 
+                      {/* Available fields list */}
+                      <div className="max-h-56 overflow-y-auto">
+                        {availableFields.length === 0 ? (
+                          <div className="py-6 text-center text-sm text-slate-400">
+                            {customFields.length === 0
+                              ? 'Nenhum campo personalizado criado ainda'
+                              : 'Todos os campos já foram adicionados'}
+                          </div>
+                        ) : (
+                          availableFields.map(cf => {
+                            const opts = getFieldOptions(cf);
+                            return (
+                              <button
+                                key={cf.id}
+                                onClick={() => {
+                                  handleAddProfileField(rule.id, cf);
+                                  setFieldPickerSearch('');
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-teal-50 transition-colors text-left border-b border-slate-50 last:border-0"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-slate-800 text-sm truncate">{cf.name}</div>
+                                  <div className="text-xs text-slate-400 mt-0.5">
+                                    <span className="capitalize">{cf.type}</span>
+                                    {opts.length > 0 && (
+                                      <span className="ml-2 text-teal-500">{opts.length} opções</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <Plus size={14} className="text-teal-400 flex-shrink-0" />
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Selected fields cards */}
+                  {rule.fields.length === 0 ? (
+                    <div className="border-2 border-dashed border-slate-200 rounded-xl py-8 text-center">
+                      <Sliders size={28} className="mx-auto text-slate-300 mb-2" />
+                      <p className="text-sm text-slate-400">Nenhum campo adicionado.<br />Clique em "Adicionar Campo" para começar.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {rule.fields.map(field => {
+                        const cf = getSelectedCf(field);
+                        const opts = cf ? getFieldOptions(cf) : [];
+                        const scores = field.answer_scores || {};
+
+                        return (
+                          <div key={field.id} className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
+                            {/* Field Header */}
+                            <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-100">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-teal-400" />
+                                <span className="font-semibold text-slate-800 text-sm">
+                                  {cf?.name || field.custom_field_name || 'Campo'}
+                                </span>
+                                <span className="text-xs text-slate-400 capitalize">({cf?.type || field.custom_field_type || '—'})</span>
+                              </div>
+                              <button
+                                onClick={() => handleRemoveProfileField(rule.id, field.id)}
+                                className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+
+                            <div className="p-4 space-y-4">
+                              {/* Weight Slider */}
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Peso do campo</label>
+                                  <span className="text-sm font-bold text-teal-600">{field.weight_percentage}%</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="1"
+                                  max="100"
+                                  value={field.weight_percentage}
+                                  onChange={e => handleUpdateProfileField(rule.id, field.id, { weight_percentage: parseInt(e.target.value) })}
+                                  className="w-full h-2 bg-slate-200 rounded-full appearance-none cursor-pointer accent-teal-600"
+                                />
+                                <div className="flex justify-between text-xs text-slate-400 mt-0.5">
+                                  <span>1%</span>
+                                  <span>100%</span>
+                                </div>
+                              </div>
+
+                              {/* Per-answer star ratings */}
+                              {opts.length > 0 ? (
+                                <div>
+                                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Pontuação por resposta</label>
+                                  <div className="space-y-2">
+                                    {opts.map(opt => (
+                                      <div key={opt} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2.5 border border-slate-100">
+                                        <span className="text-sm text-slate-700 w-32 flex-shrink-0 font-medium truncate" title={opt}>{opt}</span>
+                                        <div className="flex-1">
+                                          <StarRating
+                                            rating={scores[opt] ?? 5}
+                                            onChange={r => {
+                                              const newScores = { ...scores, [opt]: r };
+                                              handleUpdateProfileField(rule.id, field.id, { answer_scores: newScores });
+                                            }}
+                                          />
+                                        </div>
+                                        <span className="text-xs font-semibold text-amber-500 w-8 text-right">{scores[opt] ?? 5}/10</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : (
+                                // Text/number fields: single star rating with label "Preenchido"
+                                <div>
+                                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Pontuação (quando preenchido)</label>
+                                  <div className="flex items-center gap-3 bg-white rounded-lg px-3 py-2.5 border border-slate-100">
+                                    <span className="text-sm text-slate-500 w-32 flex-shrink-0">Preenchido</span>
+                                    <div className="flex-1">
+                                      <StarRating
+                                        rating={scores['__filled__'] ?? 5}
+                                        onChange={r => {
+                                          const newScores = { ...scores, '__filled__': r };
+                                          handleUpdateProfileField(rule.id, field.id, { answer_scores: newScores });
+                                        }}
+                                      />
+                                    </div>
+                                    <span className="text-xs font-semibold text-amber-500 w-8 text-right">{scores['__filled__'] ?? 5}/10</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Save fields button */}
                 {rule.fields.length > 0 && (
-                  <div className="pt-3">
+                  <div className="flex justify-end pt-1">
                     <button
                       onClick={() => handleSaveProfileRuleFields(rule.id)}
                       disabled={saving}
-                      className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm disabled:opacity-50"
+                      className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-medium disabled:opacity-50"
                     >
                       <Save size={14} />
                       <span>{saving ? 'Salvando...' : 'Salvar Campos'}</span>
@@ -707,8 +848,8 @@ export const LeadScoring = () => {
                 )}
               </div>
             </div>
-          </div>
-        ))
+          );
+        })
       )}
     </div>
   );
