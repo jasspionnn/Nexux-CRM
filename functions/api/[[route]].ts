@@ -2379,7 +2379,7 @@ async function buildSegmentQuery(db: any, accountId: string, rules: any[]) {
 
     // The UI hides the operator dropdown for special fields, meaning it often defaults to 'contains'
     // or whatever was last selected. We must normalize it to 'equals' (affirmative) or 'not_equals' (negative).
-    if (field === 'filled_form' || field === 'visited_page') {
+    if (field === 'filled_form') {
       if (operator !== 'not_equals' && operator !== 'not_contains') {
         operator = 'equals';
       } else {
@@ -2416,49 +2416,7 @@ async function buildSegmentQuery(db: any, accountId: string, rules: any[]) {
       continue;
     }
 
-    if (field === 'visited_page') {
-      // Find leads that visited the page
-      // We check THREE sources to be 100% robust:
-      // 1. lead_visits: Identified visits (direct)
-      // 2. visitor_leads + tracking_events: Persistent device tracking
-      // 3. form_submissions + tracking_events: Identity correlation fallback
-      if (operator === 'equals') {
-        whereClause += ` AND (
-          id IN (SELECT lead_id FROM lead_visits WHERE account_id = ? AND url LIKE ?)
-          OR
-          id IN (
-            SELECT lead_id FROM visitor_leads 
-            WHERE account_id = ? AND visitor_id IN (
-              SELECT visitor_id FROM tracking_events 
-              WHERE account_id = ? AND event_type = 'pageview' AND url LIKE ?
-            )
-          )
-          OR
-          id IN (
-            SELECT lead_id FROM form_submissions 
-            WHERE account_id = ? AND visitor_id IN (
-              SELECT visitor_id FROM tracking_events 
-              WHERE account_id = ? AND event_type = 'pageview' AND url LIKE ?
-            ) AND lead_id IS NOT NULL
-          )
-          OR
-          contact_email IN (
-            SELECT email FROM form_submissions 
-            WHERE account_id = ? AND visitor_id IN (
-              SELECT visitor_id FROM tracking_events 
-              WHERE account_id = ? AND event_type = 'pageview' AND url LIKE ?
-            ) AND email IS NOT NULL
-          )
-        )`;
-        params.push(
-          accountId, `%${value}%`,
-          accountId, accountId, `%${value}%`, 
-          accountId, accountId, `%${value}%`,
-          accountId, accountId, `%${value}%`
-        );
-      }
-      continue;
-    }
+
 
     switch (operator) {
       case 'equals': whereClause += ` AND ${field} = ?`; params.push(value); break;
