@@ -1400,6 +1400,32 @@ app.post('/public/register', async (c) => {
   }
 });
 
+app.post('/login', async (c) => {
+  try {
+    const { email, password } = await c.req.json();
+    
+    if (!email || !password) {
+      return c.json({ error: 'E-mail e senha são obrigatórios' }, 400);
+    }
+
+    const user: any = await c.env.DB.prepare(
+      'SELECT id, account_id, name, email, password, role FROM users WHERE email = ? AND status = "active"'
+    ).bind(email).first();
+
+    if (!user || user.password !== password) {
+      return c.json({ error: 'Credenciais inválidas' }, 401);
+    }
+
+    // Don't return the password
+    const { password: _, ...userWithoutPassword } = user;
+    
+    return c.json(userWithoutPassword);
+  } catch (error: any) {
+    console.error('Login error:', error);
+    return c.json({ error: 'Erro interno no servidor' }, 500);
+  }
+});
+
 // ==================== TRACKING ENDPOINTS ====================
 
 function detectFieldName(name: string): string {

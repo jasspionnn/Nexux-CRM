@@ -1,5 +1,6 @@
 export enum UserRole {
   NEXUS_ADMIN = 'NEXUS_ADMIN',
+  ACCOUNT_ADMIN = 'ACCOUNT_ADMIN',
   USER = 'USER',
   MANAGER = 'MANAGER'
 }
