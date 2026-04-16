@@ -900,6 +900,9 @@ app.post('/webhooks/incoming/:id', async (c) => {
 
     // Trigger automations for the new lead
     await triggerAutomations(webhook.account_id || 'acc_demo', 'new_lead', leadId, c.env.DB);
+    
+    // Calculate initial score
+    await calculateLeadScore(c.env.DB, webhook.account_id || 'acc_demo', leadId);
 
     return c.json({ success: true, lead_id: leadId });
   } catch (error: any) {
@@ -1033,6 +1036,11 @@ app.put('/leads/:id', async (c) => {
   
   const query = `UPDATE leads SET ${fields.join(', ')} WHERE id = ?`;
   await c.env.DB.prepare(query).bind(...values).run();
+  
+  // Recalculate scoring if custom_values were updated
+  if (body.custom_values) {
+    await calculateLeadScore(c.env.DB, 'acc_demo', id);
+  }
   
   return c.json({ success: true });
 });
@@ -2837,6 +2845,135 @@ async function executeActionNode(node: any, leadId: string, db: any) {
   }
 }
 
+// Helper to calculate score for a single lead or all leads
+async function calculateLeadScore(db: any, account_id: string, leadId?: string) {
+  try {
+    // Get leads
+    let leads: any[] = [];
+    if (leadId) {
+      const lead = await db.prepare('SELECT * FROM leads WHERE id = ? AND account_id = ?').bind(leadId, account_id).first();
+      if (lead) leads = [lead];
+    } else {
+      const { results } = await db.prepare('SELECT * FROM leads WHERE account_id = ?').bind(account_id).all();
+      leads = results || [];
+    }
+
+    if (leads.length === 0) return { success: true, count: 0 };
+
+    // Get all active profile rules with fields
+    const { results: profileRules } = await db.prepare(
+      'SELECT * FROM scoring_profile_rules WHERE account_id = ? AND is_active = 1'
+    ).bind(account_id).all();
+
+    const profileFieldsByRule: any = {};
+    for (const rule of profileRules || []) {
+      const { results: fields } = await db.prepare(
+        'SELECT * FROM scoring_profile_fields WHERE rule_id = ?'
+      ).bind(rule.id).all();
+      profileFieldsByRule[rule.id] = fields || [];
+    }
+
+    // Get all active interest rules with conversions
+    const { results: interestRules } = await db.prepare(
+      'SELECT * FROM scoring_interest_rules WHERE account_id = ? AND is_active = 1'
+    ).bind(account_id).all();
+
+    const interestConversionsByRule: any = {};
+    for (const rule of interestRules || []) {
+      const { results: conversions } = await db.prepare(
+        'SELECT * FROM scoring_interest_conversions WHERE rule_id = ?'
+      ).bind(rule.id).all();
+      interestConversionsByRule[rule.id] = conversions || [];
+    }
+
+    // Calculate scores for each lead
+    for (const lead of leads) {
+      let profileScore = 0;
+      let interestScore = 0;
+
+      // 1. Calculate profile score
+      const customValues: any = lead.custom_values ? JSON.parse(lead.custom_values) : {};
+
+      for (const ruleId in profileFieldsByRule) {
+        const fields = profileFieldsByRule[ruleId];
+        for (const field of fields) {
+          const leadValue = customValues[field.custom_field_id];
+          if (leadValue === undefined || leadValue === null || leadValue === '') continue;
+
+          const weightFactor = (field.weight_percentage || 50) / 100;
+          let answerScores: Record<string, number> = {};
+          try {
+            answerScores = field.answer_scores ? JSON.parse(field.answer_scores) : {};
+          } catch { answerScores = {}; }
+
+          let bestStar = 0;
+          const values: string[] = Array.isArray(leadValue) ? leadValue : [String(leadValue)];
+
+          // Match specific values first
+          for (const val of values) {
+            const matched = answerScores[val];
+            if (matched !== undefined && matched > bestStar) bestStar = matched;
+          }
+
+          // If no specific match, use __filled__ fallback
+          if (bestStar === 0 && answerScores['__filled__']) {
+            bestStar = answerScores['__filled__'];
+          }
+
+          const starFactor = bestStar / 10; // 1-10 -> 0.1-1.0
+          profileScore += starFactor * weightFactor * 100;
+        }
+      }
+
+      // 2. Calculate interest score
+      for (const ruleId in interestConversionsByRule) {
+        const conversions = interestConversionsByRule[ruleId];
+        for (const conversion of conversions) {
+          const eventIds: string[] = conversion.event_ids ? JSON.parse(conversion.event_ids) : [];
+          if (eventIds.length === 0) continue;
+          
+          for (const eventId of eventIds) {
+            // Count unique conversions for this lead (by form/event ID)
+            const { total: eventCount } = await db.prepare(`
+              SELECT COUNT(*) as total FROM tracking_events 
+              WHERE visitor_id IN (SELECT visitor_id FROM visitor_leads WHERE lead_id = ?) 
+              AND (form_data LIKE ? OR event_type = ? OR id = ?)
+            `).bind(lead.id, `%${eventId}%`, eventId, eventId).first();
+
+            if (eventCount > 0) {
+              interestScore += (conversion.points || 10) * eventCount;
+            }
+          }
+        }
+      }
+
+      // Calculate total and grade
+      const totalScore = profileScore + interestScore;
+      let grade = 'E';
+      if (totalScore >= 80) grade = 'A';
+      else if (totalScore >= 60) grade = 'B';
+      else if (totalScore >= 40) grade = 'C';
+      else if (totalScore >= 20) grade = 'D';
+
+      // Update lead
+      await db.prepare(
+        'UPDATE leads SET score_profile = ?, score_interest = ?, score_grade = ? WHERE id = ?'
+      ).bind(profileScore, interestScore, grade, lead.id).run();
+
+      // History entry (only if score changed significantly or on recalculation)
+      const historyId = crypto.randomUUID();
+      await db.prepare(
+        'INSERT INTO lead_score_history (id, account_id, lead_id, score_profile, score_interest, score_total, score_grade) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).bind(historyId, account_id, lead.id, profileScore, interestScore, totalScore, grade).run();
+    }
+
+    return { success: true, count: leads.length };
+  } catch (error: any) {
+    console.error('[SCORING] Helper Error:', error.message);
+    throw error;
+  }
+}
+
 app.post('/login', async (c) => {
   try {
     const { email, password } = await c.req.json();
@@ -3109,124 +3246,8 @@ app.get('/scoring/leads', async (c) => {
 app.post('/scoring/recalculate', async (c) => {
   try {
     const account_id = 'acc_demo';
-
-    // Get all leads for this account
-    const { results: leads } = await c.env.DB.prepare(
-      'SELECT * FROM leads WHERE account_id = ?'
-    ).bind(account_id).all();
-
-    // Get all active profile rules with fields
-    const { results: profileRules } = await c.env.DB.prepare(
-      'SELECT * FROM scoring_profile_rules WHERE account_id = ? AND is_active = 1'
-    ).bind(account_id).all();
-
-    const profileFieldsByRule: any = {};
-    for (const rule of profileRules || []) {
-      const { results: fields } = await c.env.DB.prepare(
-        'SELECT * FROM scoring_profile_fields WHERE rule_id = ?'
-      ).bind(rule.id).all();
-      profileFieldsByRule[rule.id] = fields || [];
-    }
-
-    // Get all active interest rules with conversions
-    const { results: interestRules } = await c.env.DB.prepare(
-      'SELECT * FROM scoring_interest_rules WHERE account_id = ? AND is_active = 1'
-    ).bind(account_id).all();
-
-    const interestConversionsByRule: any = {};
-    for (const rule of interestRules || []) {
-      const { results: conversions } = await c.env.DB.prepare(
-        'SELECT * FROM scoring_interest_conversions WHERE rule_id = ?'
-      ).bind(rule.id).all();
-      interestConversionsByRule[rule.id] = conversions || [];
-    }
-
-    // Calculate scores for each lead
-    for (const lead of leads || []) {
-      let profileScore = 0;
-      let interestScore = 0;
-
-      // Calculate profile score using answer_scores
-      const customValues: any = lead.custom_values ? JSON.parse(lead.custom_values) : {};
-
-      for (const ruleId in profileFieldsByRule) {
-        const fields = profileFieldsByRule[ruleId];
-        for (const field of fields) {
-          // Check if lead has a value for this custom field
-          const leadValue = customValues[field.custom_field_id];
-          if (leadValue === undefined || leadValue === null || leadValue === '') continue;
-
-          const weightFactor = (field.weight_percentage || 50) / 100;
-
-          // Parse answer_scores: { "OptionLabel": starRating1-10, "__filled__": starRating }
-          let answerScores: Record<string, number> = {};
-          try {
-            answerScores = field.answer_scores ? JSON.parse(field.answer_scores) : {};
-          } catch { answerScores = {}; }
-
-          let starScore = 0;
-          // leadValue may be a string (single answer) or array (checkbox)
-          const values: string[] = Array.isArray(leadValue) ? leadValue : [String(leadValue)];
-
-          // Find the best matching star rating among the lead's answer values
-          let bestStar = 0;
-          for (const val of values) {
-            const matched = answerScores[val] ?? answerScores['__filled__'] ?? 0;
-            if (matched > bestStar) bestStar = matched;
-          }
-          // Fallback: if no options matched but field is filled, use __filled__ key
-          if (bestStar === 0 && answerScores['__filled__']) {
-            bestStar = answerScores['__filled__'];
-          }
-
-          starScore = bestStar / 10; // 1-10 -> 0.1-1.0
-          profileScore += starScore * weightFactor * 100;
-        }
-      }
-
-      // Calculate interest score
-      for (const ruleId in interestConversionsByRule) {
-        const conversions = interestConversionsByRule[ruleId];
-        for (const conversion of conversions) {
-          // Get events for this lead
-          const eventIds: string[] = conversion.event_ids ? JSON.parse(conversion.event_ids) : [];
-          
-          if (eventIds.length > 0) {
-            // Count how many of these events/forms this lead has
-            for (const eventId of eventIds) {
-              const { total: eventCount } = await c.env.DB.prepare(
-                'SELECT COUNT(*) as total FROM tracking_events WHERE visitor_id IN (SELECT visitor_id FROM visitor_leads WHERE lead_id = ?) AND (form_data LIKE ? OR id IN (SELECT id FROM tracking_events WHERE visitor_id IN (SELECT visitor_id FROM visitor_leads WHERE lead_id = ?)))'
-              ).bind(lead.id, `%${eventId}%`, lead.id).first();
-
-              if (eventCount > 0) {
-                interestScore += conversion.points * eventCount;
-              }
-            }
-          }
-        }
-      }
-
-      // Calculate total and grade
-      const totalScore = profileScore + interestScore;
-      let grade = 'E';
-      if (totalScore >= 80) grade = 'A';
-      else if (totalScore >= 60) grade = 'B';
-      else if (totalScore >= 40) grade = 'C';
-      else if (totalScore >= 20) grade = 'D';
-
-      // Update lead with new scores
-      await c.env.DB.prepare(
-        'UPDATE leads SET score_profile = ?, score_interest = ?, score_grade = ? WHERE id = ?'
-      ).bind(profileScore, interestScore, grade, lead.id).run();
-
-      // Save to history
-      const historyId = crypto.randomUUID();
-      await c.env.DB.prepare(
-        'INSERT INTO lead_score_history (id, account_id, lead_id, score_profile, score_interest, score_total, score_grade) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).bind(historyId, account_id, lead.id, profileScore, interestScore, totalScore, grade).run();
-    }
-
-    return c.json({ success: true, recalculated: leads?.length || 0 });
+    const result = await calculateLeadScore(c.env.DB, account_id);
+    return c.json(result);
   } catch (error: any) {
     console.error('Error recalculating scores:', error);
     return c.json({ error: error.message }, 500);

@@ -359,10 +359,8 @@ CREATE TABLE IF NOT EXISTS scoring_profile_fields (
     id TEXT PRIMARY KEY,
     rule_id TEXT NOT NULL,
     custom_field_id TEXT NOT NULL,
-    weight_percentage INTEGER NOT NULL DEFAULT 50, -- 1% a 100%
-    star_rating INTEGER NOT NULL DEFAULT 5, -- 1 a 10 estrelas
-    condition_type TEXT DEFAULT 'any', -- 'any', 'equals', 'contains', 'greater_than', 'less_than', 'in_range'
-    condition_value TEXT, -- valor para comparação (JSON se necessário)
+    weight_percentage INTEGER NOT NULL DEFAULT 50, -- 1% a 100% (peso do campo)
+    answer_scores TEXT, -- JSON: mapeia cada resposta possível -> pontuação 1-10. Ex: {"Sim": 9, "Não": 2, "Talvez": 5}
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (rule_id) REFERENCES scoring_profile_rules(id) ON DELETE CASCADE,
     FOREIGN KEY (custom_field_id) REFERENCES custom_fields(id) ON DELETE CASCADE

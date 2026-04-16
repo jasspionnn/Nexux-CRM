@@ -520,7 +520,12 @@ export const LeadScoring = () => {
 
   const getFieldOptions = (cf: CustomField): string[] => {
     if (!cf.options) return [];
-    try { return JSON.parse(cf.options); } catch { return []; }
+    try {
+      const parsed = JSON.parse(cf.options);
+      if (Array.isArray(parsed)) return parsed;
+      if (typeof parsed === 'string') return parsed.split(',').map(o => o.trim()).filter(Boolean);
+    } catch {}
+    return String(cf.options).split(',').map(o => o.trim()).filter(Boolean);
   };
 
   const getSelectedCf = (field: ProfileField): CustomField | undefined =>
@@ -785,31 +790,35 @@ export const LeadScoring = () => {
                               </div>
 
                               {/* Per-answer star ratings */}
-                              {opts.length > 0 ? (
-                                <div>
-                                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Pontuação por resposta</label>
-                                  <div className="space-y-2">
-                                    {opts.map(opt => (
-                                      <div key={opt} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2.5 border border-slate-100">
-                                        <span className="text-sm text-slate-700 w-32 flex-shrink-0 font-medium truncate" title={opt}>{opt}</span>
-                                        <div className="flex-1">
-                                          <StarRating
-                                            rating={scores[opt] ?? 5}
-                                            onChange={r => {
-                                              const newScores = { ...scores, [opt]: r };
-                                              handleUpdateProfileField(rule.id, field.id, { answer_scores: newScores });
-                                            }}
-                                          />
+                              <div className="space-y-4">
+                                {opts.length > 0 && (
+                                  <div>
+                                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Pontuação por resposta</label>
+                                    <div className="space-y-2">
+                                      {opts.map(opt => (
+                                        <div key={opt} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2.5 border border-slate-100">
+                                          <span className="text-sm text-slate-700 w-32 flex-shrink-0 font-medium truncate" title={opt}>{opt}</span>
+                                          <div className="flex-1">
+                                            <StarRating
+                                              rating={scores[opt] ?? 5}
+                                              onChange={r => {
+                                                const newScores = { ...scores, [opt]: r };
+                                                handleUpdateProfileField(rule.id, field.id, { answer_scores: newScores });
+                                              }}
+                                            />
+                                          </div>
+                                          <span className="text-xs font-semibold text-amber-500 w-8 text-right">{scores[opt] ?? 5}/10</span>
                                         </div>
-                                        <span className="text-xs font-semibold text-amber-500 w-8 text-right">{scores[opt] ?? 5}/10</span>
-                                      </div>
-                                    ))}
+                                      ))}
+                                    </div>
                                   </div>
-                                </div>
-                              ) : (
-                                // Text/number fields: single star rating with label "Preenchido"
+                                )}
+
+                                {/* "Any value" scoring - Always show for non-option fields, or as a fallback for option fields */}
                                 <div>
-                                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Pontuação (quando preenchido)</label>
+                                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">
+                                    {opts.length > 0 ? 'Qualquer outro valor (Preenchido)' : 'Pontuação (quando preenchido)'}
+                                  </label>
                                   <div className="flex items-center gap-3 bg-white rounded-lg px-3 py-2.5 border border-slate-100">
                                     <span className="text-sm text-slate-500 w-32 flex-shrink-0">Preenchido</span>
                                     <div className="flex-1">
@@ -824,7 +833,7 @@ export const LeadScoring = () => {
                                     <span className="text-xs font-semibold text-amber-500 w-8 text-right">{scores['__filled__'] ?? 5}/10</span>
                                   </div>
                                 </div>
-                              )}
+                              </div>
                             </div>
                           </div>
                         );
