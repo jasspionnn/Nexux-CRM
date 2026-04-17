@@ -4,7 +4,7 @@ import {
   TrendingUp, Users, Target, Award,
   ChevronDown, ChevronRight, BarChart3,
   Settings, Activity, CheckCircle,
-  AlertCircle, Search, Sliders, ListChecks
+  AlertCircle, Search, Sliders, ListChecks, ArrowLeft
 } from 'lucide-react';
 
 interface CustomField {
@@ -538,7 +538,16 @@ export const LeadScoring = () => {
     <div className="min-h-[calc(100vh-64px)] bg-[#F4F7FA] p-8">
       {/* HEADER TABS */}
       <div className="max-w-5xl mx-auto mb-8">
-        <h1 className="text-3xl font-bold text-slate-800 mb-6">Lead Scoring</h1>
+        <div className="flex items-center gap-4 mb-6">
+          <button 
+            onClick={() => setConfigMode(false)}
+            className="p-2 hover:bg-slate-200 text-slate-500 rounded-full transition-colors"
+            title="Voltar ao Dashboard"
+          >
+            <ArrowLeft size={24} />
+          </button>
+          <h1 className="text-3xl font-bold text-slate-800">Lead Scoring - Configurações</h1>
+        </div>
         
         {needsApply && (
           <div className="bg-yellow-50 border border-yellow-200 p-6 mb-8 rounded-lg shadow-sm text-center relative">
