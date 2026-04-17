@@ -1,25 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Star, 
-  Plus, 
-  Trash2, 
-  Edit3, 
-  Save, 
-  X, 
-  TrendingUp, 
-  Users, 
-  Target, 
-  Award,
-  ChevronDown,
-  ChevronRight,
-  BarChart3,
-  Settings,
-  Activity,
-  CheckCircle,
-  AlertCircle,
-  Search,
-  Sliders,
-  ListChecks
+  Star, Plus, Trash2, Edit3, Save, X, 
+  TrendingUp, Users, Target, Award,
+  ChevronDown, ChevronRight, BarChart3,
+  Settings, Activity, CheckCircle,
+  AlertCircle, Search, Sliders, ListChecks
 } from 'lucide-react';
 
 interface CustomField {
@@ -35,7 +20,7 @@ interface ProfileField {
   custom_field_name?: string;
   custom_field_type?: string;
   weight_percentage: number;
-  answer_scores: Record<string, number>; // { "Sim": 9, "Não": 2 }
+  answer_scores: Record<string, any>; 
 }
 
 interface ProfileRule {
@@ -60,15 +45,7 @@ interface InterestRule {
   description: string;
   is_active: boolean;
   conversions: InterestConversion[];
-}
-
-interface LeadScore {
-  id: string;
-  title: string;
-  contact_email: string;
-  score_profile: number;
-  score_interest: number;
-  score_grade: string;
+  points?: number; // Mock logic because we might sum or apply directly
 }
 
 const API_BASE = '/api';
@@ -81,41 +58,11 @@ const getHeaders = () => {
   };
 };
 
-const calculateGrade = (total: number): string => {
-  if (total >= 80) return 'A';
-  if (total >= 60) return 'B';
-  if (total >= 40) return 'C';
-  if (total >= 20) return 'D';
-  return 'E';
-};
-
-const getGradeColor = (grade: string): string => {
-  const colors: Record<string, string> = {
-    'A': 'bg-green-500 text-white',
-    'B': 'bg-blue-500 text-white',
-    'C': 'bg-yellow-500 text-white',
-    'D': 'bg-orange-500 text-white',
-    'E': 'bg-red-500 text-white',
-  };
-  return colors[grade] || 'bg-gray-500 text-white';
-};
-
-const getGradeBg = (grade: string): string => {
-  const colors: Record<string, string> = {
-    'A': 'bg-green-50 border-green-200',
-    'B': 'bg-blue-50 border-blue-200',
-    'C': 'bg-yellow-50 border-yellow-200',
-    'D': 'bg-orange-50 border-orange-200',
-    'E': 'bg-red-50 border-red-200',
-  };
-  return colors[grade] || 'bg-gray-50 border-gray-200';
-};
-
 const StarRating = ({ rating, onChange, readonly = false }: { rating: number; onChange?: (r: number) => void; readonly?: boolean }) => {
   const [hoverRating, setHoverRating] = useState(0);
 
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-0.5">
       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((star) => (
         <button
           key={star}
@@ -130,8 +77,8 @@ const StarRating = ({ rating, onChange, readonly = false }: { rating: number; on
             size={18}
             className={`${
               star <= (hoverRating || rating)
-                ? 'fill-yellow-400 text-yellow-400'
-                : 'text-gray-300'
+                ? 'fill-orange-500 text-orange-500'
+                : 'fill-slate-200 text-slate-200'
             }`}
           />
         </button>
@@ -141,1126 +88,697 @@ const StarRating = ({ rating, onChange, readonly = false }: { rating: number; on
 };
 
 export const LeadScoring = () => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'interest' | 'scores'>('profile');
+  const [configMode, setConfigMode] = useState(false);
+  const [activeTab, setActiveTab] = useState<'profile' | 'interest'>('profile');
+  const [needsApply, setNeedsApply] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
 
-  // Profile state
-  const [profileRules, setProfileRules] = useState<ProfileRule[]>([]);
-  const [editingProfileRule, setEditingProfileRule] = useState<string | null>(null);
-  const [newProfileRule, setNewProfileRule] = useState(false);
-  const [profileRuleForm, setProfileRuleForm] = useState<Partial<ProfileRule>>({});
+  // States
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
-
-  // Interest state
-  const [interestRules, setInterestRules] = useState<InterestRule[]>([]);
-  const [editingInterestRule, setEditingInterestRule] = useState<string | null>(null);
-  const [newInterestRule, setNewInterestRule] = useState(false);
-  const [interestRuleForm, setInterestRuleForm] = useState<Partial<InterestRule>>({});
   const [trackingForms, setTrackingForms] = useState<any[]>([]);
 
-  // Scores state
-  const [leadScores, setLeadScores] = useState<LeadScore[]>([]);
-  const [scoresLoading, setScoresLoading] = useState(false);
+  // We map RD Station "Profile" as the FIRST rule in profileRules
+  const [profileRules, setProfileRules] = useState<ProfileRule[]>([]);
+  
+  // Modals
+  const [propertyModal, setPropertyModal] = useState<{ isOpen: boolean; fieldId?: string } | null>(null);
+  const [propertyForm, setPropertyForm] = useState<any>(null);
+
+  const [interestRules, setInterestRules] = useState<InterestRule[]>([]);
+  const [groupModal, setGroupModal] = useState<{ isOpen: boolean; ruleId?: string } | null>(null);
+  const [groupForm, setGroupForm] = useState<any>(null);
 
   useEffect(() => {
-    loadProfileRules();
-    loadInterestRules();
-    loadCustomFields();
-    loadTrackingForms();
+    loadAll();
   }, []);
 
-  useEffect(() => {
-    if (activeTab === 'scores') {
-      loadLeadScores();
-    }
-  }, [activeTab]);
+  const loadAll = async () => {
+    setLoading(true);
+    await Promise.all([
+      loadCustomFields(),
+      loadProfileRules(),
+      loadInterestRules(),
+      loadTrackingForms()
+    ]);
+    setLoading(false);
+  };
 
   const loadCustomFields = async () => {
     try {
       const res = await fetch(`${API_BASE}/custom-fields`, { headers: getHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setCustomFields(data || []);
-      }
-    } catch (err) {
-      console.error('Erro ao carregar campos personalizados:', err);
-    }
+      if (res.ok) setCustomFields(await res.json() || []);
+    } catch (err) {}
   };
 
   const loadTrackingForms = async () => {
     try {
       const res = await fetch(`${API_BASE}/tracking-forms`, { headers: getHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setTrackingForms(data || []);
-      }
-    } catch (err) {
-      console.error('Erro ao carregar formulários:', err);
-    }
+      if (res.ok) setTrackingForms(await res.json() || []);
+    } catch (err) {}
   };
 
   const loadProfileRules = async () => {
     try {
-      setLoading(true);
       const res = await fetch(`${API_BASE}/scoring/profile-rules`, { headers: getHeaders() });
       if (res.ok) {
         const data = await res.json();
-        setProfileRules(data || []);
+        // Force at least 1 default profile rule if empty
+        if (data && data.length === 0) {
+          await createDefaultProfileRule();
+        } else {
+          setProfileRules(data || []);
+        }
       }
-    } catch (err) {
-      console.error('Erro ao carregar regras de perfil:', err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) {}
+  };
+
+  const createDefaultProfileRule = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/scoring/profile-rules`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ name: 'Perfil Padrão', description: 'Regulador master de perfil', is_active: true })
+      });
+      if (res.ok) {
+        const nr = await res.json();
+        setProfileRules([nr]);
+      }
+    } catch (err) {}
   };
 
   const loadInterestRules = async () => {
     try {
-      setLoading(true);
       const res = await fetch(`${API_BASE}/scoring/interest-rules`, { headers: getHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setInterestRules(data || []);
-      }
-    } catch (err) {
-      console.error('Erro ao carregar regras de interesse:', err);
-    } finally {
-      setLoading(false);
-    }
+      if (res.ok) setInterestRules(await res.json() || []);
+    } catch (err) {}
   };
 
-  const loadLeadScores = async () => {
+  const currentProfileRule = profileRules[0]; // RD relies on single profile mapping space
+
+  const handleApplyChanges = async () => {
+    setApplying(true);
     try {
-      setScoresLoading(true);
-      const res = await fetch(`${API_BASE}/scoring/leads`, { headers: getHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setLeadScores(data || []);
+      // First save the profile fields mapping
+      if (currentProfileRule) {
+        await fetch(`${API_BASE}/scoring/profile-rules/${currentProfileRule.id}/fields`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ fields: currentProfileRule.fields }),
+        });
       }
-    } catch (err) {
-      console.error('Erro ao carregar scores dos leads:', err);
-    } finally {
-      setScoresLoading(false);
-    }
-  };
-
-  // Profile Rule CRUD
-  const handleSaveProfileRule = async () => {
-    if (!profileRuleForm.name) {
-      alert('Nome da regra é obrigatório');
-      return;
-    }
-
-    try {
-      setSaving(true);
-      const method = editingProfileRule ? 'PUT' : 'POST';
-      const url = editingProfileRule 
-        ? `${API_BASE}/scoring/profile-rules/${editingProfileRule}`
-        : `${API_BASE}/scoring/profile-rules`;
-
-      const res = await fetch(url, {
-        method,
-        headers: getHeaders(),
-        body: JSON.stringify(profileRuleForm),
+      // Trigger recalculation (which applies setting to all leads)
+      await fetch(`${API_BASE}/scoring/recalculate`, {
+        method: 'POST',
+        headers: getHeaders()
       });
-
-      if (res.ok) {
-        await loadProfileRules();
-        setEditingProfileRule(null);
-        setNewProfileRule(false);
-        setProfileRuleForm({});
-      }
+      setNeedsApply(false);
+      alert('Alterações aplicadas com sucesso a toda a Base de Leads!');
     } catch (err) {
-      console.error('Erro ao salvar regra de perfil:', err);
-      alert('Erro ao salvar regra');
+      alert('Erro ao aplicar alterações.');
     } finally {
-      setSaving(false);
+      setApplying(false);
     }
   };
 
-  const handleDeleteProfileRule = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir esta regra?')) return;
+  // ------------------- PROFILE MODAL -------------------
+  
+  const openPropertyModal = (cf: CustomField) => {
+    // find if existing field
+    const ext = currentProfileRule?.fields.find(f => f.custom_field_id === cf.id);
+    let terms = [];
+    let method = 'exact';
+    let weight = 50;
 
-    try {
-      const res = await fetch(`${API_BASE}/scoring/profile-rules/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders(),
-      });
-
-      if (res.ok) {
-        await loadProfileRules();
-      }
-    } catch (err) {
-      console.error('Erro ao excluir regra de perfil:', err);
-    }
-  };
-
-  const handleAddProfileField = (ruleId: string, cf: CustomField) => {
-    setProfileRules(prev => prev.map(rule => {
-      if (rule.id === ruleId) {
-        // Avoid duplicates
-        if (rule.fields.some(f => f.custom_field_id === cf.id)) return rule;
-        // Build initial answer_scores based on field options
-        const initialScores: Record<string, number> = {};
-        if (cf.options) {
-          try {
-            const opts: string[] = JSON.parse(cf.options);
-            opts.forEach(opt => { initialScores[opt] = 5; });
-          } catch {}
+    if (ext) {
+      weight = ext.weight_percentage;
+      method = ext.answer_scores?.__method__ || 'exact';
+      
+      // parse terms
+      Object.keys(ext.answer_scores || {}).forEach(k => {
+        if (k !== '__method__') {
+          terms.push({ term: k, stars: ext.answer_scores[k] });
         }
-        return {
-          ...rule,
-          fields: [
-            ...rule.fields,
-            {
-              id: `temp-${Date.now()}`,
-              custom_field_id: cf.id,
-              custom_field_name: cf.name,
-              custom_field_type: cf.type,
-              weight_percentage: 50,
-              answer_scores: initialScores,
-            }
-          ]
-        };
-      }
-      return rule;
-    }));
-  };
-
-  const handleUpdateProfileField = (ruleId: string, fieldId: string, updates: Partial<ProfileField>) => {
-    setProfileRules(prev => prev.map(rule => {
-      if (rule.id === ruleId) {
-        return {
-          ...rule,
-          fields: rule.fields.map(f => f.id === fieldId ? { ...f, ...updates } : f)
-        };
-      }
-      return rule;
-    }));
-  };
-
-  const handleRemoveProfileField = (ruleId: string, fieldId: string) => {
-    setProfileRules(prev => prev.map(rule => {
-      if (rule.id === ruleId) {
-        return {
-          ...rule,
-          fields: rule.fields.filter(f => f.id !== fieldId)
-        };
-      }
-      return rule;
-    }));
-  };
-
-  const handleSaveProfileRuleFields = async (ruleId: string) => {
-    const rule = profileRules.find(r => r.id === ruleId);
-    if (!rule) return;
-
-    try {
-      setSaving(true);
-      const res = await fetch(`${API_BASE}/scoring/profile-rules/${ruleId}/fields`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ fields: rule.fields }),
       });
-
-      if (res.ok) {
-        await loadProfileRules();
+    } else {
+      // auto populate if options exist
+      if (cf.options) {
+        try {
+          const parsed = JSON.parse(cf.options);
+          const opts = Array.isArray(parsed) ? parsed : (typeof parsed === 'string' ? parsed.split(',').map((o: string) => o.trim()) : []);
+          terms = opts.map(o => ({ term: o, stars: 5 }));
+        } catch {}
       }
-    } catch (err) {
-      console.error('Erro ao salvar campos da regra:', err);
-      alert('Erro ao salvar campos');
-    } finally {
-      setSaving(false);
     }
+
+    if (terms.length === 0) terms.push({ term: '', stars: 5 });
+
+    setPropertyForm({
+      fieldId: cf.id,
+      name: cf.name,
+      weight,
+      search_method: method,
+      terms
+    });
+    setPropertyModal({ isOpen: true, fieldId: cf.id });
   };
 
-  // Interest Rule CRUD
-  const handleSaveInterestRule = async () => {
-    if (!interestRuleForm.name) {
-      alert('Nome da regra é obrigatório');
-      return;
+  const handleSaveProperty = () => {
+    if (!currentProfileRule || !propertyForm) return;
+
+    const answer_scores: any = { __method__: propertyForm.search_method };
+    propertyForm.terms.forEach((t: any) => {
+      if (t.term.trim()) answer_scores[t.term.trim()] = t.stars;
+    });
+
+    const newField: ProfileField = {
+      id: propertyModal?.fieldId || `temp-${Date.now()}`,
+      custom_field_id: propertyForm.fieldId,
+      custom_field_name: propertyForm.name,
+      weight_percentage: propertyForm.weight,
+      answer_scores
+    };
+
+    setProfileRules(prev => prev.map(rule => {
+      if (rule.id === currentProfileRule.id) {
+        const exists = rule.fields.findIndex(f => f.custom_field_id === newField.custom_field_id);
+        const newFields = [...rule.fields];
+        if (exists >= 0) newFields[exists] = newField;
+        else newFields.push(newField);
+        return { ...rule, fields: newFields };
+      }
+      return rule;
+    }));
+
+    setNeedsApply(true);
+    setPropertyModal(null);
+  };
+
+  const handleDeleteProperty = (fieldId: string) => {
+    if (!currentProfileRule) return;
+    setProfileRules(prev => prev.map(r => ({
+      ...r,
+      fields: r.fields.filter(f => f.id !== fieldId && f.custom_field_id !== fieldId)
+    })));
+    setNeedsApply(true);
+  };
+
+  // ------------------- INTEREST MODAL -------------------
+  
+  const openGroupModal = (rule?: InterestRule) => {
+    if (rule) {
+      setGroupForm({
+        id: rule.id,
+        name: rule.name,
+        points: rule.conversions?.[0]?.points || 10,
+        conversions: rule.conversions || []
+      });
+    } else {
+      setGroupForm({
+        name: '',
+        points: 20,
+        conversions: []
+      });
     }
+    setGroupModal({ isOpen: true, ruleId: rule?.id });
+  };
 
+  const handleSaveGroup = async () => {
+    if (!groupForm?.name) return;
     try {
-      setSaving(true);
-      const method = editingInterestRule ? 'PUT' : 'POST';
-      const url = editingInterestRule 
-        ? `${API_BASE}/scoring/interest-rules/${editingInterestRule}`
-        : `${API_BASE}/scoring/interest-rules`;
+      const isEdit = !!groupModal?.ruleId;
+      const url = isEdit ? `${API_BASE}/scoring/interest-rules/${groupModal.ruleId}` : `${API_BASE}/scoring/interest-rules`;
+      const rulePayload = {
+        name: groupForm.name,
+        description: 'Grupo de Atividades',
+        is_active: true
+      };
 
+      let ruleId = groupModal?.ruleId;
       const res = await fetch(url, {
-        method,
+        method: isEdit ? 'PUT' : 'POST',
         headers: getHeaders(),
-        body: JSON.stringify(interestRuleForm),
+        body: JSON.stringify(rulePayload)
       });
-
-      if (res.ok) {
-        await loadInterestRules();
-        setEditingInterestRule(null);
-        setNewInterestRule(false);
-        setInterestRuleForm({});
+      if (!isEdit && res.ok) {
+        const created = await res.json();
+        ruleId = created.id;
       }
-    } catch (err) {
-      console.error('Erro ao salvar regra de interesse:', err);
-      alert('Erro ao salvar regra');
-    } finally {
-      setSaving(false);
-    }
+
+      if (ruleId) {
+        // Sync conversions (all get the group's points)
+        const conversionsToSave = groupForm.conversions.map((c: any) => ({
+          ...c,
+          points: groupForm.points
+        }));
+
+        await fetch(`${API_BASE}/scoring/interest-rules/${ruleId}/conversions`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ conversions: conversionsToSave })
+        });
+      }
+
+      await loadInterestRules();
+      setNeedsApply(true);
+      setGroupModal(null);
+    } catch (err) {}
   };
 
-  const handleDeleteInterestRule = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir esta regra?')) return;
-
+  const handleDeleteGroup = async (id: string) => {
+    if (!confirm('Excluir este grupo?')) return;
     try {
-      const res = await fetch(`${API_BASE}/scoring/interest-rules/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders(),
-      });
-
-      if (res.ok) {
-        await loadInterestRules();
-      }
-    } catch (err) {
-      console.error('Erro ao excluir regra de interesse:', err);
-    }
+      await fetch(`${API_BASE}/scoring/interest-rules/${id}`, { method: 'DELETE', headers: getHeaders() });
+      await loadInterestRules();
+      setNeedsApply(true);
+    } catch (err) {}
   };
 
-  const handleAddConversion = (ruleId: string) => {
-    setInterestRules(prev => prev.map(rule => {
-      if (rule.id === ruleId) {
-        return {
-          ...rule,
-          conversions: [
-            ...rule.conversions,
-            {
-              id: `temp-${Date.now()}`,
-              conversion_name: '',
-              points: 10,
-              event_type: 'form_submit',
-              event_ids: '[]',
-            }
-          ]
-        };
-      }
-      return rule;
-    }));
-  };
 
-  const handleUpdateConversion = (ruleId: string, conversionId: string, updates: Partial<InterestConversion>) => {
-    setInterestRules(prev => prev.map(rule => {
-      if (rule.id === ruleId) {
-        return {
-          ...rule,
-          conversions: rule.conversions.map(c => c.id === conversionId ? { ...c, ...updates } : c)
-        };
-      }
-      return rule;
-    }));
-  };
+  // ----------------------- RENDER -----------------------
 
-  const handleRemoveConversion = (ruleId: string, conversionId: string) => {
-    setInterestRules(prev => prev.map(rule => {
-      if (rule.id === ruleId) {
-        return {
-          ...rule,
-          conversions: rule.conversions.filter(c => c.id !== conversionId)
-        };
-      }
-      return rule;
-    }));
-  };
+  if (!configMode) {
+    return (
+      <div className="flex flex-col h-[calc(100vh-64px)] bg-[#F8FAFC]">
+        {needsApply && (
+          <div className="bg-yellow-50 border border-yellow-200 p-6 m-8 rounded-lg shadow-sm text-center">
+            <p className="text-slate-800 font-medium mb-1">Você possui alterações nas configurações do Lead Scoring que ainda não foram aplicadas.</p>
+            <p className="text-slate-800 font-medium mb-3">Deseja aplicar essas alterações agora?</p>
+            <button 
+              onClick={handleApplyChanges}
+              disabled={applying}
+              className="bg-[#F5A623] hover:bg-[#E59613] text-white px-6 py-2 rounded font-medium disabled:opacity-50"
+            >
+              {applying ? 'Aplicando...' : 'Aplicar alterações'}
+            </button>
+            <p className="text-slate-500 text-sm mt-3">A atualização completa da sua Base de Leads pode demorar alguns minutos.</p>
+          </div>
+        )}
 
-  const handleSaveInterestRuleConversions = async (ruleId: string) => {
-    const rule = interestRules.find(r => r.id === ruleId);
-    if (!rule) return;
-
-    try {
-      setSaving(true);
-      const res = await fetch(`${API_BASE}/scoring/interest-rules/${ruleId}/conversions`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({ conversions: rule.conversions }),
-      });
-
-      if (res.ok) {
-        await loadInterestRules();
-      }
-    } catch (err) {
-      console.error('Erro ao salvar conversões da regra:', err);
-      alert('Erro ao salvar conversões');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleRecalculateScores = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(`${API_BASE}/scoring/recalculate`, {
-        method: 'POST',
-        headers: getHeaders(),
-      });
-
-      if (res.ok) {
-        await loadLeadScores();
-        alert('Scores recalculados com sucesso!');
-      }
-    } catch (err) {
-      console.error('Erro ao recalcular scores:', err);
-      alert('Erro ao recalcular scores');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Field picker state per rule
-  const [fieldPickerRuleId, setFieldPickerRuleId] = useState<string | null>(null);
-  const [fieldPickerSearch, setFieldPickerSearch] = useState('');
-
-  const getFieldOptions = (cf: CustomField): string[] => {
-    if (!cf.options) return [];
-    try {
-      const parsed = JSON.parse(cf.options);
-      if (Array.isArray(parsed)) return parsed;
-      if (typeof parsed === 'string') return parsed.split(',').map(o => o.trim()).filter(Boolean);
-    } catch {}
-    return String(cf.options).split(',').map(o => o.trim()).filter(Boolean);
-  };
-
-  const getSelectedCf = (field: ProfileField): CustomField | undefined =>
-    customFields.find(cf => cf.id === field.custom_field_id);
-
-  // Render Profile Tab
-  const renderProfileTab = () => (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900">Perfil do Lead</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Selecione campos personalizados, defina o peso e a pontuação por resposta
+        <div className="flex-1 flex flex-col items-center justify-center -mt-16">
+          <div className="w-48 h-48 mb-6 relative">
+            {/* Visual matches the RD illustration representation */}
+            <div className="absolute inset-0 border-4 border-blue-200 rounded-full" />
+            <div className="absolute inset-2 border-4 border-blue-400 rounded-full" />
+            <div className="absolute inset-0 flex items-center justify-center text-blue-500">
+              <Users size={80} strokeWidth={1} />
+            </div>
+            <div className="absolute top-0 right-0 w-full h-full">
+              <div className="w-1 h-24 bg-blue-500 absolute top-[-10px] left-8 transform -rotate-45 origin-bottom" />
+            </div>
+          </div>
+          
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">Encontre os melhores Leads para vendas!</h2>
+          <p className="text-slate-600 mb-8 max-w-lg text-center">
+            Configure as regras de perfil e interesse do Lead Scoring e automatize a qualificação dos seus Leads.
           </p>
-        </div>
-        <button
-          onClick={() => {
-            setNewProfileRule(true);
-            setEditingProfileRule(null);
-            setProfileRuleForm({ name: '', description: '', is_active: true, fields: [] });
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
-        >
-          <Plus size={18} />
-          <span>Nova Regra</span>
-        </button>
-      </div>
 
-      {/* New / Edit Rule Form */}
-      {(newProfileRule || editingProfileRule) && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">
-            {editingProfileRule ? 'Editar Regra' : 'Nova Regra de Perfil'}
-          </h3>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nome da Regra *</label>
-              <input
-                type="text"
-                value={profileRuleForm.name || ''}
-                onChange={(e) => setProfileRuleForm(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                placeholder="Ex: Lead Ideal B2B"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Descrição</label>
-              <textarea
-                value={profileRuleForm.description || ''}
-                onChange={(e) => setProfileRuleForm(prev => ({ ...prev, description: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                rows={2}
-                placeholder="Descreva o objetivo desta regra..."
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={profileRuleForm.is_active !== false}
-                onChange={(e) => setProfileRuleForm(prev => ({ ...prev, is_active: e.target.checked }))}
-                className="rounded border-slate-300"
-              />
-              <label className="text-sm text-slate-700">Regra ativa</label>
-            </div>
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={handleSaveProfileRule}
-                disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50"
-              >
-                <Save size={16} />
-                <span>{saving ? 'Salvando...' : 'Salvar'}</span>
-              </button>
-              <button
-                onClick={() => { setNewProfileRule(false); setEditingProfileRule(null); setProfileRuleForm({}); }}
-                className="flex items-center gap-2 px-4 py-2 text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-              >
-                <X size={16} />
-                <span>Cancelar</span>
-              </button>
-            </div>
+          <div className="flex gap-4">
+            <button className="px-6 py-2.5 border border-blue-400 text-blue-500 rounded font-medium hover:bg-blue-50">
+              Veja como funciona
+            </button>
+            <button onClick={() => setConfigMode(true)} className="px-6 py-2.5 bg-[#2E9CFF] hover:bg-blue-600 text-white rounded font-medium">
+              Configurar Lead Scoring
+            </button>
           </div>
         </div>
-      )}
-
-      {/* Rules List */}
-      {loading ? (
-        <div className="text-center py-12 text-slate-500">Carregando...</div>
-      ) : profileRules.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">
-          <Target size={48} className="mx-auto text-slate-300 mb-4" />
-          <h3 className="text-lg font-semibold text-slate-700 mb-2">Nenhuma regra de perfil</h3>
-          <p className="text-slate-500">Crie sua primeira regra para começar a pontuar leads por perfil</p>
-        </div>
-      ) : (
-        profileRules.map(rule => {
-          const alreadyAdded = new Set(rule.fields.map(f => f.custom_field_id));
-          const availableFields = customFields.filter(
-            cf => !alreadyAdded.has(cf.id) &&
-              (fieldPickerSearch === '' ||
-                cf.name.toLowerCase().includes(fieldPickerSearch.toLowerCase()))
-          );
-
-          return (
-            <div key={rule.id} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-              {/* Rule Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${rule.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
-                  <h3 className="font-semibold text-slate-900">{rule.name}</h3>
-                  {rule.description && (
-                    <span className="text-sm text-slate-400">— {rule.description}</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => { setEditingProfileRule(rule.id); setNewProfileRule(false); setProfileRuleForm(rule); }}
-                    className="p-2 text-slate-400 hover:text-teal-600 rounded-lg hover:bg-teal-50 transition-colors"
-                    title="Editar regra"
-                  >
-                    <Edit3 size={15} />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteProfileRule(rule.id)}
-                    className="p-2 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
-                    title="Excluir regra"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-5">
-                {/* ── Field Picker Button ── */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <ListChecks size={16} className="text-teal-600" />
-                      <span className="text-sm font-semibold text-slate-700">Campos selecionados</span>
-                      <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{rule.fields.length}</span>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setFieldPickerRuleId(fieldPickerRuleId === rule.id ? null : rule.id);
-                        setFieldPickerSearch('');
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-teal-600 border border-teal-200 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors"
-                    >
-                      <Plus size={14} />
-                      Adicionar Campo
-                    </button>
-                  </div>
-
-                  {/* Field Picker Dropdown */}
-                  {fieldPickerRuleId === rule.id && (
-                    <div className="border border-slate-200 rounded-xl bg-white shadow-lg mb-4 overflow-hidden">
-                      {/* Search */}
-                      <div className="p-3 border-b border-slate-100">
-                        <div className="relative">
-                          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <input
-                            type="text"
-                            value={fieldPickerSearch}
-                            onChange={e => setFieldPickerSearch(e.target.value)}
-                            placeholder="Buscar campos personalizados..."
-                            className="w-full pl-8 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-400 focus:border-teal-400 outline-none"
-                            autoFocus
-                          />
-                        </div>
-                      </div>
-
-                      {/* Available fields list */}
-                      <div className="max-h-56 overflow-y-auto">
-                        {availableFields.length === 0 ? (
-                          <div className="py-6 text-center text-sm text-slate-400">
-                            {customFields.length === 0
-                              ? 'Nenhum campo personalizado criado ainda'
-                              : 'Todos os campos já foram adicionados'}
-                          </div>
-                        ) : (
-                          availableFields.map(cf => {
-                            const opts = getFieldOptions(cf);
-                            return (
-                              <button
-                                key={cf.id}
-                                onClick={() => {
-                                  handleAddProfileField(rule.id, cf);
-                                  setFieldPickerSearch('');
-                                }}
-                                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-teal-50 transition-colors text-left border-b border-slate-50 last:border-0"
-                              >
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium text-slate-800 text-sm truncate">{cf.name}</div>
-                                  <div className="text-xs text-slate-400 mt-0.5">
-                                    <span className="capitalize">{cf.type}</span>
-                                    {opts.length > 0 && (
-                                      <span className="ml-2 text-teal-500">{opts.length} opções</span>
-                                    )}
-                                  </div>
-                                </div>
-                                <Plus size={14} className="text-teal-400 flex-shrink-0" />
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Selected fields cards */}
-                  {rule.fields.length === 0 ? (
-                    <div className="border-2 border-dashed border-slate-200 rounded-xl py-8 text-center">
-                      <Sliders size={28} className="mx-auto text-slate-300 mb-2" />
-                      <p className="text-sm text-slate-400">Nenhum campo adicionado.<br />Clique em "Adicionar Campo" para começar.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {rule.fields.map(field => {
-                        const cf = getSelectedCf(field);
-                        const opts = cf ? getFieldOptions(cf) : [];
-                        const scores = field.answer_scores || {};
-
-                        return (
-                          <div key={field.id} className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
-                            {/* Field Header */}
-                            <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-slate-100">
-                              <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-teal-400" />
-                                <span className="font-semibold text-slate-800 text-sm">
-                                  {cf?.name || field.custom_field_name || 'Campo'}
-                                </span>
-                                <span className="text-xs text-slate-400 capitalize">({cf?.type || field.custom_field_type || '—'})</span>
-                              </div>
-                              <button
-                                onClick={() => handleRemoveProfileField(rule.id, field.id)}
-                                className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                              >
-                                <X size={14} />
-                              </button>
-                            </div>
-
-                            <div className="p-4 space-y-4">
-                              {/* Weight Slider */}
-                              <div>
-                                <div className="flex items-center justify-between mb-1">
-                                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Peso do campo</label>
-                                  <span className="text-sm font-bold text-teal-600">{field.weight_percentage}%</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min="1"
-                                  max="100"
-                                  value={field.weight_percentage}
-                                  onChange={e => handleUpdateProfileField(rule.id, field.id, { weight_percentage: parseInt(e.target.value) })}
-                                  className="w-full h-2 bg-slate-200 rounded-full appearance-none cursor-pointer accent-teal-600"
-                                />
-                                <div className="flex justify-between text-xs text-slate-400 mt-0.5">
-                                  <span>1%</span>
-                                  <span>100%</span>
-                                </div>
-                              </div>
-
-                              {/* Per-answer star ratings */}
-                              <div className="space-y-4">
-                                {opts.length > 0 && (
-                                  <div>
-                                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">Pontuação por resposta</label>
-                                    <div className="space-y-2">
-                                      {opts.map(opt => (
-                                        <div key={opt} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2.5 border border-slate-100">
-                                          <span className="text-sm text-slate-700 w-32 flex-shrink-0 font-medium truncate" title={opt}>{opt}</span>
-                                          <div className="flex-1">
-                                            <StarRating
-                                              rating={scores[opt] ?? 5}
-                                              onChange={r => {
-                                                const newScores = { ...scores, [opt]: r };
-                                                handleUpdateProfileField(rule.id, field.id, { answer_scores: newScores });
-                                              }}
-                                            />
-                                          </div>
-                                          <span className="text-xs font-semibold text-amber-500 w-8 text-right">{scores[opt] ?? 5}/10</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* "Any value" scoring - Always show for non-option fields, or as a fallback for option fields */}
-                                <div>
-                                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-2">
-                                    {opts.length > 0 ? 'Qualquer outro valor (Preenchido)' : 'Pontuação (quando preenchido)'}
-                                  </label>
-                                  <div className="flex items-center gap-3 bg-white rounded-lg px-3 py-2.5 border border-slate-100">
-                                    <span className="text-sm text-slate-500 w-32 flex-shrink-0">Preenchido</span>
-                                    <div className="flex-1">
-                                      <StarRating
-                                        rating={scores['__filled__'] ?? 5}
-                                        onChange={r => {
-                                          const newScores = { ...scores, '__filled__': r };
-                                          handleUpdateProfileField(rule.id, field.id, { answer_scores: newScores });
-                                        }}
-                                      />
-                                    </div>
-                                    <span className="text-xs font-semibold text-amber-500 w-8 text-right">{scores['__filled__'] ?? 5}/10</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Save fields button */}
-                {rule.fields.length > 0 && (
-                  <div className="flex justify-end pt-1">
-                    <button
-                      onClick={() => handleSaveProfileRuleFields(rule.id)}
-                      disabled={saving}
-                      className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm font-medium disabled:opacity-50"
-                    >
-                      <Save size={14} />
-                      <span>{saving ? 'Salvando...' : 'Salvar Campos'}</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })
-      )}
-    </div>
-  );
-
-  // Render Interest Tab
-  const renderInterestTab = () => (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900">Interesse do Lead</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Configure conversões e quantos pontos cada ação vale
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            setNewInterestRule(true);
-            setEditingInterestRule(null);
-            setInterestRuleForm({ name: '', description: '', is_active: true, conversions: [] });
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={18} />
-          <span>Nova Regra</span>
-        </button>
       </div>
-
-      {/* New Rule Form */}
-      {(newInterestRule || editingInterestRule) && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">
-            {editingInterestRule ? 'Editar Regra' : 'Nova Regra de Interesse'}
-          </h3>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nome da Regra *</label>
-              <input
-                type="text"
-                value={interestRuleForm.name || ''}
-                onChange={(e) => setInterestRuleForm(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Ex: Engajamento com Conteúdo"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Descrição</label>
-              <textarea
-                value={interestRuleForm.description || ''}
-                onChange={(e) => setInterestRuleForm(prev => ({ ...prev, description: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                rows={2}
-                placeholder="Descreva o objetivo desta regra..."
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={interestRuleForm.is_active !== false}
-                onChange={(e) => setInterestRuleForm(prev => ({ ...prev, is_active: e.target.checked }))}
-                className="rounded border-slate-300"
-              />
-              <label className="text-sm text-slate-700">Regra ativa</label>
-            </div>
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={handleSaveInterestRule}
-                disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                <Save size={16} />
-                <span>{saving ? 'Salvando...' : 'Salvar'}</span>
-              </button>
-              <button
-                onClick={() => {
-                  setNewInterestRule(false);
-                  setEditingInterestRule(null);
-                  setInterestRuleForm({});
-                }}
-                className="flex items-center gap-2 px-4 py-2 text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
-              >
-                <X size={16} />
-                <span>Cancelar</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Rules List */}
-      {loading ? (
-        <div className="text-center py-12 text-slate-500">Carregando...</div>
-      ) : interestRules.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">
-          <Activity size={48} className="mx-auto text-slate-300 mb-4" />
-          <h3 className="text-lg font-semibold text-slate-700 mb-2">Nenhuma regra de interesse</h3>
-          <p className="text-slate-500">Crie sua primeira regra para pontuar leads por engajamento</p>
-        </div>
-      ) : (
-        interestRules.map(rule => (
-          <div key={rule.id} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className={`w-3 h-3 rounded-full ${rule.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
-                  <h3 className="text-lg font-semibold text-slate-900">{rule.name}</h3>
-                  {rule.description && (
-                    <span className="text-sm text-slate-500">— {rule.description}</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      setEditingInterestRule(rule.id);
-                      setNewInterestRule(false);
-                      setInterestRuleForm(rule);
-                    }}
-                    className="p-2 text-slate-500 hover:text-blue-600 transition-colors"
-                  >
-                    <Edit3 size={16} />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteInterestRule(rule.id)}
-                    className="p-2 text-slate-500 hover:text-red-600 transition-colors"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Conversions */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-slate-700">Conversões</h4>
-                  <button
-                    onClick={() => handleAddConversion(rule.id)}
-                    className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
-                  >
-                    <Plus size={14} />
-                    <span>Adicionar Conversão</span>
-                  </button>
-                </div>
-
-                {rule.conversions.length === 0 ? (
-                  <p className="text-sm text-slate-400 py-4 text-center">Nenhuma conversão adicionada</p>
-                ) : (
-                  <div className="space-y-2">
-                    {rule.conversions.map((conversion) => {
-                      const selectedEventIds = (() => {
-                        try {
-                          return JSON.parse(conversion.event_ids || '[]');
-                        } catch {
-                          return [];
-                        }
-                      })();
-
-                      return (
-                        <div key={conversion.id} className="border border-slate-200 rounded-lg p-4 bg-slate-50">
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div className="md:col-span-1">
-                              <label className="block text-xs font-medium text-slate-600 mb-1">Nome da Conversão</label>
-                              <input
-                                type="text"
-                                value={conversion.conversion_name}
-                                onChange={(e) => handleUpdateConversion(rule.id, conversion.id, { conversion_name: e.target.value })}
-                                className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
-                                placeholder="Ex: Baixou E-book"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">Pontos</label>
-                              <input
-                                type="number"
-                                min="0"
-                                value={conversion.points}
-                                onChange={(e) => handleUpdateConversion(rule.id, conversion.id, { points: parseInt(e.target.value) || 0 })}
-                                className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">Tipo de Evento</label>
-                              <select
-                                value={conversion.event_type}
-                                onChange={(e) => handleUpdateConversion(rule.id, conversion.id, { event_type: e.target.value })}
-                                className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
-                              >
-                                <option value="form_submit">Formulário</option>
-                                <option value="page_view">Visualização de Página</option>
-                                <option value="custom_event">Evento Personalizado</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-slate-600 mb-1">Formulários/Eventos</label>
-                              <select
-                                multiple
-                                value={selectedEventIds}
-                                onChange={(e) => {
-                                  const values = Array.from(e.target.selectedOptions, option => option.value);
-                                  handleUpdateConversion(rule.id, conversion.id, { event_ids: JSON.stringify(values) });
-                                }}
-                                className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm"
-                                size={3}
-                              >
-                                {trackingForms.map(form => (
-                                  <option key={form.id} value={form.id}>{form.name}</option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-                          <div className="flex justify-end mt-3">
-                            <button
-                              onClick={() => handleRemoveConversion(rule.id, conversion.id)}
-                              className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {rule.conversions.length > 0 && (
-                  <div className="pt-3">
-                    <button
-                      onClick={() => handleSaveInterestRuleConversions(rule.id)}
-                      disabled={saving}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50"
-                    >
-                      <Save size={14} />
-                      <span>{saving ? 'Salvando...' : 'Salvar Conversões'}</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        ))
-      )}
-    </div>
-  );
-
-  // Render Scores Tab
-  const renderScoresTab = () => (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-900">Scores dos Leads</h2>
-          <p className="text-sm text-slate-500 mt-1">
-            Visualize e gerencie a pontuação de todos os leads
-          </p>
-        </div>
-        <button
-          onClick={handleRecalculateScores}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
-        >
-          <BarChart3 size={18} />
-          <span>{loading ? 'Calculando...' : 'Recalcular Scores'}</span>
-        </button>
-      </div>
-
-      {/* Score Legend */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-        <h3 className="text-sm font-semibold text-slate-700 mb-3">Legenda de Grades</h3>
-        <div className="flex flex-wrap gap-4">
-          {['A', 'B', 'C', 'D', 'E'].map(grade => (
-            <div key={grade} className="flex items-center gap-2">
-              <span className={`px-3 py-1 rounded-full text-sm font-bold ${getGradeColor(grade)}`}>
-                {grade}
-              </span>
-              <span className="text-xs text-slate-500">
-                {grade === 'A' && '≥ 80 pts (Excelente)'}
-                {grade === 'B' && '≥ 60 pts (Bom)'}
-                {grade === 'C' && '≥ 40 pts (Regular)'}
-                {grade === 'D' && '≥ 20 pts (Fraco)'}
-                {grade === 'E' && '< 20 pts (Muito Fraco)'}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Scores Table */}
-      {scoresLoading ? (
-        <div className="text-center py-12 text-slate-500">Carregando scores...</div>
-      ) : leadScores.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">
-          <Award size={48} className="mx-auto text-slate-300 mb-4" />
-          <h3 className="text-lg font-semibold text-slate-700 mb-2">Nenhum score calculado</h3>
-          <p className="text-slate-500 mb-4">Clique em "Recalcular Scores" para calcular a pontuação de todos os leads</p>
-        </div>
-      ) : (
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Lead</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Email</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">Perfil</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">Interesse</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">Total</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">Grade</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {leadScores.map(lead => {
-                  const total = (lead.score_profile || 0) + (lead.score_interest || 0);
-                  const grade = calculateGrade(total);
-                  
-                  return (
-                    <tr key={lead.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="font-medium text-slate-900">{lead.title}</div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-slate-500">{lead.contact_email || '-'}</td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="text-sm font-semibold text-teal-600">{lead.score_profile?.toFixed(1) || 0}</span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="text-sm font-semibold text-blue-600">{lead.score_interest || 0}</span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="text-lg font-bold text-slate-900">{total.toFixed(1)}</span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className={`px-3 py-1 rounded-full text-sm font-bold ${getGradeColor(grade)}`}>
-                          {grade}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50/50">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-8 py-6">
-        <div className="flex items-center gap-3 mb-2">
-          <Award size={28} className="text-teal-600" />
-          <h1 className="text-3xl font-bold text-slate-900">Lead Scoring</h1>
-        </div>
-        <p className="text-slate-500">
-          Pontue seus leads baseado em perfil e interesse, igual ao RD Marketing
-        </p>
-      </div>
+    <div className="min-h-[calc(100vh-64px)] bg-[#F4F7FA] p-8">
+      {/* HEADER TABS */}
+      <div className="max-w-5xl mx-auto mb-8">
+        <h1 className="text-3xl font-bold text-slate-800 mb-6">Lead Scoring</h1>
+        
+        {needsApply && (
+          <div className="bg-yellow-50 border border-yellow-200 p-6 mb-8 rounded-lg shadow-sm text-center relative">
+            <button onClick={() => setConfigMode(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X size={20}/></button>
+            <p className="text-slate-800 mb-3">Você possui alterações nas configurações do Lead Scoring que ainda não foram aplicadas.</p>
+            <button onClick={handleApplyChanges} disabled={applying} className="bg-[#F5A623] hover:bg-[#E59613] text-white px-6 py-2 rounded font-medium disabled:opacity-50">
+              {applying ? 'Aplicando...' : 'Aplicar alterações'}
+            </button>
+          </div>
+        )}
 
-      {/* Tabs */}
-      <div className="bg-white border-b border-slate-200 px-8">
-        <div className="flex gap-6">
-          <button
+        <div className="flex w-64 bg-white border border-slate-200 rounded overflow-hidden shadow-sm">
+          <button 
+            className={`flex-1 py-3 text-sm font-semibold text-center ${activeTab === 'profile' ? 'bg-[#2E9CFF] text-white' : 'text-slate-500 hover:bg-slate-50'}`}
             onClick={() => setActiveTab('profile')}
-            className={`py-4 px-2 border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'profile'
-                ? 'border-teal-600 text-teal-600 font-semibold'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
+            style={{ clipPath: activeTab === 'profile' ? 'polygon(0 0, 100% 0, 90% 100%, 0 100%)' : 'none' }}
           >
-            <Users size={18} />
-            <span>Perfil</span>
+            Perfil
           </button>
-          <button
+          <button 
+            className={`flex-1 py-3 text-sm font-semibold text-center ${activeTab === 'interest' ? 'bg-[#2E9CFF] text-white' : 'text-slate-500 hover:bg-slate-50'}`}
             onClick={() => setActiveTab('interest')}
-            className={`py-4 px-2 border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'interest'
-                ? 'border-blue-600 text-blue-600 font-semibold'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
+            style={{ marginLeft: activeTab === 'profile' ? '-10%' : '0', clipPath: activeTab === 'interest' ? 'polygon(10% 0, 100% 0, 100% 100%, 0 100%)' : 'none', paddingLeft: activeTab === 'interest' ? '10%' : '0' }}
           >
-            <TrendingUp size={18} />
-            <span>Interesse</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('scores')}
-            className={`py-4 px-2 border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === 'scores'
-                ? 'border-purple-600 text-purple-600 font-semibold'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            <BarChart3 size={18} />
-            <span>Scores</span>
+            Interesse
           </button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-8">
-        {activeTab === 'profile' && renderProfileTab()}
-        {activeTab === 'interest' && renderInterestTab()}
-        {activeTab === 'scores' && renderScoresTab()}
+      <div className="max-w-5xl mx-auto flex gap-8">
+        
+        {/* LEFTSIDE INFO */}
+        <div className="w-1/3 pt-4">
+          {activeTab === 'profile' ? (
+            <>
+              <p className="text-slate-500 text-sm leading-relaxed mb-4">
+                O perfil do Lead determina o quão próximo ele está do seu cliente ideal. Use as propriedades de seus leads para cruzar e definir pesos.
+              </p>
+              <p className="text-slate-500 text-sm leading-relaxed">
+                Adicione propriedades, termos específicos de preenchimento, e determine notas baseadas na qualificação desses campos.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-slate-500 text-sm leading-relaxed mb-4">
+                Toda vez que um Lead baixa determinado conteúdo de sua empresa, preenche um formulário ou completa um evento de rastreio, é possível adicionar um valor ao seu score e, dessa forma, medir o quanto esse Lead está interessado no seu produto ou serviço.
+              </p>
+              <p className="text-slate-500 text-sm leading-relaxed">
+                Crie os grupos com as atividades de conversão que possuem o mesmo valor. Toda vez que seu Lead efetuar alguma dessas atividades do grupo, um valor é acrescido à pontuação de interesse.
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* RIGHTSIDE LISTS */}
+        <div className="w-2/3 bg-white border border-slate-200 rounded-lg shadow-sm">
+          {/* PROFILE VIEW */}
+          {activeTab === 'profile' && (
+            <div>
+              <div className="p-4 bg-slate-50 border-b border-slate-200 font-medium text-slate-600">
+                Propriedades avaliadas
+              </div>
+              <div className="p-0">
+                {currentProfileRule?.fields.map(field => (
+                  <div key={field.id} className="flex items-center justify-between p-4 border-b border-slate-100 hover:bg-slate-50 group">
+                    <div className="flex items-center gap-3">
+                      <Target className="text-blue-400" size={20} />
+                      <span className="text-slate-700 font-medium">{field.custom_field_name}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-xs text-slate-400">Peso: {field.weight_percentage}%</span>
+                      <button onClick={() => openPropertyModal(customFields.find(c => c.id === field.custom_field_id)!)} className="text-blue-500 text-sm font-medium border border-blue-200 bg-white px-3 py-1 rounded shadow-sm hover:bg-blue-50">
+                        Editar
+                      </button>
+                      <button onClick={() => handleDeleteProperty(field.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></button>
+                    </div>
+                  </div>
+                ))}
+                
+                <div className="p-4 border-t border-slate-100">
+                  <div className="relative inline-block w-full">
+                    <select 
+                      onChange={e => {
+                        const cf = customFields.find(c => c.id === e.target.value);
+                        if (cf) {
+                          openPropertyModal(cf);
+                          e.target.value = "";
+                        }
+                      }}
+                      className="w-full opacity-0 absolute top-0 left-0 h-full cursor-pointer z-10"
+                    >
+                      <option value="">Selecione...</option>
+                      {customFields.filter(cf => !currentProfileRule?.fields.find(f => f.custom_field_id === cf.id)).map(cf => (
+                        <option key={cf.id} value={cf.id}>{cf.name}</option>
+                      ))}
+                    </select>
+                    <button className="flex items-center gap-2 text-blue-500 font-medium hover:underline focus:outline-none relative z-0 pointer-events-none">
+                      <Plus size={18} /> Adicionar propriedade
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* INTEREST VIEW */}
+          {activeTab === 'interest' && (
+            <div>
+              <div className="p-4 bg-slate-50 border-b border-slate-200 font-medium text-slate-600 flex justify-between">
+                <span>Grupos de atividade</span>
+              </div>
+              <div className="p-0">
+                {interestRules.map(rule => (
+                  <div key={rule.id} className="flex items-center justify-between p-4 border-b border-slate-100 hover:bg-slate-50">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-400">
+                        <ListChecks size={16} />
+                      </div>
+                      <span className="text-slate-700 font-medium">{rule.name}</span>
+                    </div>
+                    <div className="flex items-center gap-6">
+                      <span className="text-slate-600 font-medium">{rule.conversions?.[0]?.points || 0} <span className="text-xs font-normal text-slate-400">pontos</span></span>
+                      
+                      <div className="flex items-center gap-0 border border-blue-300 rounded shadow-sm text-sm">
+                        <button onClick={() => openGroupModal(rule)} className="px-3 py-1.5 text-blue-500 hover:bg-blue-50 font-medium border-r border-blue-200">
+                          Editar
+                        </button>
+                        <button onClick={() => handleDeleteGroup(rule.id)} className="px-2 py-1.5 text-blue-500 hover:bg-blue-50">
+                          <ChevronDown size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                
+                <div className="p-4">
+                  <button onClick={() => openGroupModal()} className="flex items-center gap-2 text-blue-500 font-medium hover:underline focus:outline-none">
+                    <Plus size={18} /> Adicionar grupo
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* PROPERTY MODAL */}
+      {propertyModal?.isOpen && propertyForm && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-md shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-slate-200">
+              <h3 className="text-lg font-medium text-slate-800">Propriedade {propertyForm.name}*</h3>
+              <button onClick={() => setPropertyModal(null)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="mb-8">
+                 <h4 className="font-semibold text-slate-800 text-[15px] mb-3">Método de busca do termo na propriedade</h4>
+                 <div className="space-y-4 text-sm">
+                   <label className="flex items-start gap-2 cursor-pointer">
+                     <input type="radio" className="mt-1 w-4 h-4 text-[#2E9CFF] focus:ring-[#2E9CFF]" 
+                            checked={propertyForm.search_method === 'contains'} 
+                            onChange={() => setPropertyForm({...propertyForm, search_method: 'contains'})} />
+                     <div>
+                        <span className="font-medium text-slate-800">Contém</span>
+                        <p className="text-slate-500 mt-1">Exemplo: o termo "Diretor" é encontrado no caso da propriedade ser preenchida com "Diretor de Marketing".</p>
+                     </div>
+                   </label>
+                   <label className="flex items-start gap-2 cursor-pointer">
+                     <input type="radio" className="mt-1 w-4 h-4 text-[#2E9CFF] focus:ring-[#2E9CFF]" 
+                            checked={propertyForm.search_method === 'exact'} 
+                            onChange={() => setPropertyForm({...propertyForm, search_method: 'exact'})} />
+                     <div>
+                        <span className="font-medium text-slate-800">Exato (é igual)</span>
+                        <p className="text-slate-500 mt-1">Exemplo: o termo "Diretor" somente é encontrado no caso da propriedade ser preenchida exatamente da mesma forma.</p>
+                     </div>
+                   </label>
+                 </div>
+              </div>
+
+              <div>
+                 <div className="flex items-center justify-between mb-4">
+                   <h4 className="font-semibold text-slate-800 text-[15px]">Adicione termos e atribua uma nota para cada um deles.</h4>
+                   <div className="flex items-center gap-2">
+                     <span className="text-xs text-slate-500 font-medium">Peso:</span>
+                     <input type="number" min="1" max="100" value={propertyForm.weight} 
+                            onChange={e => setPropertyForm({...propertyForm, weight: Number(e.target.value)})} 
+                            className="w-16 px-2 py-1 text-right border border-slate-300 rounded text-sm"/>
+                     <span className="text-xs text-slate-500">%</span>
+                   </div>
+                 </div>
+                 
+                 <div className="border border-slate-200 rounded overflow-hidden">
+                   {propertyForm.terms.map((t: any, idx: number) => (
+                     <div key={idx} className="flex items-center p-3 border-b border-slate-200 last:border-0 bg-white">
+                       <input 
+                         type="text" 
+                         value={t.term} 
+                         onChange={e => {
+                           const newT = [...propertyForm.terms];
+                           newT[idx].term = e.target.value;
+                           setPropertyForm({...propertyForm, terms: newT});
+                         }} 
+                         className="flex-1 max-w-[200px] px-3 py-2 border border-slate-300 rounded text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" 
+                         placeholder="Exemplo..." 
+                       />
+                       
+                       <div className="flex-1 flex justify-center ml-2">
+                         <StarRating 
+                           rating={t.stars} 
+                           onChange={r => {
+                             const newT = [...propertyForm.terms];
+                             newT[idx].stars = r;
+                             setPropertyForm({...propertyForm, terms: newT});
+                           }} 
+                         />
+                       </div>
+
+                       <div className="flex items-center gap-3 w-20 justify-end">
+                         <div className="bg-slate-100 border border-slate-200 px-3 py-1.5 rounded text-sm text-slate-700 font-medium text-center shadow-inner">
+                           {t.stars}
+                         </div>
+                         <button onClick={() => {
+                           const newT = [...propertyForm.terms];
+                           newT.splice(idx, 1);
+                           setPropertyForm({...propertyForm, terms: newT});
+                         }} className="text-blue-500 hover:text-red-500"><Trash2 size={16}/></button>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+                 
+                 <div className="mt-4 border border-dashed border-slate-300 rounded p-2 text-center hover:bg-slate-50 cursor-pointer text-sm text-[#2E9CFF] font-medium"
+                      onClick={() => setPropertyForm({...propertyForm, terms: [...propertyForm.terms, {term: '', stars: 5}]})}>
+                   + Adicionar termo
+                 </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3 rounded-b-md">
+              <button onClick={() => setPropertyModal(null)} className="px-4 py-2 text-[15px] text-[#2E9CFF] hover:underline">Cancelar</button>
+              <button onClick={handleSaveProperty} className="px-6 py-2 bg-[#4fb2ff] text-white text-[15px] font-medium rounded hover:bg-blue-500 shadow-sm">
+                Adicionar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* INTEREST GROUP MODAL */}
+      {groupModal?.isOpen && groupForm && (
+        <div className="fixed inset-0 bg-slate-900/50 flex justify-center items-start pt-20 z-50 p-4">
+          <div className="bg-white rounded-md shadow-xl w-full max-w-[600px] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-slate-200">
+              <h3 className="text-xl font-medium text-slate-800">Adicionar grupo de atividades</h3>
+              <button onClick={() => setGroupModal(null)} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+            </div>
+
+            <div className="p-6">
+              <div className="flex gap-6 mb-6">
+                <div className="flex-1">
+                  <label className="block text-sm font-bold text-[#1a2e44] mb-2">Nome do grupo</label>
+                  <input 
+                    type="text" 
+                    value={groupForm.name} 
+                    onChange={e => setGroupForm({...groupForm, name: e.target.value})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded focus:border-[#2E9CFF] focus:ring-1 focus:ring-[#2E9CFF]" 
+                    placeholder="Conversões topo de funil"
+                  />
+                </div>
+                <div className="w-32">
+                  <label className="block text-sm font-bold text-[#1a2e44] mb-2">Pontuação</label>
+                  <div className="flex rounded border border-slate-300 overflow-hidden focus-within:border-[#2E9CFF] focus-within:ring-1 focus-within:ring-[#2E9CFF]">
+                    <input 
+                      type="number" 
+                      value={groupForm.points}
+                      onChange={e => setGroupForm({...groupForm, points: Number(e.target.value)})}
+                      className="w-full px-3 py-2 text-center border-none focus:ring-0" 
+                    />
+                    <div className="bg-slate-100 flex items-center px-3 border-l border-slate-300 text-sm text-slate-600">
+                      pontos
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-4 items-start mb-4">
+                <div className="w-12 h-12 bg-blue-50 border border-blue-100 rounded-full flex items-center justify-center text-blue-400 shrink-0 mt-1">
+                  <ListChecks size={24} />
+                </div>
+                <div>
+                  <h4 className="text-[17px] font-bold text-[#1a2e44]">Atividades de Conversão</h4>
+                  <p className="text-[#6c7b8d] text-base mt-2">Landing Pages, formulários integrados</p>
+                  
+                  <div className="mt-4 relative">
+                    <button className="bg-[#4fb2ff] hover:bg-blue-500 text-white px-5 py-2.5 rounded font-medium text-[15px] shadow-sm flex items-center gap-2">
+                       Adicionar atividade
+                       {/* Input invisível para dropdown improvisado */}
+                       <select 
+                         className="absolute inset-0 opacity-0 cursor-pointer"
+                         onChange={e => {
+                           const val = e.target.value;
+                           if (!val) return;
+                           const [type, id, name] = val.split('|');
+                           if (!groupForm.conversions.some((c: any) => c.conversion_name === name)) {
+                             setGroupForm({
+                               ...groupForm,
+                               conversions: [...groupForm.conversions, {
+                                 id: `temp-${Date.now()}`,
+                                 conversion_name: name,
+                                 event_type: type,
+                                 event_ids: JSON.stringify([id])
+                               }]
+                             });
+                           }
+                           e.target.value = '';
+                         }}
+                       >
+                         <option value="">Selecione...</option>
+                         <optgroup label="Formulários">
+                           {trackingForms.map(f => (
+                             <option key={f.id} value={`form_submit|${f.id}|Formulário: ${f.name}`}>{f.name}</option>
+                           ))}
+                         </optgroup>
+                         <option value="custom_event|any|Qualquer Evento">Evento Genérico Qualquer</option>
+                       </select>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[#6c7b8d] text-sm leading-relaxed mt-6">
+                Adicione os eventos que farão parte deste grupo. O valor definido acima será atribuído à pontuação de interesse do Lead no caso de o mesmo converter em algum evento deste grupo.
+              </p>
+
+              {groupForm.conversions.length > 0 && (
+                <div className="mt-8">
+                  <h4 className="text-base font-bold text-[#1a2e44] border-b border-slate-200 pb-2 mb-4">
+                    Lista de eventos de conversão do grupo
+                  </h4>
+                  <div className="space-y-4">
+                    {groupForm.conversions.map((conv: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between group border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+                        <span className="font-bold text-[#1a2e44] text-[15px]">{conv.conversion_name}</span>
+                        <button onClick={() => {
+                          const newC = [...groupForm.conversions];
+                          newC.splice(idx, 1);
+                          setGroupForm({...groupForm, conversions: newC});
+                        }} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Trash2 size={18}/>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3 rounded-b-md">
+              <button onClick={() => setGroupModal(null)} className="px-5 py-2 text-[15px] text-[#2E9CFF] hover:underline">Cancelar</button>
+              <button onClick={handleSaveGroup} className="px-6 py-2 bg-[#4fb2ff] text-white text-[15px] font-medium rounded hover:bg-blue-500 shadow-sm">
+                Salvar e fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

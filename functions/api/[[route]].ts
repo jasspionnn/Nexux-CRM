@@ -2935,15 +2935,32 @@ async function calculateLeadScore(db: any, account_id: string, leadId?: string) 
           let bestStar = 0;
           const values: string[] = Array.isArray(leadValue) ? leadValue : [String(leadValue)];
 
-          // Match specific values first
+          const searchMethod = answerScores['__method__'] || 'exact';
+
           for (const val of values) {
-            const matched = answerScores[val];
-            if (matched !== undefined && matched > bestStar) bestStar = matched;
+            const strVal = String(val).toLowerCase().trim();
+            for (const [key, stars] of Object.entries(answerScores)) {
+              if (key === '__method__' || key === '__filled__') continue;
+              
+              const strKey = String(key).toLowerCase().trim();
+              let matched = false;
+
+              if (searchMethod === 'contains') {
+                if (strVal.includes(strKey)) matched = true;
+              } else {
+                if (strVal === strKey) matched = true;
+              }
+
+              if (matched) {
+                const numStars = Number(stars);
+                if (numStars > bestStar) bestStar = numStars;
+              }
+            }
           }
 
-          // If no specific match, use __filled__ fallback
+          // If no specific match, use __filled__ fallback if configured
           if (bestStar === 0 && answerScores['__filled__']) {
-            bestStar = answerScores['__filled__'];
+            bestStar = Number(answerScores['__filled__']);
           }
 
           const starFactor = bestStar / 10; // 1-10 -> 0.1-1.0
