@@ -206,7 +206,7 @@ export const LeadScoring = () => {
   const openPropertyModal = (cf: CustomField) => {
     // find if existing field
     const ext = currentProfileRule?.fields.find(f => f.custom_field_id === cf.id);
-    let terms = [];
+    let terms: any[] = [];
     let method = 'exact';
     let weight = 50;
 
