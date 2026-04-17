@@ -91,7 +91,7 @@ const AppContent = () => {
         case 'kanban': return <KanbanBoard onNavigate={handleNavigate} />;
         case 'leads-db': return <LeadsDatabase onNavigate={handleNavigate} />;
         case 'tasks': return <TasksView onNavigate={handleNavigate} />;
-        case 'marketing': return <Marketing />;
+        case 'marketing': return <Marketing subView={viewData} />;
         case 'ai-bot': return <AIBotSettings />;
         case 'settings': return <Settings />;
         case 'lead-detail':
