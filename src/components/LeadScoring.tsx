@@ -109,6 +109,10 @@ export const LeadScoring = () => {
   const [groupModal, setGroupModal] = useState<{ isOpen: boolean; ruleId?: string } | null>(null);
   const [groupForm, setGroupForm] = useState<any>(null);
 
+  // New Dashboard States
+  const [dashboardStats, setDashboardStats] = useState<{ total: number; grades: Record<string, number>; avgInterest: number; loaded: boolean }>({ total: 0, grades: {}, avgInterest: 0, loaded: false });
+
+
   useEffect(() => {
     loadAll();
   }, []);
@@ -119,9 +123,33 @@ export const LeadScoring = () => {
       loadCustomFields(),
       loadProfileRules(),
       loadInterestRules(),
-      loadTrackingForms()
+      loadTrackingForms(),
+      loadDashboardStats()
     ]);
     setLoading(false);
+  };
+
+  const loadDashboardStats = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/scoring/stats`, { headers: getHeaders() });
+      if (res.ok) {
+        const rows = await res.json();
+        let total = 0;
+        let sumInterestAvg = 0;
+        let grades: any = { 'A': 0, 'B': 0, 'C': 0, 'D': 0 };
+        
+        rows.forEach((r: any) => {
+          const g = r.score_grade || 'D';
+          const cnt = Number(r.total) || 0;
+          grades[g] = (grades[g] || 0) + cnt;
+          total += cnt;
+          sumInterestAvg += (Number(r.avg_interest) || 0) * cnt;
+        });
+
+        const avgInterest = total > 0 ? Math.round(sumInterestAvg / total) : 0;
+        setDashboardStats({ total, grades, avgInterest, loaded: true });
+      }
+    } catch (err) {}
   };
 
   const loadCustomFields = async () => {
@@ -365,6 +393,9 @@ export const LeadScoring = () => {
   // ----------------------- RENDER -----------------------
 
   if (!configMode) {
+    const hasData = dashboardStats.loaded && dashboardStats.total > 0;
+    const predominantGrade = Object.keys(dashboardStats.grades).reduce((a, b) => dashboardStats.grades[a] > dashboardStats.grades[b] ? a : b, 'A');
+
     return (
       <div className="flex flex-col h-[calc(100vh-64px)] bg-[#F8FAFC]">
         {needsApply && (
@@ -382,33 +413,97 @@ export const LeadScoring = () => {
           </div>
         )}
 
-        <div className="flex-1 flex flex-col items-center justify-center -mt-16">
-          <div className="w-48 h-48 mb-6 relative">
-            {/* Visual matches the RD illustration representation */}
-            <div className="absolute inset-0 border-4 border-blue-200 rounded-full" />
-            <div className="absolute inset-2 border-4 border-blue-400 rounded-full" />
-            <div className="absolute inset-0 flex items-center justify-center text-blue-500">
-              <Users size={80} strokeWidth={1} />
-            </div>
-            <div className="absolute top-0 right-0 w-full h-full">
-              <div className="w-1 h-24 bg-blue-500 absolute top-[-10px] left-8 transform -rotate-45 origin-bottom" />
-            </div>
-          </div>
-          
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Encontre os melhores Leads para vendas!</h2>
-          <p className="text-slate-600 mb-8 max-w-lg text-center">
-            Configure as regras de perfil e interesse do Lead Scoring e automatize a qualificação dos seus Leads.
-          </p>
+        {hasData ? (
+          <div className="flex-1 w-full max-w-5xl mx-auto p-8 overflow-y-auto">
+             <div className="flex justify-between items-end mb-8">
+               <div>
+                  <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Dashboard de Qualificação</h2>
+                  <p className="text-slate-500 mt-1">Análise em tempo real do seu funil e perfis de Lead.</p>
+               </div>
+               <button onClick={() => setConfigMode(true)} className="flex items-center gap-2 bg-white border border-slate-200 hover:border-blue-400 hover:text-blue-500 text-slate-700 px-4 py-2 rounded-md shadow-sm font-medium transition-all">
+                 <Settings size={18} /> Configurar Regras
+               </button>
+             </div>
 
-          <div className="flex gap-4">
-            <button className="px-6 py-2.5 border border-blue-400 text-blue-500 rounded font-medium hover:bg-blue-50">
-              Veja como funciona
-            </button>
-            <button onClick={() => setConfigMode(true)} className="px-6 py-2.5 bg-[#2E9CFF] hover:bg-blue-600 text-white rounded font-medium">
-              Configurar Lead Scoring
-            </button>
+             <div className="grid grid-cols-3 gap-6 mb-8">
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                   <div className="flex items-center gap-3 mb-2 text-slate-500 font-medium">
+                      <Users size={20} className="text-blue-500" /> Total Qualificados
+                   </div>
+                   <div className="text-4xl font-bold text-slate-800">{dashboardStats.total}</div>
+                </div>
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                   <div className="flex items-center gap-3 mb-2 text-slate-500 font-medium">
+                      <TrendingUp size={20} className="text-emerald-500" /> Perfil Predominante
+                   </div>
+                   <div className="text-4xl font-bold text-slate-800 flex items-center gap-2">
+                     Grade {predominantGrade}
+                   </div>
+                </div>
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                   <div className="flex items-center gap-3 mb-2 text-slate-500 font-medium">
+                      <Activity size={20} className="text-orange-500" /> Média de Interesse
+                   </div>
+                   <div className="text-4xl font-bold text-slate-800">{dashboardStats.avgInterest} <span className="text-base text-slate-400 font-normal">pontos</span></div>
+                </div>
+             </div>
+
+             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8">
+               <h3 className="text-lg font-bold text-slate-800 mb-6">Distribuição por Perfil de Qualificação</h3>
+               <div className="space-y-6">
+                 {['A', 'B', 'C', 'D'].map(grade => {
+                   const count = dashboardStats.grades[grade] || 0;
+                   const pct = dashboardStats.total > 0 ? (count / dashboardStats.total) * 100 : 0;
+                   const colors: any = {
+                     'A': 'bg-emerald-500',
+                     'B': 'bg-blue-500',
+                     'C': 'bg-yellow-400',
+                     'D': 'bg-orange-500'
+                   };
+                   
+                   return (
+                     <div key={grade} className="flex items-center gap-4">
+                       <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center font-bold text-slate-700 text-lg shadow-inner">{grade}</div>
+                       <div className="flex-1 h-6 bg-slate-100 rounded-full overflow-hidden flex shadow-inner">
+                         <div className={`h-full ${colors[grade]} transition-all duration-1000 ease-out`} style={{width: `${pct}%`}}></div>
+                       </div>
+                       <div className="w-16 text-right font-bold text-slate-700 text-lg">{count}</div>
+                       <div className="w-16 text-right text-sm font-medium text-slate-400">{pct.toFixed(1)}%</div>
+                     </div>
+                   );
+                 })}
+               </div>
+             </div>
           </div>
-        </div>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center -mt-16">
+            <div className="w-48 h-48 mb-6 relative">
+              {/* Visual matches the RD illustration representation */}
+              <div className="absolute inset-0 border-4 border-blue-200 rounded-full" />
+              <div className="absolute inset-2 border-4 border-blue-400 rounded-full" />
+              <div className="absolute inset-0 flex items-center justify-center text-blue-500">
+                <Users size={80} strokeWidth={1} />
+              </div>
+              <div className="absolute top-0 right-0 w-full h-full">
+                <div className="w-1 h-24 bg-blue-500 absolute top-[-10px] left-8 transform -rotate-45 origin-bottom" />
+              </div>
+            </div>
+            
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Encontre os melhores Leads para vendas!</h2>
+            <p className="text-slate-600 mb-8 max-w-lg text-center">
+              Configure as regras de perfil e interesse do Lead Scoring e automatize a qualificação dos seus Leads.
+            </p>
+
+            <div className="flex gap-4">
+              <button className="px-6 py-2.5 border border-blue-400 text-blue-500 rounded font-medium hover:bg-blue-50">
+                Veja como funciona
+              </button>
+              <button onClick={() => setConfigMode(true)} className="px-6 py-2.5 bg-[#2E9CFF] hover:bg-blue-600 text-white rounded font-medium shadow-sm">
+                Configurar Lead Scoring
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

@@ -3318,4 +3318,19 @@ app.get('/tracking-forms', async (c) => {
   }
 });
 
+// Scoring Stats Dashboard
+app.get('/scoring/stats', async (c) => {
+  try {
+    const account_id = 'acc_demo';
+    const { results } = await c.env.DB.prepare(
+      'SELECT score_grade, COUNT(id) as total, AVG(score_interest) as avg_interest FROM leads WHERE account_id = ? GROUP BY score_grade'
+    ).bind(account_id).all();
+
+    return c.json(results || []);
+  } catch (error: any) {
+    console.error('Error fetching scoring stats:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
 export const onRequest = handle(app);
