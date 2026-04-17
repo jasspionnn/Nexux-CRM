@@ -735,6 +735,12 @@ app.delete('/stages/:id', async (c) => {
   return c.json({ success: true });
 });
 
+// Tracking Forms
+app.get('/tracking-forms', async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT * FROM tracking_forms').all();
+  return c.json(results);
+});
+
 // Custom Fields
 app.get('/custom-fields', async (c) => {
   const { results } = await c.env.DB.prepare('SELECT * FROM custom_fields').all();
