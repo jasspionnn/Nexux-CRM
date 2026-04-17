@@ -742,7 +742,6 @@ export const LeadScoring = () => {
                              <option key={f.id} value={`form_submit|${f.id}|Formulário: ${f.name}`}>{f.name}</option>
                            ))}
                          </optgroup>
-                         <option value="custom_event|any|Qualquer Evento">Evento Genérico Qualquer</option>
                        </select>
                     </button>
                   </div>
