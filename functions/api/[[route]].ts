@@ -3329,7 +3329,7 @@ app.get('/scoring/stats', async (c) => {
     return c.json(results || []);
   } catch (error: any) {
     console.error('Error fetching scoring stats:', error);
-    return c.json({ error: error.message }, 500);
+    return c.json([], 200); // Return empty array even on error to prevent frontend crash
   }
 });
 

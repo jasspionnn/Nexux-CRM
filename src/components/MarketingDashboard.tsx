@@ -56,8 +56,9 @@ export const MarketingDashboard = () => {
     { label: 'Link na Bio', sub: 'bio-links', icon: MousePointer, color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200' },
     { label: 'Base de Leads', sub: 'leads-db', icon: Target, color: 'bg-green-100 text-green-700 hover:bg-green-200' },
     { label: 'Email Mkt', sub: 'email-mkt', icon: FileText, color: 'bg-red-100 text-red-700 hover:bg-red-200' },
-    { label: 'Segmentação', sub: 'segmentation', icon: BarChart3, color: 'bg-purple-100 text-purple-700 hover:bg-purple-200' },
-    { label: 'Automações', sub: 'automations', icon: TrendingUp, color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' },
+    { label: 'Segmentação', sub: 'segmentation', icon: BarChart3, color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' },
+    { label: 'Lead Scoring', sub: 'lead-scoring', icon: Target, color: 'bg-orange-100 text-orange-700 hover:bg-orange-200' },
+    { label: 'Automações', sub: 'automations', icon: TrendingUp, color: 'bg-purple-100 text-purple-700 hover:bg-purple-200' },
   ];
 
   if (loading) {
@@ -116,7 +117,7 @@ export const MarketingDashboard = () => {
         {/* Quick Access */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
           <h3 className="text-lg font-black text-slate-900 mb-4">Acesso Rápido</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
             {QUICK_ACTIONS.map(action => {
               const Icon = action.icon;
               return (
