@@ -396,119 +396,140 @@ export const LeadScoring = () => {
 
 
   // ----------------------- RENDER -----------------------
+  try {
+    if (!configMode) {
+      // Show dashboard if we have any profile rules or if stats are loaded.
+      const showDashboard = (profileRules && profileRules.length > 0) || (dashboardStats && dashboardStats.loaded);
+      
+      // Extremely safe predominant grade calculation
+      let predominantGrade = 'A';
+      try {
+        if (dashboardStats && dashboardStats.grades) {
+          const keys = Object.keys(dashboardStats.grades);
+          if (keys.length > 0) {
+            predominantGrade = keys.reduce((a, b) => (dashboardStats.grades[a] || 0) > (dashboardStats.grades[b] || 0) ? a : b, 'A');
+          }
+        }
+      } catch (e) { console.error('Grade calc error:', e); }
 
-  if (!configMode) {
-    // Show dashboard if we have any profile rules or if stats are loaded.
-    // This ensures the Dashboard is the "Screen 1" as requested.
-    const showDashboard = profileRules.length > 0 || dashboardStats.loaded;
-    const predominantGrade = Object.keys(dashboardStats.grades).length > 0 
-      ? Object.keys(dashboardStats.grades).reduce((a, b) => (dashboardStats.grades[a] || 0) > (dashboardStats.grades[b] || 0) ? a : b, 'A')
-      : 'A';
+      return (
+        <div className="flex flex-col h-[calc(100vh-64px)] bg-[#F8FAFC]">
+          {needsApply && (
+            <div className="bg-yellow-50 border border-yellow-200 p-6 m-8 rounded-lg shadow-sm text-center">
+              <p className="text-slate-800 font-medium mb-1">Você possui alterações nas configurações do Lead Scoring que ainda não foram aplicadas.</p>
+              <p className="text-slate-800 font-medium mb-3">Deseja aplicar essas alterações agora?</p>
+              <button 
+                onClick={handleApplyChanges}
+                disabled={applying}
+                className="bg-[#F5A623] hover:bg-[#E59613] text-white px-6 py-2 rounded font-medium disabled:opacity-50"
+              >
+                {applying ? 'Aplicando...' : 'Aplicar alterações'}
+              </button>
+              <p className="text-slate-500 text-sm mt-3">A atualização completa da sua Base de Leads pode demorar alguns minutos.</p>
+            </div>
+          )}
 
-    return (
-      <div className="flex flex-col h-[calc(100vh-64px)] bg-[#F8FAFC]">
-        {needsApply && (
-          <div className="bg-yellow-50 border border-yellow-200 p-6 m-8 rounded-lg shadow-sm text-center">
-            <p className="text-slate-800 font-medium mb-1">Você possui alterações nas configurações do Lead Scoring que ainda não foram aplicadas.</p>
-            <p className="text-slate-800 font-medium mb-3">Deseja aplicar essas alterações agora?</p>
-            <button 
-              onClick={handleApplyChanges}
-              disabled={applying}
-              className="bg-[#F5A623] hover:bg-[#E59613] text-white px-6 py-2 rounded font-medium disabled:opacity-50"
-            >
-              {applying ? 'Aplicando...' : 'Aplicar alterações'}
-            </button>
-            <p className="text-slate-500 text-sm mt-3">A atualização completa da sua Base de Leads pode demorar alguns minutos.</p>
-          </div>
-        )}
-
-        {showDashboard ? (
-          <div className="flex-1 w-full max-w-5xl mx-auto p-8 overflow-y-auto">
-             <div className="flex justify-between items-end mb-8">
-               <div>
-                  <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Dashboard de Qualificação</h2>
-                  <p className="text-slate-500 mt-1">Análise em tempo real do seu funil e perfis de Lead.</p>
+          {showDashboard ? (
+            <div className="flex-1 w-full max-w-5xl mx-auto p-8 overflow-y-auto">
+               <div className="flex justify-between items-end mb-8">
+                 <div>
+                    <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Dashboard de Qualificação</h2>
+                    <p className="text-slate-500 mt-1">Análise em tempo real do seu funil e perfis de Lead.</p>
+                 </div>
+                 <button onClick={() => setConfigMode(true)} className="flex items-center gap-2 bg-white border border-slate-200 hover:border-blue-400 hover:text-blue-500 text-slate-700 px-4 py-2 rounded-md shadow-sm font-medium transition-all">
+                   <Settings size={18} /> Configurar Regras
+                 </button>
                </div>
-               <button onClick={() => setConfigMode(true)} className="flex items-center gap-2 bg-white border border-slate-200 hover:border-blue-400 hover:text-blue-500 text-slate-700 px-4 py-2 rounded-md shadow-sm font-medium transition-all">
-                 <Settings size={18} /> Configurar Regras
-               </button>
-             </div>
 
-             <div className="grid grid-cols-3 gap-6 mb-8">
-                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-                   <div className="flex items-center gap-3 mb-2 text-slate-500 font-medium">
-                      <Users size={20} className="text-blue-500" /> Total Qualificados
-                   </div>
-                   <div className="text-4xl font-bold text-slate-800 tracking-tight">{dashboardStats.total}</div>
-                </div>
-                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-                   <div className="flex items-center gap-3 mb-2 text-slate-500 font-medium">
-                      <TrendingUp size={20} className="text-emerald-500" /> Perfil Predominante
-                   </div>
-                   <div className="text-4xl font-bold text-slate-800 flex items-center gap-2 tracking-tight">
-                     Grade {predominantGrade}
-                   </div>
-                </div>
-                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-                   <div className="flex items-center gap-3 mb-2 text-slate-500 font-medium">
-                      <Activity size={20} className="text-orange-500" /> Média de Interesse
-                   </div>
-                   <div className="text-4xl font-bold text-slate-800 tracking-tight">{dashboardStats.avgInterest} <span className="text-base text-slate-400 font-normal">pontos</span></div>
-                </div>
-             </div>
-
-             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8">
-               <h3 className="text-lg font-bold text-slate-800 mb-6">Distribuição por Perfil de Qualificação</h3>
-               <div className="space-y-6">
-                 {['A', 'B', 'C', 'D'].map(grade => {
-                   const count = dashboardStats.grades[grade] || 0;
-                   const pct = dashboardStats.total > 0 ? (count / dashboardStats.total) * 100 : 0;
-                   const colors: any = {
-                     'A': 'bg-emerald-500',
-                     'B': 'bg-blue-500',
-                     'C': 'bg-yellow-400',
-                     'D': 'bg-orange-500'
-                   };
-                   
-                   return (
-                     <div key={grade} className="flex items-center gap-4">
-                       <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center font-bold text-slate-700 text-lg shadow-inner">{grade}</div>
-                       <div className="flex-1 h-6 bg-slate-100 rounded-full overflow-hidden flex shadow-inner border border-slate-200/50">
-                         <div className={`h-full ${colors[grade]} transition-all duration-1000 ease-out`} style={{width: `${pct}%`}}></div>
-                       </div>
-                       <div className="w-16 text-right font-bold text-slate-700 text-lg">{count}</div>
-                       <div className="w-16 text-right text-sm font-medium text-slate-400">{pct.toFixed(1)}%</div>
+               <div className="grid grid-cols-3 gap-6 mb-8">
+                  <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                     <div className="flex items-center gap-3 mb-2 text-slate-500 font-medium">
+                        <Users size={20} className="text-blue-500" /> Total Qualificados
                      </div>
-                   );
-                 })}
+                     <div className="text-4xl font-bold text-slate-800 tracking-tight">{dashboardStats?.total || 0}</div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                     <div className="flex items-center gap-3 mb-2 text-slate-500 font-medium">
+                        <TrendingUp size={20} className="text-emerald-500" /> Perfil Predominante
+                     </div>
+                     <div className="text-4xl font-bold text-slate-800 flex items-center gap-2 tracking-tight">
+                       Grade {predominantGrade}
+                     </div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                     <div className="flex items-center gap-3 mb-2 text-slate-500 font-medium">
+                        <Activity size={20} className="text-orange-500" /> Média de Interesse
+                     </div>
+                     <div className="text-4xl font-bold text-slate-800 tracking-tight">{dashboardStats?.avgInterest || 0} <span className="text-base text-slate-400 font-normal">pontos</span></div>
+                  </div>
                </div>
-             </div>
-          </div>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center -mt-16 text-center px-4">
-            <div className="w-48 h-48 mb-6 relative">
-              <div className="absolute inset-0 border-4 border-blue-100 rounded-full animate-pulse" />
-              <div className="absolute inset-2 border-4 border-blue-200 rounded-full" />
-              <div className="absolute inset-0 flex items-center justify-center text-blue-500">
-                <Users size={80} strokeWidth={1} />
+
+               <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8">
+                 <h3 className="text-lg font-bold text-slate-800 mb-6">Distribuição por Perfil de Qualificação</h3>
+                 <div className="space-y-6">
+                   {['A', 'B', 'C', 'D'].map(grade => {
+                     const count = (dashboardStats?.grades && dashboardStats.grades[grade]) || 0;
+                     const totalLeads = dashboardStats?.total || 0;
+                     const pct = totalLeads > 0 ? (count / totalLeads) * 100 : 0;
+                     const colors: any = {
+                       'A': 'bg-emerald-500',
+                       'B': 'bg-blue-500',
+                       'C': 'bg-yellow-400',
+                       'D': 'bg-orange-500'
+                     };
+                     
+                     return (
+                       <div key={grade} className="flex items-center gap-4">
+                         <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center font-bold text-slate-700 text-lg shadow-inner">{grade}</div>
+                         <div className="flex-1 h-6 bg-slate-100 rounded-full overflow-hidden flex shadow-inner border border-slate-200/50">
+                           <div className={`h-full ${colors[grade] || 'bg-slate-300'} transition-all duration-1000 ease-out`} style={{width: `${pct}%`}}></div>
+                         </div>
+                         <div className="w-16 text-right font-bold text-slate-700 text-lg">{count}</div>
+                         <div className="w-16 text-right text-sm font-medium text-slate-400">{pct.toFixed(1)}%</div>
+                       </div>
+                     );
+                   })}
+                 </div>
+               </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center -mt-16 text-center px-4">
+              <div className="w-48 h-48 mb-6 relative">
+                <div className="absolute inset-0 border-4 border-blue-100 rounded-full animate-pulse" />
+                <div className="absolute inset-2 border-4 border-blue-200 rounded-full" />
+                <div className="absolute inset-0 flex items-center justify-center text-blue-500">
+                  <Users size={80} strokeWidth={1} />
+                </div>
+              </div>
+              
+              <h2 className="text-3xl font-black text-slate-800 mb-2">Configure seu Lead Scoring</h2>
+              <p className="text-slate-500 mb-8 max-w-md">
+                Ainda não detectamos regras configuradas. Defina os critérios de Perfil e Interesse para começar a qualificar seus leads.
+              </p>
+
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setConfigMode(true)} 
+                  className="px-8 py-3 bg-[#2E9CFF] hover:bg-blue-600 text-white rounded-lg font-bold shadow-lg shadow-blue-200 transition-all flex items-center gap-2"
+                >
+                  <Plus size={20} /> Começar agora
+                </button>
               </div>
             </div>
-            
-            <h2 className="text-3xl font-black text-slate-800 mb-2">Configure seu Lead Scoring</h2>
-            <p className="text-slate-500 mb-8 max-w-md">
-              Ainda não detectamos regras configuradas. Defina os critérios de Perfil e Interesse para começar a qualificar seus leads.
-            </p>
-
-            <div className="flex gap-4">
-              <button 
-                onClick={() => setConfigMode(true)} 
-                className="px-8 py-3 bg-[#2E9CFF] hover:bg-blue-600 text-white rounded-lg font-bold shadow-lg shadow-blue-200 transition-all flex items-center gap-2"
-              >
-                <Plus size={20} /> Começar agora
-              </button>
-            </div>
+          )}
+        </div>
+      );
+    }
+  } catch (err: any) {
+    return (
+      <div className="p-20 text-center">
+        <div className="bg-red-50 border border-red-100 p-8 rounded-2xl max-w-xl mx-auto">
+          <h2 className="text-red-600 font-black text-2xl mb-4">Erro no Dashboard</h2>
+          <div className="bg-white p-4 rounded-lg border border-red-100 text-left overflow-auto max-h-40 mb-6">
+            <code className="text-xs text-red-500">{err.stack || err.message}</code>
           </div>
-        )}
+          <button onClick={() => window.location.reload()} className="bg-red-600 text-white px-6 py-2 rounded-lg font-bold">Recarregar</button>
+        </div>
       </div>
     );
   }
