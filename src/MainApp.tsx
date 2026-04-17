@@ -83,23 +83,38 @@ const AppContent = () => {
   };
 
   const renderView = () => {
-    if (currentUser.role === UserRole.NEXUS_ADMIN) return <NexusAdminDashboard />;
+    try {
+      if (currentUser.role === UserRole.NEXUS_ADMIN) return <NexusAdminDashboard />;
 
-    switch(currentView) {
-      case 'dashboard': return <Dashboard />;
-      case 'kanban': return <KanbanBoard onNavigate={handleNavigate} />;
-      case 'leads-db': return <LeadsDatabase onNavigate={handleNavigate} />;
-      case 'tasks': return <TasksView onNavigate={handleNavigate} />;
-      case 'marketing': return <Marketing />;
-      case 'ai-bot': return <AIBotSettings />;
-      case 'settings': return <Settings />;
-      case 'lead-detail':
-        return <LeadDetailPage
-            leadId={viewData}
-            onBack={() => handleNavigate('kanban')}
-            onNavigate={handleNavigate}
-        />;
-      default: return <KanbanBoard onNavigate={handleNavigate} />;
+      switch(currentView) {
+        case 'dashboard': return <Dashboard />;
+        case 'kanban': return <KanbanBoard onNavigate={handleNavigate} />;
+        case 'leads-db': return <LeadsDatabase onNavigate={handleNavigate} />;
+        case 'tasks': return <TasksView onNavigate={handleNavigate} />;
+        case 'marketing': return <Marketing />;
+        case 'ai-bot': return <AIBotSettings />;
+        case 'settings': return <Settings />;
+        case 'lead-detail':
+          return <LeadDetailPage
+              leadId={viewData}
+              onBack={() => handleNavigate('kanban')}
+              onNavigate={handleNavigate}
+          />;
+        default: return <KanbanBoard onNavigate={handleNavigate} />;
+      }
+    } catch (err: any) {
+      return (
+        <div className="flex items-center justify-center h-full p-10">
+          <div className="bg-red-50 border border-red-200 p-8 rounded-2xl max-w-2xl shadow-lg">
+            <h2 className="text-red-700 font-black text-2xl mb-4">Erro de Navegação no App</h2>
+            <p className="text-slate-600 mb-4">Ocorreu uma falha ao tentar carregar a visão <strong>{currentView}</strong>.</p>
+            <pre className="bg-white p-4 rounded-lg border border-red-100 text-xs text-red-500 overflow-auto max-h-48 mb-6">
+              {err.stack || err.message}
+            </pre>
+            <button onClick={() => window.location.hash = '#/kanban'} className="bg-red-600 text-white px-6 py-2 rounded-lg font-bold">Voltar para Início</button>
+          </div>
+        </div>
+      );
     }
   };
 
