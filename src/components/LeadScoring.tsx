@@ -149,6 +149,8 @@ export const LeadScoring = () => {
         } else {
           setProfileRules(data || []);
         }
+      } else {
+        alert("Erro no servidor ao carregar regras. Pode ser que falte tabelas no BD da nuvem.");
       }
     } catch (err) {}
   };
@@ -244,7 +246,12 @@ export const LeadScoring = () => {
   };
 
   const handleSaveProperty = () => {
-    if (!currentProfileRule || !propertyForm) return;
+    if (!currentProfileRule) {
+      alert('Erro Crítico: O banco de dados não encontrou a regra de Perfil. Você atualizou o banco de dados via d1 execute na nuvem? As tabelas de regras podem estar faltando no Cloudflare.');
+      setPropertyModal(null);
+      return;
+    }
+    if (!propertyForm) return;
 
     const answer_scores: any = { __method__: propertyForm.search_method };
     propertyForm.terms.forEach((t: any) => {
