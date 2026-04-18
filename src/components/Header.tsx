@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutGrid, BarChart2, Inbox, CheckSquare, Sparkles, Search, Bell, Settings as SettingsIcon, LogOut, Megaphone, Users, Target, Bot, Eye, Link, Mail, BarChart3, ChevronRight, ChevronDown, Award } from 'lucide-react';
+import { LayoutGrid, BarChart2, Inbox, CheckSquare, Sparkles, Search, Bell, Settings as SettingsIcon, LogOut, Megaphone, Users, Target, Bot, Eye, Link, Mail, BarChart3, ChevronRight, ChevronDown, Award, SlidersHorizontal } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 const MKT_CATEGORIES: Record<string, { sub: string; label: string; icon: React.ElementType }[]> = {
   atracao: [
     { sub: 'tracking', label: 'Tracking', icon: Eye },
     { sub: 'bio-links', label: 'Link na Bio', icon: Link },
+    { sub: 'settings', label: 'Campos Personalizados', icon: SlidersHorizontal },
   ],
   relacionamento: [
     { sub: 'leads-db', label: 'Base de Leads', icon: Users },
@@ -172,7 +173,18 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
       <div className="flex items-center gap-5">
         <button className="text-slate-400 hover:text-slate-600"><Search size={20} /></button>
         <button className="text-slate-400 hover:text-slate-600"><Bell size={20} /></button>
-        <button onClick={() => onChangeView('settings')} className={'text-slate-400 hover:text-slate-600 ' + (currentView === 'settings' ? 'text-slate-900' : '')}><SettingsIcon size={20} /></button>
+        <button 
+          onClick={() => {
+            if (appMode === 'marketing') {
+              window.location.hash = '#/marketing/settings';
+            } else {
+              onChangeView('settings');
+            }
+          }} 
+          className={'text-slate-400 hover:text-slate-600 ' + (currentView === 'settings' || (appMode === 'marketing' && activeSub === 'settings') ? 'text-slate-900' : '')}
+        >
+          <SettingsIcon size={20} />
+        </button>
         <div className="h-8 w-px bg-gray-200 mx-1"></div>
         <div className="flex items-center gap-3">
           <div className="text-right">

@@ -650,6 +650,33 @@ app.get('/migrate-db', async (c) => {
       );
     `).run();
 
+    // Marketing Custom Fields
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS marketing_custom_fields (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          options TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
+    // Marketing CRM Mappings
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS marketing_crm_mappings (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          marketing_field_id TEXT,
+          crm_field_id TEXT,
+          marketing_standard_field TEXT,
+          crm_standard_field TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+      );
+    `).run();
+
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Migration error:', error);
@@ -1879,6 +1906,73 @@ app.delete('/tracking-forms/:id', async (c) => {
   try {
     const id = c.req.param('id');
     await c.env.DB.prepare('DELETE FROM tracking_forms WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+// ==================== MARKETING CUSTOM FIELDS & MAPPING ====================
+
+app.get('/marketing/custom-fields', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+    const { results } = await c.env.DB.prepare('SELECT * FROM marketing_custom_fields WHERE account_id = ? ORDER BY created_at DESC').bind(accountId).all();
+    return c.json(results);
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.post('/marketing/custom-fields', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { account_id = 'acc_demo', name, type, options } = body;
+    const id = crypto.randomUUID();
+    await c.env.DB.prepare('INSERT INTO marketing_custom_fields (id, account_id, name, type, options) VALUES (?, ?, ?, ?, ?)')
+      .bind(id, account_id, name, type, options || null).run();
+    return c.json({ id, name, type, options });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.put('/marketing/custom-fields/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const { name, type, options } = body;
+    await c.env.DB.prepare('UPDATE marketing_custom_fields SET name = ?, type = ?, options = ? WHERE id = ?')
+      .bind(name, type, options || null, id).run();
+    return c.json({ success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.delete('/marketing/custom-fields/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    await c.env.DB.prepare('DELETE FROM marketing_custom_fields WHERE id = ?').bind(id).run();
+    return c.json({ success: true });
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.get('/marketing/field-mappings', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+    const { results } = await c.env.DB.prepare('SELECT * FROM marketing_crm_mappings WHERE account_id = ?').bind(accountId).all();
+    return c.json(results);
+  } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.post('/marketing/field-mappings', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { account_id = 'acc_demo', mappings } = body;
+    
+    await c.env.DB.prepare('DELETE FROM marketing_crm_mappings WHERE account_id = ?').bind(account_id).run();
+    
+    if (Array.isArray(mappings) && mappings.length > 0) {
+      for (const m of mappings) {
+        const id = crypto.randomUUID();
+        await c.env.DB.prepare('INSERT INTO marketing_crm_mappings (id, account_id, marketing_field_id, crm_field_id, marketing_standard_field, crm_standard_field) VALUES (?, ?, ?, ?, ?, ?)')
+          .bind(id, account_id, m.marketing_field_id || null, m.crm_field_id || null, m.marketing_standard_field || null, m.crm_standard_field || null).run();
+      }
+    }
+    
     return c.json({ success: true });
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });
