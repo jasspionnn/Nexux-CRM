@@ -6,7 +6,6 @@ const MKT_CATEGORIES: Record<string, { sub: string; label: string; icon: React.E
   atracao: [
     { sub: 'tracking', label: 'Tracking', icon: Eye },
     { sub: 'bio-links', label: 'Link na Bio', icon: Link },
-    { sub: 'settings', label: 'Campos Personalizados', icon: SlidersHorizontal },
   ],
   relacionamento: [
     { sub: 'leads-db', label: 'Base de Leads', icon: Users },
