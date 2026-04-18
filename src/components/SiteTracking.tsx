@@ -166,17 +166,20 @@ export const SiteTracking = () => {
 
   // Count conversions per form
   const formConversions: Record<string, number> = {};
-  events.forEach(ev => {
-    if (ev.form_data) {
-      try {
-        const fd = typeof ev.form_data === 'string' ? JSON.parse(ev.form_data) : ev.form_data;
-        const fid = fd.fid || 'unknown';
-        if (ev.event_type === 'form' || (ev.event_type === 'conversion' && fd.fields)) {
-          formConversions[fid] = (formConversions[fid] || 0) + 1;
-        }
-      } catch { /* */ }
-    }
-  });
+  if (Array.isArray(events)) {
+    events.forEach(ev => {
+      if (ev && ev.form_data) {
+        try {
+          const fd = typeof ev.form_data === 'string' ? JSON.parse(ev.form_data) : ev.form_data;
+          // Support both fid (backend/manual) and form_id (tracker.js)
+          const fid = fd.fid || fd.form_id || 'unknown';
+          if (ev.event_type === 'form' || (ev.event_type === 'conversion' && fd.fields)) {
+            formConversions[fid] = (formConversions[fid] || 0) + 1;
+          }
+        } catch { /* */ }
+      }
+    });
+  }
 
   return (
     <div className="h-full bg-slate-50/50 flex overflow-hidden">
@@ -188,17 +191,17 @@ export const SiteTracking = () => {
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-center gap-3 mb-2"><div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600"><Eye size={18} /></div></div>
               <p className="text-xs font-bold text-slate-400 uppercase">Pageviews</p>
-              <p className="text-2xl font-black text-slate-900">{stats.pageviews.toLocaleString()}</p>
+              <p className="text-2xl font-black text-slate-900">{(stats?.pageviews || 0).toLocaleString()}</p>
             </div>
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-center gap-3 mb-2"><div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center text-green-600"><MousePointer size={18} /></div></div>
               <p className="text-xs font-bold text-slate-400 uppercase">Formulários</p>
-              <p className="text-2xl font-black text-slate-900">{stats.forms.toLocaleString()}</p>
+              <p className="text-2xl font-black text-slate-900">{(stats?.forms || 0).toLocaleString()}</p>
             </div>
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-center gap-3 mb-2"><div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center text-purple-600"><Target size={18} /></div></div>
               <p className="text-xs font-bold text-slate-400 uppercase">Conversões</p>
-              <p className="text-2xl font-black text-slate-900">{stats.conversions.toLocaleString()}</p>
+              <p className="text-2xl font-black text-slate-900">{(stats?.conversions || 0).toLocaleString()}</p>
             </div>
           </div>
 
@@ -207,7 +210,7 @@ export const SiteTracking = () => {
             <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <div><h3 className="text-sm font-bold text-slate-900">Código de Rastreamento</h3></div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-600">{trackingId}</span>
+                <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-600">{trackingId || '...'}</span>
                 <button onClick={handleRegenerateId} disabled={regenerating} className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors disabled:opacity-50">
                   <RefreshCw size={14} className={regenerating ? 'animate-spin' : ''} />Novo ID
                 </button>
@@ -231,7 +234,7 @@ export const SiteTracking = () => {
                 <RefreshCw size={14} />Atualizar
               </button>
             </div>
-            {events.length === 0 ? (
+            {(!events || events.length === 0) ? (
               <div className="p-8 text-center"><TrendingUp className="mx-auto text-slate-300 mb-3" size={36} /><p className="text-slate-400 font-medium text-sm">Nenhum evento registrado.</p></div>
             ) : (
               <div className="overflow-x-auto">
@@ -243,6 +246,7 @@ export const SiteTracking = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {events.slice(0, 20).map((event) => {
+                      if (!event) return null;
                       const formData = parseFormData(event.form_data);
                       const fields = formData?.fields || {};
                       const fieldEntries = Object.entries(fields);
@@ -281,17 +285,18 @@ export const SiteTracking = () => {
           <div className="flex items-center gap-2 mb-4">
             <FormInput size={20} className="text-blue-600" />
             <h3 className="text-sm font-bold text-slate-900">Formulários</h3>
-            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{trackingForms.length}</span>
+            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">{trackingForms?.length || 0}</span>
           </div>
 
-          {trackingForms.length === 0 ? (
+          {(!trackingForms || trackingForms.length === 0) ? (
             <div className="text-center py-8"><FormInput className="mx-auto text-slate-300 mb-2" size={32} /><p className="text-slate-400 text-xs">Nenhum formulário detectado.</p><p className="text-slate-400 text-[10px] mt-1">Preencha um formulário no site.</p></div>
           ) : (
             <div className="space-y-2">
               {trackingForms.map(form => {
-                const fields = form.fields || [];
-                const convCount = formConversions[form.name] || 0;
-                const leadFields = fields.filter((f: any) => ['email','phone','name'].includes(f.type));
+                if (!form) return null;
+                const fields = Array.isArray(form.fields) ? form.fields : [];
+                const convCount = formConversions[form.name] || formConversions[form.id] || 0;
+                const leadFields = fields.filter((f: any) => f && ['email','phone','name'].includes(f.type));
                 return (
                   <div key={form.id} className="border border-slate-200 rounded-xl p-3 hover:border-blue-300 transition-colors">
                     <div className="flex items-start justify-between mb-2">
@@ -309,14 +314,14 @@ export const SiteTracking = () => {
                     <div className="flex flex-wrap gap-1 mb-1.5">
                       {fields.slice(0, 4).map((f: any, i: number) => (
                         <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
-                          {f.name}{f.type !== 'text' && <span className="text-slate-400 ml-0.5">({f.type})</span>}
+                          {f?.name}{f?.type !== 'text' && <span className="text-slate-400 ml-0.5">({f?.type})</span>}
                         </span>
                       ))}
                       {fields.length > 4 && <span className="text-[10px] text-slate-400">+{fields.length - 4}</span>}
                     </div>
                     <div className="flex items-center justify-between">
                       {leadFields.length > 0 && <span className="text-[10px] font-bold text-blue-600">✓ Captura leads</span>}
-                      <span className="text-[10px] text-slate-400">{new Date(form.created_at).toLocaleDateString('pt-BR')}</span>
+                      <span className="text-[10px] text-slate-400">{form.created_at ? new Date(form.created_at).toLocaleDateString('pt-BR') : '-'}</span>
                     </div>
                   </div>
                 );
