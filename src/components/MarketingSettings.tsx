@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Trash2, Check, X, Edit2, SlidersHorizontal, Zap, 
-  ArrowRight, Save, Loader2, Type, Hash, List, Calendar, Info
+  ArrowRight, Save, Loader2, Type, Hash, List, Calendar, Info, AlertCircle
 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
@@ -9,6 +9,7 @@ export const MarketingSettings = () => {
   const { currentUser } = useCRM();
   const [activeTab, setActiveTab] = useState('integracoes');
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Marketing Custom Fields
   const [marketingFields, setMarketingFields] = useState<any[]>([]);
@@ -46,6 +47,7 @@ export const MarketingSettings = () => {
 
   const fetchData = async () => {
     setIsLoading(true);
+    setError(null);
     try {
       const [mktFieldsRes, crmFieldsRes, mappingsRes] = await Promise.all([
         fetch(`/api/marketing/custom-fields?account_id=${accountId}`),
@@ -53,11 +55,20 @@ export const MarketingSettings = () => {
         fetch(`/api/marketing/field-mappings?account_id=${accountId}`)
       ]);
 
-      setMarketingFields(await mktFieldsRes.json());
-      setCrmFields(await crmFieldsRes.json());
-      setMappings(await mappingsRes.json());
-    } catch (error) {
+      const mktData = await mktFieldsRes.json();
+      const crmData = await crmFieldsRes.json();
+      const mappingsData = await mappingsRes.json();
+
+      setMarketingFields(Array.isArray(mktData) ? mktData : []);
+      setCrmFields(Array.isArray(crmData) ? crmData : []);
+      setMappings(Array.isArray(mappingsData) ? mappingsData : []);
+      
+      if (mktData.error || crmData.error || mappingsData.error) {
+        setError('Algumas tabelas podem não ter sido criadas. Por favor, acesse /api/migrate-db para atualizar o banco.');
+      }
+    } catch (error: any) {
       console.error('Failed to fetch marketing settings:', error);
+      setError('Erro ao carregar dados. Verifique sua conexão ou tente recarregar.');
     } finally {
       setIsLoading(false);
     }
@@ -77,7 +88,9 @@ export const MarketingSettings = () => {
         body: JSON.stringify({ name: 'Novo Campo Marketing', type: 'Texto', account_id: accountId })
       });
       const newField = await res.json();
-      setMarketingFields(prev => [newField, ...prev]);
+      if (newField.id) {
+        setMarketingFields(prev => [newField, ...prev]);
+      }
     } catch (error) {
       console.error('Error adding mkt field:', error);
     }
@@ -126,12 +139,17 @@ export const MarketingSettings = () => {
   const saveMappings = async () => {
     setIsSaving(true);
     try {
-      await fetch('/api/marketing/field-mappings', {
+      const res = await fetch('/api/marketing/field-mappings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ account_id: accountId, mappings })
       });
-      alert('Mapeamentos salvos com sucesso!');
+      if (res.ok) {
+        alert('Mapeamentos salvos com sucesso!');
+      } else {
+        const err = await res.json();
+        alert('Erro ao salvar: ' + (err.error || 'Erro desconhecido'));
+      }
     } catch (error) {
       console.error('Error saving mappings:', error);
       alert('Erro ao salvar mapeamentos');
@@ -186,58 +204,61 @@ export const MarketingSettings = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {mappings.map(mapping => (
-                <tr key={mapping.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-8 py-6">
-                    <select 
-                      value={mapping.marketing_field_id ? `custom:${mapping.marketing_field_id}` : `standard:${mapping.marketing_standard_field}`}
-                      onChange={(e) => {
-                        const [type, val] = e.target.value.split(':');
-                        if (type === 'standard') updateMapping(mapping.id, { marketing_standard_field: val, marketing_field_id: null });
-                        else updateMapping(mapping.id, { marketing_field_id: val, marketing_standard_field: null });
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"
-                    >
-                      <optgroup label="Campos Padrão">
-                        {STANDARD_MKT_FIELDS.map(f => <option key={f.id} value={`standard:${f.id}`}>{f.name}</option>)}
-                      </optgroup>
-                      <optgroup label="Campos Personalizados (Mkt)">
-                        {marketingFields.map(f => <option key={f.id} value={`custom:${f.id}`}>{f.name}</option>)}
-                      </optgroup>
-                    </select>
-                  </td>
-                  <td className="px-4 py-6 text-center text-slate-300">
-                    <ArrowRight size={18} className="mx-auto" />
-                  </td>
-                  <td className="px-8 py-6">
-                    <select 
-                      value={mapping.crm_field_id ? `custom:${mapping.crm_field_id}` : `standard:${mapping.crm_standard_field}`}
-                      onChange={(e) => {
-                        const [type, val] = e.target.value.split(':');
-                        if (type === 'standard') updateMapping(mapping.id, { crm_standard_field: val, crm_field_id: null });
-                        else updateMapping(mapping.id, { crm_field_id: val, crm_standard_field: null });
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"
-                    >
-                      <optgroup label="Campos Padrão">
-                        {STANDARD_CRM_FIELDS.map(f => <option key={f.id} value={`standard:${f.id}`}>{f.name}</option>)}
-                      </optgroup>
-                      <optgroup label="Campos Personalizados (CRM)">
-                        {crmFields.map(f => <option key={f.id} value={`custom:${f.id}`}>{f.name}</option>)}
-                      </optgroup>
-                    </select>
-                  </td>
-                  <td className="px-8 py-6 text-right">
-                    <button 
-                      onClick={() => handleRemoveMapping(mapping.id)}
-                      className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                    >
-                      <Trash2 size={18} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {mappings.length === 0 && (
+              {(mappings || []).map(mapping => {
+                if (!mapping) return null;
+                return (
+                  <tr key={mapping.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-8 py-6">
+                      <select 
+                        value={mapping.marketing_field_id ? `custom:${mapping.marketing_field_id}` : `standard:${mapping.marketing_standard_field}`}
+                        onChange={(e) => {
+                          const [type, val] = e.target.value.split(':');
+                          if (type === 'standard') updateMapping(mapping.id, { marketing_standard_field: val, marketing_field_id: null });
+                          else updateMapping(mapping.id, { marketing_field_id: val, marketing_standard_field: null });
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      >
+                        <optgroup label="Campos Padrão">
+                          {STANDARD_MKT_FIELDS.map(f => <option key={f.id} value={`standard:${f.id}`}>{f.name}</option>)}
+                        </optgroup>
+                        <optgroup label="Campos Personalizados (Mkt)">
+                          {(marketingFields || []).map(f => <option key={f.id} value={`custom:${f.id}`}>{f.name}</option>)}
+                        </optgroup>
+                      </select>
+                    </td>
+                    <td className="px-4 py-6 text-center text-slate-300">
+                      <ArrowRight size={18} className="mx-auto" />
+                    </td>
+                    <td className="px-8 py-6">
+                      <select 
+                        value={mapping.crm_field_id ? `custom:${mapping.crm_field_id}` : `standard:${mapping.crm_standard_field}`}
+                        onChange={(e) => {
+                          const [type, val] = e.target.value.split(':');
+                          if (type === 'standard') updateMapping(mapping.id, { crm_standard_field: val, crm_field_id: null });
+                          else updateMapping(mapping.id, { crm_field_id: val, crm_standard_field: null });
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      >
+                        <optgroup label="Campos Padrão">
+                          {STANDARD_CRM_FIELDS.map(f => <option key={f.id} value={`standard:${f.id}`}>{f.name}</option>)}
+                        </optgroup>
+                        <optgroup label="Campos Personalizados (CRM)">
+                          {(crmFields || []).map(f => <option key={f.id} value={`custom:${f.id}`}>{f.name}</option>)}
+                        </optgroup>
+                      </select>
+                    </td>
+                    <td className="px-8 py-6 text-right">
+                      <button 
+                        onClick={() => handleRemoveMapping(mapping.id)}
+                        className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {(!mappings || mappings.length === 0) && (
                 <tr>
                   <td colSpan={4} className="px-8 py-12 text-center text-slate-400 text-sm italic">
                     Nenhum mapeamento configurado. Clique em "Novo Mapeamento" para começar.
@@ -278,7 +299,8 @@ export const MarketingSettings = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {marketingFields.map(field => {
+              {(marketingFields || []).map(field => {
+                if (!field) return null;
                 const TypeIcon = field.type === 'Número' ? Hash : field.type === 'Data' ? Calendar : field.type === 'Seleção' ? List : Type;
                 return (
                   <tr key={field.id} className="hover:bg-slate-50/50 transition-colors group">
@@ -318,7 +340,7 @@ export const MarketingSettings = () => {
                   </tr>
                 );
               })}
-              {marketingFields.length === 0 && (
+              {(!marketingFields || marketingFields.length === 0) && (
                 <tr>
                   <td colSpan={3} className="px-8 py-16 text-center text-slate-400">
                     Nenhum campo personalizado de marketing criado ainda.
@@ -338,6 +360,24 @@ export const MarketingSettings = () => {
         <div className="text-slate-500 flex flex-col items-center gap-2">
           <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
           <span className="text-xs font-bold uppercase tracking-widest">Carregando Configurações de Marketing...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-slate-50 p-10 text-center">
+        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl max-w-md">
+          <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <AlertCircle size={32} />
+          </div>
+          <h2 className="text-xl font-black text-slate-900 mb-2">Ops! Algo deu errado</h2>
+          <p className="text-slate-500 text-sm mb-6">{error}</p>
+          <div className="flex flex-col gap-3">
+            <button onClick={() => window.location.reload()} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 transition-transform active:scale-95">Tentar Novamente</button>
+            <button onClick={() => window.open('/api/migrate-db', '_blank')} className="text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors uppercase tracking-widest">Atualizar Banco de Dados</button>
+          </div>
         </div>
       </div>
     );
