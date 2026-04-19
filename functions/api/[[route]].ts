@@ -2274,16 +2274,23 @@ app.get('/bio-links/public/:slug', async (c) => {
 
 app.get('/admin/deduplicate-marketing-leads', async (c) => {
   try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
+    const accountId = c.req.query('account_id');
+    const allAccounts = c.req.query('all') === 'true';
     
-    // 1. Find emails with duplicates
-    const { results: duplicates } = await c.env.DB.prepare(`
-      SELECT LOWER(contact_email) as email, COUNT(*) as count 
+    // 1. Find emails with duplicates (trimming and lowercasing)
+    let query = `
+      SELECT LOWER(TRIM(contact_email)) as email, account_id, COUNT(*) as count 
       FROM marketing_leads 
-      WHERE account_id = ? AND contact_email IS NOT NULL AND contact_email != ''
-      GROUP BY LOWER(contact_email) 
-      HAVING count > 1
-    `).bind(accountId).all();
+      WHERE contact_email IS NOT NULL AND contact_email != ''
+    `;
+    
+    if (!allAccounts) {
+      query += ` AND account_id = '${accountId || 'acc_demo'}'`;
+    }
+    
+    query += ` GROUP BY LOWER(TRIM(contact_email)), account_id HAVING count > 1`;
+
+    const { results: duplicates } = await c.env.DB.prepare(query).all();
 
     let totalRemoved = 0;
     const details = [];
@@ -2291,25 +2298,22 @@ app.get('/admin/deduplicate-marketing-leads', async (c) => {
     for (const dup of duplicates as any[]) {
       // 2. Get all records for this email, ordered by created_at (oldest first)
       const { results: records } = await c.env.DB.prepare(
-        'SELECT id FROM marketing_leads WHERE account_id = ? AND LOWER(contact_email) = ? ORDER BY created_at ASC'
-      ).bind(accountId, dup.email).all();
+        'SELECT id FROM marketing_leads WHERE account_id = ? AND LOWER(TRIM(contact_email)) = ? ORDER BY created_at ASC'
+      ).bind(dup.account_id, dup.email).all();
 
       if (records.length > 1) {
-        const masterId = records[0].id;
         const idsToRemove = (records as any[]).slice(1).map(r => r.id);
         
         // 3. Delete duplicates
-        const placeholders = idsToRemove.map(() => '?').join(',');
-        await c.env.DB.prepare(
-          `DELETE FROM marketing_leads WHERE id IN (${placeholders})`
-        ).bind(...idsToRemove).run();
-
-        totalRemoved += idsToRemove.length;
-        details.push({ email: dup.email, kept: masterId, removedCount: idsToRemove.length });
+        for (const id of idsToRemove) {
+          await c.env.DB.prepare('DELETE FROM marketing_leads WHERE id = ?').bind(id).run();
+          totalRemoved++;
+        }
+        details.push({ email: dup.email, account: dup.account_id, removedCount: idsToRemove.length });
       }
     }
 
-    return c.json({ success: true, totalRemoved, details });
+    return c.json({ success: true, message: `Removidos ${totalRemoved} leads duplicados.`, totalRemoved, details });
   } catch (error: any) { 
     return c.json({ error: error.message }, 500); 
   }
