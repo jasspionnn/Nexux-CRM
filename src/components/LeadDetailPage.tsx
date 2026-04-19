@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, ThumbsDown, ThumbsUp, Briefcase, Phone, MessageSquare, Send, Layers, 
-  Edit2, Check, X, Calendar, Trash2, Clock, CheckCircle2, Circle, Plus
+  Edit2, Check, X, Calendar, Trash2, Clock, CheckCircle2, Circle, Plus, Globe, ChevronUp, ChevronDown
 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 import { format } from 'date-fns';
