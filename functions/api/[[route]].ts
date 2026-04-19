@@ -1733,10 +1733,13 @@ app.post('/tracking/events', async (c) => {
               if (!hasEmail) {
                 console.log('[TRACKING] Skipped marketing lead (no email):', formName);
               } else {
-                // PREVENT DUPLICATES: Check if marketing lead already exists by email
+                // Normalize email for consistent matching
+                const normalizedEmail = String(mappedData.contact_email).trim().toLowerCase();
+
+                // PREVENT DUPLICATES: Check if marketing lead already exists by email (case-insensitive)
                 const existingMLead: any = await c.env.DB.prepare(
-                  'SELECT id FROM marketing_leads WHERE account_id = ? AND contact_email = ?'
-                ).bind(settings.account_id, mappedData.contact_email).first();
+                  'SELECT id FROM marketing_leads WHERE account_id = ? AND LOWER(contact_email) = ?'
+                ).bind(settings.account_id, normalizedEmail).first();
 
                 let mLeadId = existingMLead ? existingMLead.id : crypto.randomUUID();
 
@@ -1765,7 +1768,7 @@ app.post('/tracking/events', async (c) => {
                     settings.account_id,
                     formName,
                     mappedData.contact_name || null,
-                    mappedData.contact_email || null,
+                    normalizedEmail,
                     mappedData.contact_phone || null,
                     mappedData.company || null,
                     mappedData.title || null,
