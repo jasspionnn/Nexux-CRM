@@ -8,6 +8,7 @@ import { BioLinks } from './BioLinks';
 import { EmailMarketing } from './EmailMarketing';
 import { LeadScoring } from './LeadScoring';
 import { MarketingSettings } from './MarketingSettings';
+import { MarketingCustomFields } from './MarketingCustomFields';
 
 export const Marketing = ({ subView }: { subView?: string | null }) => {
   const [activeSubView, setActiveSubView] = useState('');
@@ -27,6 +28,7 @@ export const Marketing = ({ subView }: { subView?: string | null }) => {
       else if (hash.includes('automations')) setActiveSubView('automations');
       else if (hash.includes('tracking')) setActiveSubView('tracking');
       else if (hash.includes('settings')) setActiveSubView('settings');
+      else if (hash.includes('mkt-fields')) setActiveSubView('mkt-fields');
       else setActiveSubView('');
     }
   }, [subView]);
@@ -44,6 +46,7 @@ export const Marketing = ({ subView }: { subView?: string | null }) => {
       else if (hash.includes('automations')) setActiveSubView('automations');
       else if (hash.includes('tracking')) setActiveSubView('tracking');
       else if (hash.includes('settings')) setActiveSubView('settings');
+      else if (hash.includes('mkt-fields')) setActiveSubView('mkt-fields');
       else setActiveSubView('');
     };
     window.addEventListener('hashchange', h);
@@ -52,7 +55,7 @@ export const Marketing = ({ subView }: { subView?: string | null }) => {
 
   try {
     // Robust sub-view matching
-    const knownSubViews = ['lead-scoring', 'tracking', 'segmentation', 'automations', 'leads-db', 'bio-links', 'email-mkt', 'settings'];
+    const knownSubViews = ['lead-scoring', 'tracking', 'segmentation', 'automations', 'leads-db', 'bio-links', 'email-mkt', 'settings', 'mkt-fields'];
     const currentSubView = knownSubViews.includes(activeSubView) ? activeSubView : '';
 
     if (currentSubView === '') {
@@ -70,6 +73,7 @@ export const Marketing = ({ subView }: { subView?: string | null }) => {
           {currentSubView === 'bio-links' && <BioLinks />}
           {currentSubView === 'email-mkt' && <EmailMarketing />}
           {currentSubView === 'settings' && <MarketingSettings />}
+          {currentSubView === 'mkt-fields' && <MarketingCustomFields />}
         </main>
       </div>
     );
