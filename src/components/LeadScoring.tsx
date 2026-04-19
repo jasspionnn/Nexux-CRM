@@ -6,6 +6,7 @@ import {
   Settings, Activity, CheckCircle,
   AlertCircle, Search, Sliders, ListChecks, ArrowLeft
 } from 'lucide-react';
+import { useCRM } from '../context/CRMContext';
 
 interface CustomField {
   id: string;
