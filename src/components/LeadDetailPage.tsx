@@ -120,10 +120,20 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
   const [activeTab, setActiveTab] = useState<'notes' | 'tasks' | 'visits'>('notes');
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingTask, setIsAddingTask] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchData();
   }, [leadId]);
+
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -674,54 +684,119 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                     </div>
                   ) : (
                     <div className="divide-y divide-slate-100">
-                      {leadVisits.map((visit, i) => {
-                        const isForm = visit.event_type === 'form';
-                        const isConversion = visit.event_type === 'conversion';
-                        const eventData = visit.event_data || {};
-                        const fields = eventData.fields || (eventData.form_data?.fields) || {};
-                        const fieldEntries = Object.entries(fields);
+                      {(() => {
+                        const groupedVisits: any[] = [];
+                        let currentGroup: any = null;
 
-                        return (
-                          <div key={visit.id} className="px-5 py-4 hover:bg-slate-50/80 transition-colors">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-3">
-                                  <div className={`w-2 h-2 rounded-full shrink-0 ${isForm ? 'bg-green-500' : isConversion ? 'bg-amber-500' : 'bg-purple-400'}`} />
-                                  <div className="flex flex-col">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                      {isForm ? 'Formulário Preenchido' : isConversion ? 'Conversão' : 'Página Visitada'}
-                                    </p>
-                                    <p className="text-sm font-semibold text-slate-800 truncate">{visit.url}</p>
+                        leadVisits.forEach((visit, idx) => {
+                          if (visit.event_type === 'pageview') {
+                            if (currentGroup && currentGroup.type === 'group') {
+                              currentGroup.events.push(visit);
+                            } else {
+                              currentGroup = { 
+                                type: 'group', 
+                                events: [visit], 
+                                id: `group-${visit.id}-${idx}`,
+                                created_at: visit.created_at || visit.visited_at 
+                              };
+                              groupedVisits.push(currentGroup);
+                            }
+                          } else {
+                            currentGroup = { type: 'single', event: visit, id: visit.id };
+                            groupedVisits.push(currentGroup);
+                          }
+                        });
+
+                        const renderSingleVisit = (visit: any, isInsideGroup = false) => {
+                          const isForm = visit.event_type === 'form';
+                          const isConversion = visit.event_type === 'conversion';
+                          const eventData = visit.event_data || {};
+                          const fields = eventData.fields || (eventData.form_data?.fields) || {};
+                          const fieldEntries = Object.entries(fields);
+
+                          return (
+                            <div key={visit.id} className={`px-5 py-4 hover:bg-slate-50/80 transition-colors ${isInsideGroup ? 'pl-10 bg-slate-50/30' : ''}`}>
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-3">
+                                    <div className={`w-2 h-2 rounded-full shrink-0 ${isForm ? 'bg-green-500' : isConversion ? 'bg-amber-500' : 'bg-purple-400'}`} />
+                                    <div className="flex flex-col">
+                                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                        {isForm ? 'Formulário Preenchido' : isConversion ? 'Conversão' : 'Página Visitada'}
+                                      </p>
+                                      <p className="text-sm font-semibold text-slate-800 truncate">{visit.url}</p>
+                                    </div>
                                   </div>
+                                  
+                                  {isForm && fieldEntries.length > 0 && (
+                                    <div className="mt-3 ml-5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                      {fieldEntries.map(([key, val]: [string, any]) => (
+                                        <div key={key} className="bg-slate-50 border border-slate-100 rounded-lg p-2">
+                                          <p className="text-[9px] font-bold text-slate-400 uppercase truncate">{key}</p>
+                                          <p className="text-xs font-bold text-slate-700 break-words">{String(val)}</p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {visit.referrer && !isForm && (
+                                    <p className="text-xs text-slate-400 mt-1 ml-5 truncate">Ref: {visit.referrer}</p>
+                                  )}
                                 </div>
-                                
-                                {isForm && fieldEntries.length > 0 && (
-                                  <div className="mt-3 ml-5 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {fieldEntries.map(([key, val]: [string, any]) => (
-                                      <div key={key} className="bg-slate-50 border border-slate-100 rounded-lg p-2">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase truncate">{key}</p>
-                                        <p className="text-xs font-bold text-slate-700 break-words">{String(val)}</p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-
-                                {visit.referrer && !isForm && (
-                                  <p className="text-xs text-slate-400 mt-1 ml-5 truncate">Ref: {visit.referrer}</p>
-                                )}
-                              </div>
-                              <div className="text-right shrink-0 ml-4">
-                                <p className="text-xs font-bold text-slate-600">
-                                  {new Date(visit.created_at || visit.visited_at).toLocaleDateString('pt-BR')}
-                                </p>
-                                <p className="text-[10px] text-slate-400">
-                                  {new Date(visit.created_at || visit.visited_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                </p>
+                                <div className="text-right shrink-0 ml-4">
+                                  <p className="text-xs font-bold text-slate-600">
+                                    {new Date(visit.created_at || visit.visited_at).toLocaleDateString('pt-BR')}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400">
+                                    {new Date(visit.created_at || visit.visited_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                  </p>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        };
+
+                        return groupedVisits.map((item) => {
+                          if (item.type === 'group') {
+                            const isExpanded = expandedGroups.has(item.id);
+                            const count = item.events.length;
+
+                            if (count === 1 && !isExpanded) {
+                              return renderSingleVisit(item.events[0]);
+                            }
+
+                            return (
+                              <div key={item.id} className="border-b border-slate-50 last:border-none">
+                                <button 
+                                  onClick={() => toggleGroup(item.id)}
+                                  className="w-full px-5 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors group"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center text-purple-600 group-hover:bg-purple-100 transition-colors">
+                                      <Globe size={16} />
+                                    </div>
+                                    <div className="text-left">
+                                      <p className="text-xs font-bold text-slate-700">
+                                        {isExpanded ? 'Ocultar visitas' : `${count} visitas de página entre conversões`}
+                                      </p>
+                                      {!isExpanded && <p className="text-[10px] text-slate-400">{new Date(item.created_at).toLocaleDateString('pt-BR')}</p>}
+                                    </div>
+                                  </div>
+                                  <div className="text-slate-400 group-hover:text-purple-600 transition-colors">
+                                    {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                                  </div>
+                                </button>
+                                {isExpanded && (
+                                  <div className="divide-y divide-slate-100 border-t border-slate-100 bg-slate-50/20 animate-in slide-in-from-top-1 duration-200">
+                                    {item.events.map((ev: any) => renderSingleVisit(ev, true))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+                          return renderSingleVisit(item.event);
+                        });
+                      })()}
                     </div>
                   )}
                 </div>

@@ -8,6 +8,7 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
   const [visits, setVisits] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchData();
@@ -26,6 +27,15 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
     setIsLoading(false);
   };
 
+  const toggleGroup = (groupId: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
+
   const formatDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
   const formatTime = (d: string) => new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
@@ -34,28 +44,100 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
   const eventBg: any = { pageview: 'bg-blue-50 border-blue-200', form: 'bg-green-50 border-green-200', click: 'bg-purple-50 border-purple-200', conversion: 'bg-amber-50 border-amber-200' };
   const eventLabels: any = { pageview: 'Visitou página', form: 'Preencheu formulário', click: 'Clicou', conversion: 'Converteu' };
 
+  // Grouping consecutive pageviews
+  const groupedTimeline: any[] = [];
+  let currentGroup: any = null;
+
+  timeline.forEach((event, idx) => {
+    if (event.event_type === 'pageview') {
+      if (currentGroup && currentGroup.type === 'group') {
+        currentGroup.events.push(event);
+      } else {
+        currentGroup = { 
+          type: 'group', 
+          events: [event], 
+          id: `group-${event.id}-${idx}`,
+          created_at: event.created_at
+        };
+        groupedTimeline.push(currentGroup);
+      }
+    } else {
+      currentGroup = { type: 'single', event: event, id: event.id };
+      groupedTimeline.push(currentGroup);
+    }
+  });
+
   if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-10 h-10 border-4 border-slate-900 border-t-transparent rounded-full animate-spin" /></div>;
+
+  const renderEvent = (event: any, isInsideGroup = false) => {
+    const Icon = eventIcons[event.event_type] || Globe;
+    const color = eventColors[event.event_type] || 'bg-slate-500';
+    const bg = eventBg[event.event_type] || 'bg-slate-50 border-slate-200';
+    const label = eventLabels[event.event_type] || event.event_type;
+    const isExpanded = expandedEvent === event.id;
+
+    return (
+      <div key={event.id} className={`relative flex gap-4 ${isInsideGroup ? 'ml-6 opacity-90 scale-95 origin-left' : ''}`}>
+        <div className="relative z-10 w-14 flex-shrink-0 flex justify-center">
+          <div className={`w-4 h-4 ${color} rounded-full ring-4 ring-white shadow-sm`} />
+        </div>
+        <div className={`flex-1 ${bg} border rounded-xl overflow-hidden shadow-sm`}>
+          <button onClick={() => setExpandedEvent(isExpanded ? null : event.id)}
+            className="w-full px-4 py-3 flex items-center justify-between text-left">
+            <div className="flex items-center gap-3">
+              <Icon size={16} className="text-slate-500" />
+              <div>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</span>
+                {event.url && <p className="text-sm font-bold text-slate-800 truncate max-w-[200px] md:max-w-md">{event.url}</p>}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-[10px] font-black text-slate-600 uppercase">{formatDate(event.created_at)}</p>
+                <p className="text-[10px] text-slate-400 font-bold tracking-tighter">{formatTime(event.created_at)}</p>
+              </div>
+              {isExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+            </div>
+          </button>
+          {isExpanded && (
+            <div className="px-4 py-3 bg-white border-t border-slate-100 space-y-2 animate-in slide-in-from-top-2 duration-200">
+              {event.event_data?.el_label && <p className="text-sm"><span className="font-bold text-slate-600">Elemento:</span> <span className="text-slate-800">&quot;{event.event_data.el_label}&quot;</span></p>}
+              {event.event_data?.form_data?.fid && <p className="text-sm"><span className="font-bold text-slate-600">Formulário:</span> <span className="text-slate-800">&quot;{event.event_data.form_data.fid}&quot;</span></p>}
+              {event.event_data?.form_data?.fields && (
+                <div>
+                  <p className="text-xs font-bold text-slate-500 mb-1">Campos capturados:</p>
+                  <div className="flex flex-wrap gap-1.5">{Object.entries(event.event_data.form_data.fields).map(([k, v]: [string, any]) => (<span key={k} className="text-xs bg-slate-100 px-2 py-0.5 rounded border border-slate-200"><span className="text-slate-500">{k}:</span> <span className="font-medium">{String(v)}</span></span>))}</div>
+                </div>
+              )}
+              {event.referrer && <p className="text-xs text-slate-400 italic break-all"><span className="font-bold">Vindo de:</span> {event.referrer}</p>}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="h-full bg-slate-50/50 p-6 lg:p-10 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
-        <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-slate-600 mb-6 text-sm font-bold">
+        <button onClick={onBack} className="flex items-center gap-2 text-slate-400 hover:text-slate-600 mb-6 text-sm font-bold transition-colors">
           <ArrowLeft size={18} />Voltar para Base de Leads
         </button>
 
         {/* Lead Info */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xl mb-6">
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 font-bold text-lg">
+            <div className="w-12 h-12 bg-indigo-600 rounded-full flex items-center justify-center text-white font-black text-xl shadow-lg shadow-indigo-100">
               {(lead.contact_name || lead.contact_email || '?').charAt(0).toUpperCase()}
             </div>
             <div className="flex-1">
-              <h2 className="text-xl font-black text-slate-900">{lead.contact_name || 'Lead Anônimo'}</h2>
-              <p className="text-sm text-slate-500">{lead.contact_email || 'Sem email'}</p>
-              <p className="text-xs text-slate-400 mt-1">Via {lead.form_name} • {formatDate(lead.created_at)}</p>
+              <h2 className="text-xl font-black text-slate-900 leading-tight">{lead.contact_name || 'Lead Anônimo'}</h2>
+              <p className="text-sm font-bold text-slate-500">{lead.contact_email || 'Sem email'}</p>
+              <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mt-1.5 px-2 py-0.5 bg-indigo-50 w-fit rounded-full">Via {lead.form_name}</p>
             </div>
             <div className="text-right">
-              <span className="text-xs font-bold text-slate-500">{timeline.length} eventos</span>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{timeline.length} interações</span>
+              <p className="text-xs font-bold text-slate-500 mt-1">{formatDate(lead.created_at)}</p>
             </div>
           </div>
 
@@ -70,7 +152,7 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
 
               return (
                 <div className="pt-6 border-t border-slate-100">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Campos Personalizados do Lead</h4>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Dados de Perfil</h4>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {customEntries.map(([key, val]: [string, any]) => (
                       <div key={key} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
@@ -96,10 +178,10 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
 
             return (
               <div className="pt-6 border-t border-slate-100 mt-6">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Formulários Convertidos</h4>
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Pontos de Conversão</h4>
                 <div className="flex flex-wrap gap-2">
                   {uniqueForms.map((formId: string) => (
-                    <div key={formId} className="flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 border border-green-100 rounded-lg text-xs font-bold shadow-sm">
+                    <div key={formId} className="flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 border border-green-100 rounded-lg text-[10px] font-black uppercase tracking-wider shadow-sm">
                       <FileText size={14} />
                       {formId}
                     </div>
@@ -111,60 +193,73 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
         </div>
 
         {/* Timeline */}
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
-            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2"><Activity size={20} className="text-purple-600" />Jornada do Lead</h3>
+        <div className="bg-white border border-slate-200 rounded-3xl shadow-xl overflow-hidden">
+          <div className="px-8 py-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2 tracking-tight">
+              <Activity size={20} className="text-indigo-600" />
+              Jornada de Experiência
+            </h3>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-white border border-slate-200 px-3 py-1 rounded-full shadow-sm">
+              Tempo Real
+            </span>
           </div>
 
-          {timeline.length === 0 ? (
-            <div className="p-12 text-center"><Activity className="mx-auto text-slate-300 mb-3" size={40} /><p className="text-slate-400 font-bold">Nenhuma interação registrada</p><p className="text-sm text-slate-400 mt-1">Pageviews, cliques e conversas aparecerão aqui.</p></div>
+          {groupedTimeline.length === 0 ? (
+            <div className="p-20 text-center">
+              <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-slate-100">
+                <Activity className="text-slate-300" size={32} />
+              </div>
+              <p className="text-slate-400 font-bold">Início da jornada...</p>
+              <p className="text-xs text-slate-300 mt-1">Interações do lead aparecerão em breve.</p>
+            </div>
           ) : (
-            <div className="relative p-6">
-              <div className="absolute left-[27px] top-6 bottom-6 w-0.5 bg-slate-200" />
-              <div className="space-y-4">
-                {timeline.map(event => {
-                  const Icon = eventIcons[event.event_type] || Globe;
-                  const color = eventColors[event.event_type] || 'bg-slate-500';
-                  const bg = eventBg[event.event_type] || 'bg-slate-50 border-slate-200';
-                  const label = eventLabels[event.event_type] || event.event_type;
-                  const isExpanded = expandedEvent === event.id;
+            <div className="relative p-8">
+              <div className="absolute left-[35px] top-8 bottom-8 w-0.5 bg-slate-100" />
+              <div className="space-y-6">
+                {groupedTimeline.map((item) => {
+                  if (item.type === 'group') {
+                    const isExpanded = expandedGroups.has(item.id);
+                    const count = item.events.length;
+                    
+                    if (count === 1 && !isExpanded) {
+                      return renderEvent(item.events[0]);
+                    }
 
-                  return (
-                    <div key={event.id} className="relative flex gap-4">
-                      <div className="relative z-10 w-14 flex-shrink-0 flex justify-center">
-                        <div className={`w-4 h-4 ${color} rounded-full ring-4 ring-white shadow-sm`} />
-                      </div>
-                      <div className={`flex-1 ${bg} border rounded-xl overflow-hidden`}>
-                        <button onClick={() => setExpandedEvent(isExpanded ? null : event.id)}
-                          className="w-full px-4 py-3 flex items-center justify-between text-left">
-                          <div className="flex items-center gap-3">
-                            <Icon size={16} className="text-slate-500" />
-                            <div>
-                              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{label}</span>
-                              {event.url && <p className="text-sm font-semibold text-slate-800 truncate max-w-xs">{event.url}</p>}
-                            </div>
+                    return (
+                      <div key={item.id} className="space-y-4">
+                        <div className="relative flex gap-4">
+                          <div className="relative z-10 w-14 flex-shrink-0 flex justify-center">
+                            <div className="w-4 h-4 bg-slate-200 rounded-full ring-4 ring-white shadow-sm" />
                           </div>
-                          <div className="flex items-center gap-3">
-                            <div className="text-right"><p className="text-xs font-bold text-slate-600">{formatDate(event.created_at)}</p><p className="text-[10px] text-slate-400">{formatTime(event.created_at)}</p></div>
-                            {isExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
-                          </div>
-                        </button>
-                        {isExpanded && event.event_data && (
-                          <div className="px-4 py-3 bg-white border-t border-slate-100 space-y-2">
-                            {event.event_data.el_label && <p className="text-sm"><span className="font-bold text-slate-600">Elemento:</span> <span className="text-slate-800">&quot;{event.event_data.el_label}&quot;</span></p>}
-                            {event.event_data.form_data?.fid && <p className="text-sm"><span className="font-bold text-slate-600">Formulário:</span> <span className="text-slate-800">&quot;{event.event_data.form_data.fid}&quot;</span></p>}
-                            {event.event_data.form_data?.fields && (
-                              <div>
-                                <p className="text-xs font-bold text-slate-500 mb-1">Campos capturados:</p>
-                                <div className="flex flex-wrap gap-1.5">{Object.entries(event.event_data.form_data.fields).map(([k, v]: [string, any]) => (<span key={k} className="text-xs bg-slate-100 px-2 py-0.5 rounded border border-slate-200"><span className="text-slate-500">{k}:</span> <span className="font-medium">{String(v)}</span></span>))}</div>
+                          <div className="flex-1">
+                            <button 
+                              onClick={() => toggleGroup(item.id)}
+                              className="flex items-center gap-3 px-4 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition-all group"
+                            >
+                              <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 group-hover:text-indigo-600 transition-colors">
+                                <Globe size={16} />
                               </div>
-                            )}
-                            {event.referrer && <p className="text-sm"><span className="font-bold text-slate-600">Referrer:</span> <span className="text-slate-800">{event.referrer}</span></p>}
+                              <div className="text-left">
+                                <p className="text-xs font-black text-slate-600 uppercase tracking-tight">
+                                  {isExpanded ? 'Ocultar visitas' : `Ver ${count} visitas de página`}
+                                </p>
+                                {!isExpanded && <p className="text-[10px] text-slate-400 font-bold uppercase">{formatDate(item.created_at)}</p>}
+                              </div>
+                              <div className="ml-auto">
+                                {isExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+                              </div>
+                            </button>
+                          </div>
+                        </div>
+                        {isExpanded && (
+                          <div className="space-y-4 animate-in slide-in-from-left-4 duration-300">
+                            {item.events.map((ev: any) => renderEvent(ev, true))}
                           </div>
                         )}
                       </div>
-                    </div>
-                  );
+                    );
+                  }
+                  return renderEvent(item.event);
                 })}
               </div>
             </div>
