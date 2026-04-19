@@ -2270,6 +2270,51 @@ app.get('/bio-links/public/:slug', async (c) => {
   } catch (error: any) { return c.json({ error: error.message }, 500); }
 });
 
+// ==================== ADMINISTRATIVE / CLEANUP ====================
+
+app.get('/admin/deduplicate-marketing-leads', async (c) => {
+  try {
+    const accountId = c.req.query('account_id') || 'acc_demo';
+    
+    // 1. Find emails with duplicates
+    const { results: duplicates } = await c.env.DB.prepare(`
+      SELECT LOWER(contact_email) as email, COUNT(*) as count 
+      FROM marketing_leads 
+      WHERE account_id = ? AND contact_email IS NOT NULL AND contact_email != ''
+      GROUP BY LOWER(contact_email) 
+      HAVING count > 1
+    `).bind(accountId).all();
+
+    let totalRemoved = 0;
+    const details = [];
+
+    for (const dup of duplicates as any[]) {
+      // 2. Get all records for this email, ordered by created_at (oldest first)
+      const { results: records } = await c.env.DB.prepare(
+        'SELECT id FROM marketing_leads WHERE account_id = ? AND LOWER(contact_email) = ? ORDER BY created_at ASC'
+      ).bind(accountId, dup.email).all();
+
+      if (records.length > 1) {
+        const masterId = records[0].id;
+        const idsToRemove = (records as any[]).slice(1).map(r => r.id);
+        
+        // 3. Delete duplicates
+        const placeholders = idsToRemove.map(() => '?').join(',');
+        await c.env.DB.prepare(
+          `DELETE FROM marketing_leads WHERE id IN (${placeholders})`
+        ).bind(...idsToRemove).run();
+
+        totalRemoved += idsToRemove.length;
+        details.push({ email: dup.email, kept: masterId, removedCount: idsToRemove.length });
+      }
+    }
+
+    return c.json({ success: true, totalRemoved, details });
+  } catch (error: any) { 
+    return c.json({ error: error.message }, 500); 
+  }
+});
+
 // Create a new bio link page
 app.post('/bio-links', async (c) => {
   try {
