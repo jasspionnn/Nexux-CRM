@@ -2111,15 +2111,31 @@ app.get('/lead-timeline', async (c) => {
       `SELECT * FROM tracking_events WHERE visitor_id IN (${placeholders}) ORDER BY created_at DESC LIMIT 500`
     ).bind(...visitorIds).all();
 
-    // 3. Parse JSON data and format for frontend
-    const parsedEvents = (events as any[]).map(ev => {
+    // 3. Get the target lead email to filter out "hijacked" visitor events
+    const targetLead: any = await c.env.DB.prepare(
+      'SELECT contact_email FROM leads WHERE id = ? UNION SELECT contact_email FROM marketing_leads WHERE id = ?'
+    ).bind(leadId, leadId).first();
+    const targetEmail = targetLead?.contact_email;
+
+    // 4. Parse JSON data and filter events
+    const parsedEvents = (events as any[]).filter(ev => {
+      if (!ev.form_data || !targetEmail) return true;
+      try {
+        const formData = typeof ev.form_data === 'string' ? JSON.parse(ev.form_data) : ev.form_data;
+        // If event has an email and it's NOT the target lead's email, hide it from this timeline
+        const eventEmail = formData.fields?.email || formData.fields?.contact_email || formData.email;
+        if (eventEmail && eventEmail.toLowerCase() !== targetEmail.toLowerCase()) {
+          return false;
+        }
+      } catch (e) { /* skip parse errors */ }
+      return true;
+    }).map(ev => {
       let eventData = null;
       try {
         if (ev.data) {
           eventData = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
         } else if (ev.form_data) {
           const parsedForm = typeof ev.form_data === 'string' ? JSON.parse(ev.form_data) : ev.form_data;
-          // Wrap in form_data for frontend compatibility
           eventData = { form_data: parsedForm, ...parsedForm };
         }
       } catch (e) { console.error('JSON parse error in timeline:', e); }
