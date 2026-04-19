@@ -150,10 +150,10 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
       const usersData = await usersRes.json();
       setUsers(usersData);
 
-      const visitsRes = await fetch(`/api/lead-visits?lead_id=${leadId}`);
+      const visitsRes = await fetch(`/api/lead-timeline?lead_id=${leadId}`);
       if (visitsRes.ok) {
-        const visitsData = await visitsRes.json();
-        setLeadVisits(visitsData);
+        const timelineData = await visitsRes.json();
+        setLeadVisits(timelineData);
       }
     } catch (error) {
       console.error(error);
@@ -674,27 +674,54 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                     </div>
                   ) : (
                     <div className="divide-y divide-slate-100">
-                      {leadVisits.map((visit, i) => (
-                        <div key={visit.id} className="px-5 py-4 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-3">
-                              <div className="w-2 h-2 bg-purple-400 rounded-full shrink-0" />
-                              <p className="text-sm font-semibold text-slate-800 truncate">{visit.url}</p>
+                      {leadVisits.map((visit, i) => {
+                        const isForm = visit.event_type === 'form';
+                        const isConversion = visit.event_type === 'conversion';
+                        const eventData = visit.event_data || {};
+                        const fields = eventData.fields || (eventData.form_data?.fields) || {};
+                        const fieldEntries = Object.entries(fields);
+
+                        return (
+                          <div key={visit.id} className="px-5 py-4 hover:bg-slate-50/80 transition-colors">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-2 h-2 rounded-full shrink-0 ${isForm ? 'bg-green-500' : isConversion ? 'bg-amber-500' : 'bg-purple-400'}`} />
+                                  <div className="flex flex-col">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                      {isForm ? 'Formulário Preenchido' : isConversion ? 'Conversão' : 'Página Visitada'}
+                                    </p>
+                                    <p className="text-sm font-semibold text-slate-800 truncate">{visit.url}</p>
+                                  </div>
+                                </div>
+                                
+                                {isForm && fieldEntries.length > 0 && (
+                                  <div className="mt-3 ml-5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {fieldEntries.map(([key, val]: [string, any]) => (
+                                      <div key={key} className="bg-slate-50 border border-slate-100 rounded-lg p-2">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase truncate">{key}</p>
+                                        <p className="text-xs font-bold text-slate-700 break-words">{String(val)}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {visit.referrer && !isForm && (
+                                  <p className="text-xs text-slate-400 mt-1 ml-5 truncate">Ref: {visit.referrer}</p>
+                                )}
+                              </div>
+                              <div className="text-right shrink-0 ml-4">
+                                <p className="text-xs font-bold text-slate-600">
+                                  {new Date(visit.created_at || visit.visited_at).toLocaleDateString('pt-BR')}
+                                </p>
+                                <p className="text-[10px] text-slate-400">
+                                  {new Date(visit.created_at || visit.visited_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                              </div>
                             </div>
-                            {visit.referrer && (
-                              <p className="text-xs text-slate-400 mt-1 ml-5 truncate">Ref: {visit.referrer}</p>
-                            )}
                           </div>
-                          <div className="text-right shrink-0 ml-4">
-                            <p className="text-xs font-bold text-slate-600">
-                              {new Date(visit.visited_at).toLocaleDateString('pt-BR')}
-                            </p>
-                            <p className="text-[10px] text-slate-400">
-                              {new Date(visit.visited_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
