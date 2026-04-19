@@ -2025,7 +2025,8 @@ app.get('/migrate-tracking-forms', async (c) => {
 
 // ==================== MARKETING LEADS ENDPOINTS ====================
 
-// ==================== LEAD VISITS ENDPOINTS ====================
+// ==================== LEAD VISITS & TIMELINE ENDPOINTS ====================
+
 app.get('/lead-visits', async (c) => {
   try {
     const leadId = c.req.query('lead_id');
@@ -2036,6 +2037,84 @@ app.get('/lead-visits', async (c) => {
     ).bind(leadId).all();
     return c.json(results);
   } catch (error: any) { return c.json({ error: error.message }, 500); }
+});
+
+app.get('/lead-timeline', async (c) => {
+  try {
+    const leadId = c.req.query('lead_id');
+    if (!leadId) return c.json({ error: 'lead_id is required' }, 400);
+
+    // 1. Get visitor_ids associated with this lead (either CRM or Marketing lead)
+    // First, try visitor_leads (CRM leads)
+    let { results: visitors } = await c.env.DB.prepare(
+      'SELECT visitor_id FROM visitor_leads WHERE lead_id = ?'
+    ).bind(leadId).all();
+
+    // If not found, it might be a marketing_lead. Try finding visitor_ids by email.
+    if (!visitors || visitors.length === 0) {
+      const mLead: any = await c.env.DB.prepare(
+        'SELECT contact_email FROM marketing_leads WHERE id = ?'
+      ).bind(leadId).first();
+
+      if (mLead?.contact_email) {
+        // Try visitor_leads first (even if not explicitly mapped, they might be there)
+        const { results: vids1 } = await c.env.DB.prepare(
+          'SELECT DISTINCT visitor_id FROM visitor_leads WHERE email = ?'
+        ).bind(mLead.contact_email).all();
+        
+        // Try form_submissions which stores visitor_id and email
+        const { results: vids2 } = await c.env.DB.prepare(
+          'SELECT DISTINCT visitor_id FROM form_submissions WHERE email = ?'
+        ).bind(mLead.contact_email).all();
+
+        // Fallback: search in tracking_events form_data (legacy or if other tables missed it)
+        const { results: vids3 } = await c.env.DB.prepare(
+          'SELECT DISTINCT visitor_id FROM tracking_events WHERE form_data LIKE ?'
+        ).bind(`%${mLead.contact_email}%`).all();
+        
+        const allVids = [...(vids1 || []), ...(vids2 || []), ...(vids3 || [])] as any[];
+        // Deduplicate
+        const uniqueVids = Array.from(new Set(allVids.map(v => v.visitor_id))).map(id => ({ visitor_id: id }));
+        visitors = uniqueVids;
+      }
+    }
+
+    if (!visitors || visitors.length === 0) {
+      return c.json([]);
+    }
+
+    const visitorIds = (visitors as any[]).map(v => v.visitor_id);
+    
+    // 2. Fetch all events for these visitor_ids
+    const placeholders = visitorIds.map(() => '?').join(',');
+    const { results: events } = await c.env.DB.prepare(
+      `SELECT * FROM tracking_events WHERE visitor_id IN (${placeholders}) ORDER BY created_at DESC LIMIT 500`
+    ).bind(...visitorIds).all();
+
+    // 3. Parse JSON data and format for frontend
+    const parsedEvents = (events as any[]).map(ev => {
+      let eventData = null;
+      try {
+        if (ev.data) {
+          eventData = typeof ev.data === 'string' ? JSON.parse(ev.data) : ev.data;
+        } else if (ev.form_data) {
+          const parsedForm = typeof ev.form_data === 'string' ? JSON.parse(ev.form_data) : ev.form_data;
+          // Wrap in form_data for frontend compatibility
+          eventData = { form_data: parsedForm, ...parsedForm };
+        }
+      } catch (e) { console.error('JSON parse error in timeline:', e); }
+
+      return {
+        ...ev,
+        event_data: eventData
+      };
+    });
+
+    return c.json(parsedEvents);
+  } catch (error: any) { 
+    console.error('Lead timeline error:', error);
+    return c.json({ error: error.message }, 500); 
+  }
 });
 
 app.get('/marketing-leads', async (c) => {

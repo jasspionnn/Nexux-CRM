@@ -86,8 +86,11 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
 
           {/* Converted Forms Section */}
           {(() => {
-            const formEvents = timeline.filter(ev => ev.event_type === 'form' || (ev.event_type === 'conversion' && ev.event_data?.form_data?.fid));
-            const uniqueForms = Array.from(new Set(formEvents.map(ev => ev.event_data?.form_data?.fid || ev.url))).filter(Boolean);
+            const formEvents = timeline.filter(ev => ev.event_type === 'form' || (ev.event_type === 'conversion' && (ev.event_data?.fid || ev.event_data?.form_data?.fid || ev.form_data)));
+            const uniqueForms = Array.from(new Set(formEvents.map(ev => {
+              const data = typeof ev.form_data === 'string' ? JSON.parse(ev.form_data) : (ev.form_data || ev.event_data?.form_data || ev.event_data);
+              return data?.fid || ev.url || 'Formulário s/ nome';
+            }))).filter(Boolean);
             
             if (uniqueForms.length === 0) return null;
 
@@ -96,7 +99,7 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Formulários Convertidos</h4>
                 <div className="flex flex-wrap gap-2">
                   {uniqueForms.map((formId: string) => (
-                    <div key={formId} className="flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 border border-green-100 rounded-lg text-xs font-bold">
+                    <div key={formId} className="flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 border border-green-100 rounded-lg text-xs font-bold shadow-sm">
                       <FileText size={14} />
                       {formId}
                     </div>
