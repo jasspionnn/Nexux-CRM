@@ -45,7 +45,7 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
 
         {/* Lead Info */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xl mb-6">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 mb-6">
             <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 font-bold text-lg">
               {(lead.contact_name || lead.contact_email || '?').charAt(0).toUpperCase()}
             </div>
@@ -58,6 +58,31 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
               <span className="text-xs font-bold text-slate-500">{timeline.length} eventos</span>
             </div>
           </div>
+
+          {/* Custom Fields Section */}
+          {(() => {
+            try {
+              const rawData = typeof lead.raw_data === 'string' ? JSON.parse(lead.raw_data) : (lead.raw_data || {});
+              const standardKeys = ['contact_name', 'contact_email', 'contact_phone', 'company', 'title', 'value', 'tags'];
+              const customEntries = Object.entries(rawData).filter(([k]) => !standardKeys.includes(k));
+              
+              if (customEntries.length === 0) return null;
+
+              return (
+                <div className="pt-6 border-t border-slate-100">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Campos Personalizados do Lead</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {customEntries.map(([key, val]: [string, any]) => (
+                      <div key={key} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1 truncate" title={key}>{key}</p>
+                        <p className="text-sm font-black text-slate-700 break-words">{String(val)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            } catch (e) { return null; }
+          })()}
         </div>
 
         {/* Timeline */}
