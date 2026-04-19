@@ -536,7 +536,7 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                               {new Date(note.created_at).toLocaleString('pt-BR')}
                             </span>
                           </div>
-                          <p className="text-gray-800 text-sm whitespace-pre-wrap">{note.content}</p>
+                          <p className="text-gray-800 text-sm whitespace-pre-wrap break-words">{note.content}</p>
                         </div>
                       </div>
                     ))
