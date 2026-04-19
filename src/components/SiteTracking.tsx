@@ -12,11 +12,28 @@ export const SiteTracking = () => {
   const [regenerating, setRegenerating] = useState(false);
   const [trackingForms, setTrackingForms] = useState<any[]>([]);
 
+  const [mappingForm, setMappingForm] = useState<any>(null);
+  const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({});
+  const [availableMktFields, setAvailableMktFields] = useState<any[]>([]);
+  const [availableCrmFields, setAvailableCrmFields] = useState<any[]>([]);
+
   const accountId = currentUser?.account_id || 'acc_demo';
 
   useEffect(() => {
     fetchData();
+    fetchAvailableFields();
   }, []);
+
+  const fetchAvailableFields = async () => {
+    try {
+      const [mktRes, crmRes] = await Promise.all([
+        fetch(`/api/marketing/custom-fields?account_id=${accountId}`),
+        fetch(`/api/custom-fields?account_id=${accountId}`)
+      ]);
+      if (mktRes.ok) setAvailableMktFields(await mktRes.json());
+      if (crmRes.ok) setAvailableCrmFields(await crmRes.json());
+    } catch (e) { console.error('Error fetching available fields:', e); }
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -74,8 +91,8 @@ export const SiteTracking = () => {
     catch (e) { console.error(e); alert('Erro ao excluir'); }
   };
 
-  // Field mapping
-  const CRM_FIELDS = [
+  // Combined fields for mapping
+  const ALL_CRM_FIELDS = [
     { value: '', label: 'Ignorar' },
     { value: 'contact_name', label: 'Nome do Contato' },
     { value: 'contact_email', label: 'Email' },
@@ -84,10 +101,9 @@ export const SiteTracking = () => {
     { value: 'title', label: 'Título do Lead' },
     { value: 'value', label: 'Valor' },
     { value: 'tags', label: 'Tags' },
+    ...(Array.isArray(availableCrmFields) ? availableCrmFields.map(f => ({ value: `custom:${f.id}`, label: `[CRM] ${f.name}` })) : []),
+    ...(Array.isArray(availableMktFields) ? availableMktFields.map(f => ({ value: `mkt:${f.id}`, label: `[MKT] ${f.name}` })) : []),
   ];
-
-  const [mappingForm, setMappingForm] = useState<any>(null);
-  const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({});
 
   const openMapping = async (form: any) => {
     setMappingForm(form);
@@ -355,7 +371,7 @@ export const SiteTracking = () => {
                     onChange={e => setFieldMapping(m => ({ ...m, [f.name]: e.target.value }))}
                     className="flex-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   >
-                    {CRM_FIELDS.map(cf => (
+                    {ALL_CRM_FIELDS.map(cf => (
                       <option key={cf.value} value={cf.value}>{cf.label}</option>
                     ))}
                   </select>
