@@ -91,8 +91,8 @@ export const SiteTracking = () => {
     catch (e) { console.error(e); alert('Erro ao excluir'); }
   };
 
-  // Combined fields for mapping
-  const ALL_CRM_FIELDS = [
+  // Combined fields for mapping (Focus on Marketing Fields)
+  const ALL_MKT_FIELDS = [
     { value: '', label: 'Ignorar' },
     { value: 'contact_name', label: 'Nome do Contato' },
     { value: 'contact_email', label: 'Email' },
@@ -101,8 +101,7 @@ export const SiteTracking = () => {
     { value: 'title', label: 'Título do Lead' },
     { value: 'value', label: 'Valor' },
     { value: 'tags', label: 'Tags' },
-    ...(Array.isArray(availableCrmFields) ? availableCrmFields.map(f => ({ value: `custom:${f.id}`, label: `[CRM] ${f.name}` })) : []),
-    ...(Array.isArray(availableMktFields) ? availableMktFields.map(f => ({ value: `mkt:${f.id}`, label: `[MKT] ${f.name}` })) : []),
+    ...(Array.isArray(availableMktFields) ? availableMktFields.map(f => ({ value: `mkt:${f.id}`, label: `[Mkt] ${f.name}` })) : []),
   ];
 
   const openMapping = async (form: any) => {
@@ -376,7 +375,7 @@ export const SiteTracking = () => {
                       onChange={e => setFieldMapping(m => ({ ...m, [f.name]: e.target.value }))}
                       className="flex-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     >
-                      {ALL_CRM_FIELDS.map(cf => (
+                      {ALL_MKT_FIELDS.map(cf => (
                         <option key={cf.value} value={cf.value}>{cf.label}</option>
                       ))}
                     </select>
