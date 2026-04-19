@@ -360,24 +360,30 @@ export const SiteTracking = () => {
             </div>
             <div className="p-6 space-y-3 max-h-80 overflow-y-auto">
               <p className="text-xs text-slate-500 mb-2">Mapeie os campos do formulário para os campos do CRM:</p>
-              {(mappingForm.fields || []).map((f: any) => (
-                <div key={f.name} className="flex items-center gap-3">
-                  <div className="w-24 text-right">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">{f.name}</span>
+              {(() => {
+                const fields = Array.isArray(mappingForm.fields) 
+                  ? mappingForm.fields 
+                  : (typeof mappingForm.fields === 'string' ? JSON.parse(mappingForm.fields) : []);
+                
+                return fields.map((f: any) => (
+                  <div key={f.name} className="flex items-center gap-3">
+                    <div className="w-24 text-right">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">{f.name}</span>
+                    </div>
+                    <ArrowRight size={14} className="text-slate-300 shrink-0" />
+                    <select
+                      value={fieldMapping[f.name] || ''}
+                      onChange={e => setFieldMapping(m => ({ ...m, [f.name]: e.target.value }))}
+                      className="flex-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      {ALL_CRM_FIELDS.map(cf => (
+                        <option key={cf.value} value={cf.value}>{cf.label}</option>
+                      ))}
+                    </select>
                   </div>
-                  <ArrowRight size={14} className="text-slate-300 shrink-0" />
-                  <select
-                    value={fieldMapping[f.name] || ''}
-                    onChange={e => setFieldMapping(m => ({ ...m, [f.name]: e.target.value }))}
-                    className="flex-1 px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                  >
-                    {ALL_CRM_FIELDS.map(cf => (
-                      <option key={cf.value} value={cf.value}>{cf.label}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-              {(mappingForm.fields || []).length === 0 && <p className="text-sm text-slate-400 text-center py-4">Nenhum campo detectado.</p>}
+                ));
+              })()}
+              {(!mappingForm.fields || (typeof mappingForm.fields === 'string' && mappingForm.fields === '[]')) && <p className="text-sm text-slate-400 text-center py-4">Nenhum campo detectado.</p>}
             </div>
             <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50/50">
               <button onClick={() => setMappingForm(null)} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700">Cancelar</button>
