@@ -2115,16 +2115,30 @@ app.get('/lead-timeline', async (c) => {
     const targetLead: any = await c.env.DB.prepare(
       'SELECT contact_email FROM leads WHERE id = ? UNION SELECT contact_email FROM marketing_leads WHERE id = ?'
     ).bind(leadId, leadId).first();
-    const targetEmail = targetLead?.contact_email;
+    const targetEmail = targetLead?.contact_email?.toLowerCase();
 
     // 4. Parse JSON data and filter events
     const parsedEvents = (events as any[]).filter(ev => {
       if (!ev.form_data || !targetEmail) return true;
       try {
         const formData = typeof ev.form_data === 'string' ? JSON.parse(ev.form_data) : ev.form_data;
-        // If event has an email and it's NOT the target lead's email, hide it from this timeline
-        const eventEmail = formData.fields?.email || formData.fields?.contact_email || formData.email;
-        if (eventEmail && eventEmail.toLowerCase() !== targetEmail.toLowerCase()) {
+        const fields = formData.fields || formData;
+        
+        // Search for ANY field that looks like an email or has "email" in the key
+        let foundEmailInEvent = null;
+        for (const key in fields) {
+          const val = String(fields[key]).toLowerCase();
+          const lowerKey = key.toLowerCase();
+          if (lowerKey.includes('email') || lowerKey.includes('mail') || val.includes('@')) {
+            if (val.includes('@') && val.includes('.')) {
+              foundEmailInEvent = val;
+              break;
+            }
+          }
+        }
+
+        // If an email was found in this form and it's NOT our target lead, exclude it
+        if (foundEmailInEvent && foundEmailInEvent !== targetEmail) {
           return false;
         }
       } catch (e) { /* skip parse errors */ }
