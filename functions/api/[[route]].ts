@@ -1741,7 +1741,7 @@ app.post('/tracking/events', async (c) => {
                 let mLeadId = existingMLead ? existingMLead.id : crypto.randomUUID();
 
                 if (existingMLead) {
-                  // Update existing marketing lead with new data
+                  // Update existing marketing lead with new data (KEEP CONTACT UNIQUE)
                   await c.env.DB.prepare(
                     'UPDATE marketing_leads SET form_name = ?, contact_name = COALESCE(?, contact_name), contact_phone = COALESCE(?, contact_phone), company = COALESCE(?, company), title = COALESCE(?, title), value = ?, tags = COALESCE(?, tags), raw_data = ?, created_at = datetime(\'now\') WHERE id = ?'
                   ).bind(
@@ -1755,11 +1755,11 @@ app.post('/tracking/events', async (c) => {
                     JSON.stringify(fields),
                     mLeadId
                   ).run();
-                  console.log('[TRACKING] Updated existing marketing lead:', mLeadId);
+                  console.log('[TRACKING] Updated existing marketing lead (contact):', mLeadId);
                 } else {
                   // Insert new marketing lead
                   await c.env.DB.prepare(
-                    'INSERT INTO marketing_leads (id, account_id, form_name, contact_name, contact_email, contact_phone, company, title, value, tags, raw_data, synced_to_crm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)'
+                    'INSERT INTO marketing_leads (id, account_id, form_name, contact_name, contact_email, contact_phone, company, title, value, tags, raw_data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
                   ).bind(
                     mLeadId,
                     settings.account_id,
@@ -1773,47 +1773,27 @@ app.post('/tracking/events', async (c) => {
                     mappedData.tags || null,
                     JSON.stringify(fields)
                   ).run();
-                  console.log('[TRACKING] Created new marketing lead:', mLeadId);
+                  console.log('[TRACKING] Created new marketing lead (contact):', mLeadId);
                 }
 
                 try {
-                  var existingLead: any = await c.env.DB.prepare(
-                    'SELECT id FROM leads WHERE account_id = ? AND contact_email = ?'
-                  ).bind(settings.account_id, mappedData.contact_email).first();
-
-                  var crmLeadId = existingLead ? existingLead.id : crypto.randomUUID();
-
-                  if (!existingLead) {
-                    await c.env.DB.prepare(
-                      'INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, contact_name, contact_email, contact_phone, tags, custom_values, created_at) VALUES (?, ?, (SELECT id FROM funnels WHERE account_id = ? LIMIT 1), (SELECT id FROM stages WHERE funnel_id = (SELECT id FROM funnels WHERE account_id = ? LIMIT 1) LIMIT 1), ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
-                    ).bind(
-                      crmLeadId, settings.account_id, settings.account_id, settings.account_id,
-                      mappedData.title || mappedData.contact_name || 'Lead from Tracking',
-                      mappedData.company || null,
-                      mappedData.value ? parseFloat(mappedData.value) : 0,
-                      mappedData.contact_name || null,
-                      mappedData.contact_email || null,
-                      mappedData.contact_phone || null,
-                      mappedData.tags || null,
-                      JSON.stringify({ source: 'tracking_form', form_name: formName, raw: fields })
-                    ).run();
-                    console.log('[TRACKING] Auto-synced new lead to CRM:', crmLeadId);
-                  } else {
-                    // Update existing CRM lead data
-                    await c.env.DB.prepare(
-                      'UPDATE leads SET title = COALESCE(?, title), company = COALESCE(?, company), value = ?, contact_name = COALESCE(?, contact_name), contact_phone = COALESCE(?, contact_phone), tags = COALESCE(?, tags) WHERE id = ?'
-                    ).bind(
-                      mappedData.title || mappedData.contact_name || null,
-                      mappedData.company || null,
-                      mappedData.value ? parseFloat(mappedData.value) : 0,
-                      mappedData.contact_name || null,
-                      mappedData.contact_email || null,
-                      mappedData.contact_phone || null,
-                      mappedData.tags || null,
-                      crmLeadId
-                    ).run();
-                    console.log('[TRACKING] Updated existing CRM lead:', crmLeadId);
-                  }
+                  // FOR CRM: ALWAYS CREATE A NEW NEGOTIATION (DEAL)
+                  // Even if the contact exists, we create a new entry in the funnel
+                  const crmLeadId = crypto.randomUUID();
+                  await c.env.DB.prepare(
+                    'INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, contact_name, contact_email, contact_phone, tags, custom_values, created_at) VALUES (?, ?, (SELECT id FROM funnels WHERE account_id = ? LIMIT 1), (SELECT id FROM stages WHERE funnel_id = (SELECT id FROM funnels WHERE account_id = ? LIMIT 1) LIMIT 1), ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+                  ).bind(
+                    crmLeadId, settings.account_id, settings.account_id, settings.account_id,
+                    mappedData.title || mappedData.contact_name || `Nova Negociação: ${formName}`,
+                    mappedData.company || null,
+                    mappedData.value ? parseFloat(mappedData.value) : 0,
+                    mappedData.contact_name || null,
+                    mappedData.contact_email || null,
+                    mappedData.contact_phone || null,
+                    mappedData.tags || null,
+                    JSON.stringify({ source: 'tracking_form', form_name: formName, raw: fields })
+                  ).run();
+                  console.log('[TRACKING] Created new CRM negotiation for:', mappedData.contact_email);
 
                   // Always record form submission for segmentation
                   try {
@@ -2187,24 +2167,13 @@ app.post('/marketing-leads/sync-to-crm', async (c) => {
         continue;
       }
 
-      // Check if lead already exists in CRM by email
-      const existingLead: any = await c.env.DB.prepare(
-        'SELECT id FROM leads WHERE account_id = ? AND contact_email = ?'
-      ).bind(account_id, mLead.contact_email).first();
-
-      if (existingLead) {
-        console.log('[MARKETING LEADS] Lead already exists in CRM:', mLead.contact_email);
-        skipped++;
-        continue;
-      }
-
-      // Create lead in CRM
+      // Create NEW lead in CRM (Allowing multiple negotiations for the same contact)
       const crmId = crypto.randomUUID();
       await c.env.DB.prepare(
         'INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, contact_name, contact_email, contact_phone, tags, custom_values, created_at) VALUES (?, ?, (SELECT id FROM funnels WHERE account_id = ? LIMIT 1), (SELECT id FROM stages WHERE funnel_id = (SELECT id FROM funnels WHERE account_id = ? LIMIT 1) LIMIT 1), ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
       ).bind(
         crmId, account_id, account_id, account_id,
-        mLead.title || mLead.contact_name || 'Lead from Marketing',
+        mLead.title || mLead.contact_name || `Negociação: ${mLead.form_name}`,
         mLead.company || null,
         mLead.value || 0,
         mLead.contact_name || null,
