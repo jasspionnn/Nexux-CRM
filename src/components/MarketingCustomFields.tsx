@@ -103,8 +103,8 @@ export const MarketingCustomFields = () => {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-3xl font-black text-slate-900 tracking-tight">Campos Exclusivos Marketing</h2>
-            <p className="text-slate-500 text-sm mt-1">Gerencie campos específicos para suas campanhas e automações de marketing.</p>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tight">Gestão de Campos (Mkt)</h2>
+            <p className="text-slate-500 text-sm mt-1">Configure campos exclusivos para captura de dados e automações.</p>
           </div>
           <button 
             onClick={handleAddMktField}
