@@ -72,7 +72,7 @@ export const SiteTracking = () => {
   };
 
   const getTrackerCode = () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com';
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://nexux-crm.pages.dev';
     return `<script>
   (function() {
     var t='${trackingId}';
