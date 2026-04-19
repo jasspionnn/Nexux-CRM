@@ -157,10 +157,11 @@ export const LeadScoring = () => {
     } catch (err) {}
   };
 
+  const { currentUser } = useCRM();
+  const accountId = currentUser?.account_id || 'acc_demo';
+
   const loadCustomFields = async () => {
     try {
-      const { currentUser } = useCRM();
-      const accountId = currentUser?.account_id || 'acc_demo';
       const [crmRes, mktRes] = await Promise.all([
         fetch(`${API_BASE}/custom-fields`, { headers: getHeaders() }),
         fetch(`${API_BASE}/marketing/custom-fields?account_id=${accountId}`, { headers: getHeaders() })
