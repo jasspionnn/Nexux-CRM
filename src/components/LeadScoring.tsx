@@ -159,9 +159,23 @@ export const LeadScoring = () => {
 
   const loadCustomFields = async () => {
     try {
-      const res = await fetch(`${API_BASE}/custom-fields`, { headers: getHeaders() });
-      if (res.ok) setCustomFields(await res.json() || []);
-    } catch (err) {}
+      const [crmRes, mktRes] = await Promise.all([
+        fetch(`${API_BASE}/custom-fields`, { headers: getHeaders() }),
+        fetch(`${API_BASE}/marketing/custom-fields?account_id=${accountId}`, { headers: getHeaders() })
+      ]);
+      
+      const crmFields = crmRes.ok ? await crmRes.json() : [];
+      const mktFields = mktRes.ok ? await mktRes.json() : [];
+      
+      // Merge: Add a prefix to marketing fields to distinguish them
+      const mergedFields = [
+        ...crmFields,
+        ...mktFields.map((f: any) => ({ ...f, name: `[Mkt] ${f.name}`, isMarketing: true }))
+      ];
+      setCustomFields(mergedFields);
+    } catch (err) {
+      console.error('Error loading fields:', err);
+    }
   };
 
   const loadTrackingForms = async () => {
