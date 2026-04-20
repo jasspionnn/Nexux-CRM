@@ -171,28 +171,57 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
             </div>
           </div>
 
-          {/* Custom Fields Section */}
+          {/* Standard Fields Section */}
           <div className="pt-6 border-t border-slate-100">
-            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Dados de Perfil</h4>
+            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Dados Básicos</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {[
+                { label: 'Nome', key: 'contact_name' },
+                { label: 'Email', key: 'contact_email' },
+                { label: 'Telefone', key: 'contact_phone' }
+              ].map(f => (
+                <div key={f.key} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">{f.label}</p>
+                  <p className="text-sm font-black text-slate-700">{lead[f.key] || '-'}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Custom Fields Section */}
+          <div className="pt-6 border-t border-slate-100 mt-6">
+            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Campos Personalizados</h4>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {customFields.map((f: any) => {
                 const rawData = typeof lead.raw_data === 'string' ? JSON.parse(lead.raw_data) : (lead.raw_data || {});
                 const val = rawData[f.name] || '';
+                const options = f.type === 'Seleção' && f.options ? f.options.split(',').map((o: string) => o.trim()) : [];
                 const isEditing = editingValue?.fieldId === f.id;
 
                 return (
                   <div key={f.id} className="bg-slate-50 rounded-xl p-3 border border-slate-100 relative group">
                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1 truncate">{f.name}</p>
                     {isEditing ? (
-                      <div className="flex items-center gap-1">
+                      f.type === 'Seleção' ? (
+                        <select 
+                          className="text-sm w-full font-black text-slate-700 bg-white border border-indigo-300 rounded px-1"
+                          value={editingValue.val}
+                          onChange={e => setEditingValue({ ...editingValue, val: e.target.value })}
+                          onBlur={() => handleUpdateField(f.name, editingValue.val)}
+                          autoFocus
+                        >
+                          <option value="">Selecione...</option>
+                          {options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      ) : (
                         <input 
                           className="text-sm w-full font-black text-slate-700 bg-white border border-indigo-300 rounded px-1"
-                          value={editingValue?.val || ''}
-                          onChange={e => setEditingValue({ fieldId: f.id, val: e.target.value })}
-                          onBlur={() => handleUpdateField(f.name, editingValue?.val || '')}
+                          value={editingValue.val}
+                          onChange={e => setEditingValue({ ...editingValue, val: e.target.value })}
+                          onBlur={() => handleUpdateField(f.name, editingValue.val)}
                           autoFocus
                         />
-                      </div>
+                      )
                     ) : (
                       <p 
                         className="text-sm font-black text-slate-700 break-words cursor-pointer hover:text-indigo-600"
