@@ -171,6 +171,26 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
             </div>
           </div>
 
+const EditableField = ({ label, value, onSave }: { label: string, value: string, onSave: (val: string) => void }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [val, setVal] = useState(value);
+  
+  if (isEditing) {
+    return (
+      <input 
+        className="text-sm w-full font-black text-slate-700 bg-white border border-indigo-400 rounded px-1 outline-none focus:ring-1 focus:ring-indigo-500"
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onBlur={() => { setIsEditing(false); onSave(val); }}
+        autoFocus
+      />
+    );
+  }
+  return <p className="text-sm font-black text-slate-700 cursor-pointer hover:text-indigo-600 transition-colors" onClick={() => setIsEditing(true)}>{val || '-'}</p>;
+};
+
+export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
+// ...
           {/* Standard Fields Section */}
           <div className="pt-6 border-t border-slate-100">
             <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Dados Básicos</h4>
@@ -182,7 +202,7 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
               ].map(f => (
                 <div key={f.key} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                   <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">{f.label}</p>
-                  <p className="text-sm font-black text-slate-700">{lead[f.key] || '-'}</p>
+                  <EditableField label={f.label} value={lead[f.key] || ''} onSave={(v) => handleUpdateField(f.key, v)} />
                 </div>
               ))}
             </div>
