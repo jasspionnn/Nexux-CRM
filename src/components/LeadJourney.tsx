@@ -205,9 +205,9 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
                       f.type === 'Seleção' ? (
                         <select 
                           className="text-sm w-full font-black text-slate-700 bg-white border border-indigo-300 rounded px-1"
-                          value={editingValue.val}
-                          onChange={e => setEditingValue({ ...editingValue, val: e.target.value })}
-                          onBlur={() => handleUpdateField(f.name, editingValue.val)}
+                          value={editingValue?.val || ''}
+                          onChange={e => setEditingValue({ fieldId: f.id, val: e.target.value })}
+                          onBlur={() => handleUpdateField(f.name, editingValue?.val || '')}
                           autoFocus
                         >
                           <option value="">Selecione...</option>
@@ -216,9 +216,9 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
                       ) : (
                         <input 
                           className="text-sm w-full font-black text-slate-700 bg-white border border-indigo-300 rounded px-1"
-                          value={editingValue.val}
-                          onChange={e => setEditingValue({ ...editingValue, val: e.target.value })}
-                          onBlur={() => handleUpdateField(f.name, editingValue.val)}
+                          value={editingValue?.val || ''}
+                          onChange={e => setEditingValue({ fieldId: f.id, val: e.target.value })}
+                          onBlur={() => handleUpdateField(f.name, editingValue?.val || '')}
                           autoFocus
                         />
                       )
