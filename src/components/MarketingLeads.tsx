@@ -7,6 +7,7 @@ export const MarketingLeads = () => {
   const { currentUser } = useCRM();
   const [isLoading, setIsLoading] = useState(true);
   const [leads, setLeads] = useState<any[]>([]);
+  const [customFields, setCustomFields] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
   const [selectedLead, setSelectedLead] = useState<any>(null);
@@ -18,10 +19,21 @@ export const MarketingLeads = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/marketing-leads?account_id=${accountId}`);
-      if (res.ok) setLeads(await res.json());
+      const [leadsRes, fieldsRes] = await Promise.all([
+        fetch(`/api/marketing-leads?account_id=${accountId}`),
+        fetch(`/api/marketing/custom-fields?account_id=${accountId}`)
+      ]);
+      if (leadsRes.ok) setLeads(await leadsRes.json());
+      if (fieldsRes.ok) setCustomFields(await fieldsRes.json());
     } catch (e) { console.error(e); }
     setIsLoading(false);
+  };
+
+  const getCustomFieldValue = (lead: any, fieldName: string) => {
+    try {
+      const raw = typeof lead.raw_data === 'string' ? JSON.parse(lead.raw_data) : (lead.raw_data || {});
+      return raw[fieldName] || '-';
+    } catch { return '-'; }
   };
 
   const toggleSelect = (id: string) => {
@@ -101,46 +113,46 @@ export const MarketingLeads = () => {
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 border-b border-gray-200">
-                    <tr className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">
-                      <th className="px-4 py-3 w-10"><input type="checkbox" checked={selectedIds.size === leads.length && leads.length > 0} onChange={toggleAll} className="rounded" /></th>
-                      <th className="px-4 py-3">Nome</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Telefone</th>
-                      <th className="px-4 py-3">Formulário</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Data</th><th className="px-4 py-3 w-20"></th>
-                    </tr>
+                  <tr className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">
+                    <th className="px-4 py-3 w-10"><input type="checkbox" checked={selectedIds.size === leads.length && leads.length > 0} onChange={toggleAll} className="rounded" /></th>
+                    <th className="px-4 py-3">Nome</th>
+                    <th className="px-4 py-3">Email</th>
+                    {customFields.map(f => <th key={f.id} className="px-4 py-3">{f.name}</th>)}
+                    <th className="px-4 py-3">Formulário</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Data</th>
+                    <th className="px-4 py-3 w-20"></th>
+                  </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {leads.map(lead => (
-                      <tr key={lead.id} className={`hover:bg-slate-50 transition-colors ${selectedIds.has(lead.id) ? 'bg-blue-50/50' : ''} ${!lead.contact_email ? 'opacity-60' : ''}`}>
-                        <td className="px-4 py-3"><input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => toggleSelect(lead.id)} className="rounded" /></td>
-                        <td className="px-4 py-3 text-sm font-medium text-slate-900">{lead.contact_name || '-'}</td>
-                        <td className="px-4 py-3 text-sm">
-                          {lead.contact_email ? (
-                            <span className="text-slate-500">{lead.contact_email}</span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded">⚠️ Sem email</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-slate-500">{lead.contact_phone || '-'}</td>
-                        <td className="px-4 py-3"><span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">{lead.form_name}</span></td>
-                        <td className="px-4 py-3">
-                          {!lead.contact_email ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded">✗ Sem email</span>
-                          ) : lead.synced_to_crm ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded"><Check size={12} />CRM</span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded"><X size={12} />Pendente</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-slate-500">{formatDate(lead.created_at)}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => setSelectedLead(lead)} className="p-1 text-slate-300 hover:text-blue-500 rounded transition-colors" title="Ver jornada"><Eye size={14} /></button>
-                            <button onClick={() => handleDelete(lead.id)} className="p-1 text-slate-300 hover:text-red-500 rounded transition-colors"><Trash2 size={14} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                  {leads.map(lead => (
+                    <tr key={lead.id} className={`hover:bg-slate-50 transition-colors ${selectedIds.has(lead.id) ? 'bg-blue-50/50' : ''} ${!lead.contact_email ? 'opacity-60' : ''}`}>
+                      <td className="px-4 py-3"><input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => toggleSelect(lead.id)} className="rounded" /></td>
+                      <td className="px-4 py-3 text-sm font-medium text-slate-900">{lead.contact_name || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-slate-500">{lead.contact_email || '-'}</td>
+                      {customFields.map(f => (
+                        <td key={f.id} className="px-4 py-3 text-sm text-slate-600">{getCustomFieldValue(lead, f.name)}</td>
+                      ))}
+                      <td className="px-4 py-3"><span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">{lead.form_name}</span></td>
+                      <td className="px-4 py-3">
+                        {!lead.contact_email ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded">✗ Sem email</span>
+                        ) : lead.synced_to_crm ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded"><Check size={12} />CRM</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded"><X size={12} />Pendente</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{formatDate(lead.created_at)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => setSelectedLead(lead)} className="p-1 text-slate-300 hover:text-blue-500 rounded transition-colors" title="Ver jornada"><Eye size={14} /></button>
+                          <button onClick={() => handleDelete(lead.id)} className="p-1 text-slate-300 hover:text-red-500 rounded transition-colors"><Trash2 size={14} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  </tbody>                </table>
               </div>
             </>
           )}
