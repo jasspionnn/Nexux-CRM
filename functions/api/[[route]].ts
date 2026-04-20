@@ -1738,10 +1738,17 @@ app.post('/tracking/events', async (c) => {
 
                 // PREVENT DUPLICATES: Check if marketing lead already exists by email (case-insensitive)
                 const existingMLead: any = await c.env.DB.prepare(
-                  'SELECT id FROM marketing_leads WHERE account_id = ? AND LOWER(contact_email) = ?'
+                  'SELECT id, raw_data FROM marketing_leads WHERE account_id = ? AND LOWER(contact_email) = ?'
                 ).bind(settings.account_id, normalizedEmail).first();
 
                 let mLeadId = existingMLead ? existingMLead.id : crypto.randomUUID();
+                
+                // Merge new fields into existing raw_data
+                let rawData = {};
+                if (existingMLead && existingMLead.raw_data) {
+                  try { rawData = typeof existingMLead.raw_data === 'string' ? JSON.parse(existingMLead.raw_data) : existingMLead.raw_data; } catch {}
+                }
+                const updatedRawData = { ...rawData, ...fields };
 
                 if (existingMLead) {
                   // Update existing marketing lead with new data (KEEP CONTACT UNIQUE)
@@ -1755,7 +1762,7 @@ app.post('/tracking/events', async (c) => {
                     mappedData.title || null,
                     mappedData.value ? parseFloat(mappedData.value) : 0,
                     mappedData.tags || null,
-                    JSON.stringify(fields),
+                    JSON.stringify(updatedRawData),
                     mLeadId
                   ).run();
                   console.log('[TRACKING] Updated existing marketing lead (contact):', mLeadId);
@@ -1774,7 +1781,7 @@ app.post('/tracking/events', async (c) => {
                     mappedData.title || null,
                     mappedData.value ? parseFloat(mappedData.value) : 0,
                     mappedData.tags || null,
-                    JSON.stringify(fields)
+                    JSON.stringify(updatedRawData)
                   ).run();
                   console.log('[TRACKING] Created new marketing lead (contact):', mLeadId);
                 }
