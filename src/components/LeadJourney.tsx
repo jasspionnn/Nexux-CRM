@@ -6,12 +6,15 @@ interface LeadJourneyProps { lead: any; onBack: () => void; }
 export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
   const [timeline, setTimeline] = useState<any[]>([]);
   const [visits, setVisits] = useState<any[]>([]);
+  const [customFields, setCustomFields] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [editingValue, setEditingValue] = useState<{ fieldId: string, val: string } | null>(null);
 
   useEffect(() => {
     fetchData();
+    fetchCustomFields();
   }, [lead.id]);
 
   const fetchData = async () => {
@@ -25,6 +28,33 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
       if (vRes.ok) setVisits(await vRes.json());
     } catch (e) { console.error(e); }
     setIsLoading(false);
+  };
+
+  const fetchCustomFields = async () => {
+    try {
+      const res = await fetch(`/api/marketing/custom-fields?account_id=${lead.account_id || 'acc_demo'}`);
+      if (res.ok) setCustomFields(await res.json());
+    } catch (e) { console.error(e); }
+  };
+
+  const handleUpdateField = async (fieldName: string, value: string) => {
+    try {
+      const rawData = typeof lead.raw_data === 'string' ? JSON.parse(lead.raw_data) : (lead.raw_data || {});
+      const updatedData = { ...rawData, [fieldName]: value };
+      
+      const res = await fetch(`/api/marketing-leads/${lead.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ raw_data: JSON.stringify(updatedData) })
+      });
+      
+      if (res.ok) {
+        // Update local lead state manually or reload
+        lead.raw_data = updatedData;
+        setEditingValue(null);
+        alert('Campo atualizado!');
+      }
+    } catch (e) { alert('Erro ao salvar'); }
   };
 
   const toggleGroup = (groupId: string) => {
@@ -142,28 +172,40 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
           </div>
 
           {/* Custom Fields Section */}
-          {(() => {
-            try {
-              const rawData = typeof lead.raw_data === 'string' ? JSON.parse(lead.raw_data) : (lead.raw_data || {});
-              const customEntries = Object.entries(rawData);
-              
-              if (customEntries.length === 0) return null;
+          <div className="pt-6 border-t border-slate-100">
+            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Dados de Perfil</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {customFields.map((f: any) => {
+                const rawData = typeof lead.raw_data === 'string' ? JSON.parse(lead.raw_data) : (lead.raw_data || {});
+                const val = rawData[f.name] || '';
+                const isEditing = editingValue?.fieldId === f.id;
 
-              return (
-                <div className="pt-6 border-t border-slate-100">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Dados Completos do Formulário</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {customEntries.map(([key, val]: [string, any]) => (
-                      <div key={key} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1 truncate" title={key}>{key}</p>
-                        <p className="text-sm font-black text-slate-700 break-words">{String(val)}</p>
+                return (
+                  <div key={f.id} className="bg-slate-50 rounded-xl p-3 border border-slate-100 relative group">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1 truncate">{f.name}</p>
+                    {isEditing ? (
+                      <div className="flex items-center gap-1">
+                        <input 
+                          className="text-sm w-full font-black text-slate-700 bg-white border border-indigo-300 rounded px-1"
+                          value={editingValue.val}
+                          onChange={e => setEditingValue({ ...editingValue, val: e.target.value })}
+                          onBlur={() => handleUpdateField(f.name, editingValue.val)}
+                          autoFocus
+                        />
                       </div>
-                    ))}
+                    ) : (
+                      <p 
+                        className="text-sm font-black text-slate-700 break-words cursor-pointer hover:text-indigo-600"
+                        onClick={() => setEditingValue({ fieldId: f.id, val: val })}
+                      >
+                        {val || <span className="text-slate-300 italic">Vazio</span>}
+                      </p>
+                    )}
                   </div>
-                </div>
-              );
-            } catch (e) { return null; }
-          })()}
+                );
+              })}
+            </div>
+          </div>
 
           {/* Converted Forms Section */}
           {(() => {
