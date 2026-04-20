@@ -145,14 +145,13 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
           {(() => {
             try {
               const rawData = typeof lead.raw_data === 'string' ? JSON.parse(lead.raw_data) : (lead.raw_data || {});
-              const standardKeys = ['contact_name', 'contact_email', 'contact_phone', 'company', 'title', 'value', 'tags'];
-              const customEntries = Object.entries(rawData).filter(([k]) => !standardKeys.includes(k));
+              const customEntries = Object.entries(rawData);
               
               if (customEntries.length === 0) return null;
 
               return (
                 <div className="pt-6 border-t border-slate-100">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Dados de Perfil</h4>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Dados Completos do Formulário</h4>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {customEntries.map(([key, val]: [string, any]) => (
                       <div key={key} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
