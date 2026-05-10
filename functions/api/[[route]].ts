@@ -767,12 +767,6 @@ app.delete('/stages/:id', async (c) => {
   return c.json({ success: true });
 });
 
-// Tracking Forms
-app.get('/tracking-forms', async (c) => {
-  const { results } = await c.env.DB.prepare('SELECT * FROM tracking_forms').all();
-  return c.json(results);
-});
-
 // Custom Fields
 app.get('/custom-fields', async (c) => {
   const account_id = c.req.query('account_id') || 'acc_demo';
@@ -3582,21 +3576,6 @@ app.post('/scoring/recalculate', async (c) => {
     return c.json(result);
   } catch (error: any) {
     console.error('Error recalculating scores:', error);
-    return c.json({ error: error.message }, 500);
-  }
-});
-
-// Tracking Forms (needed for scoring)
-app.get('/tracking-forms', async (c) => {
-  try {
-    const account_id = c.req.query('account_id') || 'acc_demo';
-    const { results } = await c.env.DB.prepare(
-      'SELECT * FROM tracking_forms WHERE account_id = ? AND is_active = 1'
-    ).bind(account_id).all();
-
-    return c.json(results || []);
-  } catch (error: any) {
-    console.error('Error loading tracking forms:', error);
     return c.json({ error: error.message }, 500);
   }
 });
