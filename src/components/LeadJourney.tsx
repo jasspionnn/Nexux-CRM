@@ -3,6 +3,24 @@ import { ArrowLeft, Activity, MousePointer, Globe, FileText, Zap, ChevronDown, C
 
 interface LeadJourneyProps { lead: any; onBack: () => void; }
 
+const EditableField = ({ label, value, onSave }: { label: string, value: string, onSave: (val: string) => void }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [val, setVal] = useState(value);
+  
+  if (isEditing) {
+    return (
+      <input 
+        className="text-sm w-full font-black text-slate-700 bg-white border border-indigo-400 rounded px-1 outline-none focus:ring-1 focus:ring-indigo-500"
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onBlur={() => { setIsEditing(false); onSave(val); }}
+        autoFocus
+      />
+    );
+  }
+  return <p className="text-sm font-black text-slate-700 cursor-pointer hover:text-indigo-600 transition-colors" onClick={() => setIsEditing(true)}>{val || '-'}</p>;
+};
+
 export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
   const [timeline, setTimeline] = useState<any[]>([]);
   const [visits, setVisits] = useState<any[]>([]);
@@ -97,8 +115,6 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
     }
   });
 
-  if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-10 h-10 border-4 border-slate-900 border-t-transparent rounded-full animate-spin" /></div>;
-
   const renderEvent = (event: any, isInsideGroup = false) => {
     const Icon = eventIcons[event.event_type] || Globe;
     const color = eventColors[event.event_type] || 'bg-slate-500';
@@ -147,6 +163,8 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
     );
   };
 
+  if (isLoading) return <div className="flex items-center justify-center h-full"><div className="w-10 h-10 border-4 border-slate-900 border-t-transparent rounded-full animate-spin" /></div>;
+
   return (
     <div className="h-full bg-slate-50/50 p-6 lg:p-10 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
@@ -171,26 +189,6 @@ export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
             </div>
           </div>
 
-const EditableField = ({ label, value, onSave }: { label: string, value: string, onSave: (val: string) => void }) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [val, setVal] = useState(value);
-  
-  if (isEditing) {
-    return (
-      <input 
-        className="text-sm w-full font-black text-slate-700 bg-white border border-indigo-400 rounded px-1 outline-none focus:ring-1 focus:ring-indigo-500"
-        value={val}
-        onChange={e => setVal(e.target.value)}
-        onBlur={() => { setIsEditing(false); onSave(val); }}
-        autoFocus
-      />
-    );
-  }
-  return <p className="text-sm font-black text-slate-700 cursor-pointer hover:text-indigo-600 transition-colors" onClick={() => setIsEditing(true)}>{val || '-'}</p>;
-};
-
-export const LeadJourney: React.FC<LeadJourneyProps> = ({ lead, onBack }) => {
-// ...
           {/* Standard Fields Section */}
           <div className="pt-6 border-t border-slate-100">
             <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Dados Básicos</h4>
