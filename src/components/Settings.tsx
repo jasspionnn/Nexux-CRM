@@ -4,6 +4,8 @@ import {
   Check, X, Edit2, Copy, ExternalLink, Info, Hash, Type, Calendar, List, Users, User, 
   MoreVertical, ShieldCheck, Activity, ChevronDown, ChevronUp 
 } from 'lucide-react';
+import { useCRM } from '../context/CRMContext';
+import { UserRole } from '../types';
 
 const COLORS = [
   '#3b82f6', '#22c55e', '#eab308', '#ef4444',
@@ -11,6 +13,8 @@ const COLORS = [
 ];
 
 export const Settings = () => {
+  const { currentUser } = useCRM();
+  const aid = currentUser?.account_id || 'acc_demo';
   const [activeTab, setActiveTab] = useState('funis');
   const [isLoading, setIsLoading] = useState(true);
   const [expandedWebhooks, setExpandedWebhooks] = useState<Set<string>>(new Set());
@@ -30,16 +34,16 @@ export const Settings = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [aid]);
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
       const [funnelsRes, fieldsRes, webhooksRes, usersRes] = await Promise.all([
-        fetch('/api/funnels'),
-        fetch('/api/custom-fields'),
-        fetch('/api/webhooks'),
-        fetch('/api/users')
+        fetch(`/api/funnels?account_id=${aid}`),
+        fetch(`/api/custom-fields?account_id=${aid}`),
+        fetch(`/api/webhooks?account_id=${aid}`),
+        fetch(`/api/users?account_id=${aid}`)
       ]);
 
       const funnelsData = await funnelsRes.json();
@@ -71,7 +75,7 @@ export const Settings = () => {
     const res = await fetch('/api/funnels', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Novo Funil' })
+      body: JSON.stringify({ name: 'Novo Funil', account_id: aid })
     });
     const newFunnel = await res.json();
     setFunnels([...funnels, newFunnel]);
@@ -171,7 +175,7 @@ export const Settings = () => {
       const res = await fetch('/api/custom-fields', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Novo Campo', type: 'Texto', context: 'Lead' })
+        body: JSON.stringify({ name: 'Novo Campo', type: 'Texto', context: 'Lead', account_id: aid })
       });
       if (!res.ok) {
         let errMessage = 'Failed to create custom field';
@@ -216,7 +220,7 @@ export const Settings = () => {
 
   // --- Webhooks Handlers ---
   const handleAddWebhook = async () => {
-    const newWebhook = { name: 'Novo Webhook', active: true };
+    const newWebhook = { name: 'Novo Webhook', active: true, account_id: aid };
     try {
       const res = await fetch('/api/webhooks', {
         method: 'POST',
@@ -265,7 +269,13 @@ export const Settings = () => {
       const res = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Novo Usuário', email: `novo_${Date.now()}@email.com`, role: 'Usuário', status: 'Pendente' })
+        body: JSON.stringify({ 
+          name: 'Novo Usuário', 
+          email: `novo_${Date.now()}@email.com`, 
+          role: UserRole.USER, 
+          status: 'Pendente',
+          account_id: aid 
+        })
       });
       if (!res.ok) {
         const err = await res.json();
@@ -860,14 +870,18 @@ export const Settings = () => {
                        <div className="flex flex-col gap-1.5">
                         <div className="flex items-center gap-2">
                           <Shield size={12} className={
-                            member.role === 'Admin' ? 'text-indigo-600' : 
-                            member.role === 'Gerente' ? 'text-blue-600' : 'text-slate-400'
+                            member.role === UserRole.NEXUS_ADMIN ? 'text-red-600' :
+                            member.role === UserRole.ACCOUNT_ADMIN ? 'text-indigo-600' : 
+                            member.role === UserRole.MANAGER ? 'text-blue-600' : 'text-slate-400'
                           } />
                           <span className={`text-[10px] font-black tracking-widest uppercase ${
-                            member.role === 'Admin' ? 'text-indigo-600' : 
-                            member.role === 'Gerente' ? 'text-blue-600' : 'text-slate-400'
+                            member.role === UserRole.NEXUS_ADMIN ? 'text-red-600' :
+                            member.role === UserRole.ACCOUNT_ADMIN ? 'text-indigo-600' : 
+                            member.role === UserRole.MANAGER ? 'text-blue-600' : 'text-slate-400'
                           }`}>
-                            {member.role}
+                            {member.role === UserRole.NEXUS_ADMIN ? 'Super Admin' : 
+                             member.role === UserRole.ACCOUNT_ADMIN ? 'Admin' : 
+                             member.role === UserRole.MANAGER ? 'Gerente' : 'Usuário'}
                           </span>
                         </div>
                         <select 
@@ -875,9 +889,12 @@ export const Settings = () => {
                           onChange={(e) => handleUpdateTeamMember(member.id, { role: e.target.value })}
                           className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-[11px] font-bold text-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer"
                         >
-                          <option>Admin</option>
-                          <option>Gerente</option>
-                          <option>Usuário</option>
+                          {currentUser?.role === UserRole.NEXUS_ADMIN && (
+                            <option value={UserRole.NEXUS_ADMIN}>Super Admin</option>
+                          )}
+                          <option value={UserRole.ACCOUNT_ADMIN}>Admin</option>
+                          <option value={UserRole.MANAGER}>Gerente</option>
+                          <option value={UserRole.USER}>Usuário</option>
                         </select>
                       </div>
                     </td>

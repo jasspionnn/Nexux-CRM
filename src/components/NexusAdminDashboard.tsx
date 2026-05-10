@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Activity, DollarSign, Settings, LogOut, Search, Bell, Menu, X, Plus, ShieldCheck, Play, Pause, Key, Save } from 'lucide-react';
+import { Building2, Activity, DollarSign, Settings, LogOut, Search, Bell, Menu, X, Plus, ShieldCheck, Play, Pause, Key, Save, Trash2, Users } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 export const NexusAdminDashboard = () => {
   const { currentUser, logout } = useCRM();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState<'accounts' | 'settings'>('accounts');
+  const [activeTab, setActiveTab] = useState<'accounts' | 'settings' | 'users'>('accounts');
   
   const [stats, setStats] = useState({ totalAccounts: 0, activeAccounts: 0, totalUsers: 0, mrr: 0 });
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [nexusUsers, setNexusUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Global Settings State
@@ -33,10 +34,12 @@ export const NexusAdminDashboard = () => {
       const statsRes = await fetch('/api/admin/stats');
       const accountsRes = await fetch('/api/admin/accounts');
       const settingsRes = await fetch('/api/global-settings');
+      const usersRes = await fetch('/api/users?account_id=acc_nexus');
       
       if (statsRes.ok) setStats(await statsRes.json());
       if (accountsRes.ok) setAccounts(await accountsRes.json());
       if (settingsRes.ok) setGlobalSettings(await settingsRes.json());
+      if (usersRes.ok) setNexusUsers(await usersRes.json());
     } catch (e) {
       console.error('Failed to fetch admin data', e);
     } finally {
@@ -82,6 +85,36 @@ export const NexusAdminDashboard = () => {
       alert('Erro.');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleCreateNexusUser = async () => {
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name: 'Novo Admin Nexus', 
+          email: `admin_${Date.now()}@nexus.com`, 
+          role: 'NEXUS_ADMIN', 
+          status: 'active',
+          account_id: 'acc_nexus',
+          password: '123'
+        })
+      });
+      if (res.ok) fetchData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteNexusUser = async (id: string) => {
+    if (id === currentUser?.id) return alert('Você não pode excluir a si mesmo.');
+    try {
+      await fetch(`/api/users/${id}`, { method: 'DELETE' });
+      fetchData();
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -131,6 +164,13 @@ export const NexusAdminDashboard = () => {
           >
             <Building2 className="mr-3" size={20} />
             Gestão de Contas Mãe
+          </button>
+          <button 
+            onClick={() => setActiveTab('users')}
+            className={`w-full flex items-center px-6 py-3 transition-colors ${activeTab === 'users' ? 'bg-gray-800 text-white border-l-4 border-blue-500' : 'hover:bg-gray-800 hover:text-white'}`}
+          >
+            <Users className="mr-3" size={20} />
+            Administradores Nexus
           </button>
           <button 
             onClick={() => setActiveTab('settings')}
@@ -305,6 +345,63 @@ export const NexusAdminDashboard = () => {
                 </div>
               </div>
             </>
+          )}
+
+          {activeTab === 'users' && (
+            <div className="max-w-5xl">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="text-3xl font-black text-slate-900 tracking-tight">Administradores Nexus</h2>
+                  <p className="text-slate-500 font-medium mt-1">Gerencie os usuários que têm acesso a este painel administrativo.</p>
+                </div>
+                <button 
+                  onClick={handleCreateNexusUser}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-95"
+                >
+                  <Plus size={18} />
+                  Novo Administrador
+                </button>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200/60 overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/50 border-b border-gray-100 text-slate-400 text-xs uppercase tracking-wider font-bold">
+                      <th className="px-6 py-4">Nome / Email</th>
+                      <th className="px-6 py-4">Cargo</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4 text-right">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {nexusUsers.map((user) => (
+                      <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-5">
+                          <div className="text-sm font-bold text-slate-900">{user.name}</div>
+                          <div className="text-xs text-slate-500">{user.email}</div>
+                        </td>
+                        <td className="px-6 py-5">
+                          <span className="inline-flex items-center px-2 py-1 rounded bg-blue-50 text-blue-700 text-[10px] font-black uppercase tracking-tighter">
+                            {user.role}
+                          </span>
+                        </td>
+                        <td className="px-6 py-5">
+                           <span className="text-xs font-bold text-green-600">{user.status}</span>
+                        </td>
+                        <td className="px-6 py-5 text-right">
+                          <button 
+                            onClick={() => handleDeleteNexusUser(user.id)}
+                            className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
 
           {activeTab === 'settings' && (
