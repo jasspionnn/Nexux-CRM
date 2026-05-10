@@ -18,15 +18,20 @@ export const NexusAdminDashboard = () => {
   });
   const [savingSettings, setSavingSettings] = useState(false);
 
-  // Modal State
+  // Modal State - Create Account
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [formData, setFormData] = useState({ company_name: '', owner_name: '', email: '', plan: 'pro' });
   const [creating, setCreating] = useState(false);
   const [createdInfo, setCreatedInfo] = useState<any>(null);
 
-  // Edit User State
+  // Modal State - Edit Account
+  const [editingAccount, setEditingAccount] = useState<any>(null);
+  const [editAccFormData, setEditAccFormData] = useState({ company_name: '', owner_name: '', email: '', plan: 'pro', expires_at: '' });
+  const [newPassword, setNewPassword] = useState<string | null>(null);
+
+  // Modal State - Edit User
   const [editingUser, setEditingUser] = useState<any>(null);
-  const [editFormData, setEditFormData] = useState({ name: '', email: '', role: 'NEXUS_ADMIN', status: 'active' });
+  const [editUserFormData, setEditUserFormData] = useState({ name: '', email: '', role: 'NEXUS_ADMIN', status: 'active' });
 
   useEffect(() => {
     fetchData();
@@ -35,10 +40,12 @@ export const NexusAdminDashboard = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const statsRes = await fetch('/api/admin/stats');
-      const accountsRes = await fetch('/api/admin/accounts');
-      const settingsRes = await fetch('/api/global-settings');
-      const usersRes = await fetch('/api/users?account_id=acc_nexus');
+      const [statsRes, accountsRes, settingsRes, usersRes] = await Promise.all([
+        fetch('/api/admin/stats'),
+        fetch('/api/admin/accounts'),
+        fetch('/api/global-settings'),
+        fetch('/api/users?account_id=acc_nexus')
+      ]);
       
       if (statsRes.ok) setStats(await statsRes.json());
       if (accountsRes.ok) setAccounts(await accountsRes.json());
@@ -51,6 +58,8 @@ export const NexusAdminDashboard = () => {
     }
   };
 
+  // --- Account Handlers ---
+
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'active' ? 'disabled' : 'active';
     try {
@@ -59,7 +68,6 @@ export const NexusAdminDashboard = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
-      setAccounts(prev => prev.map(acc => acc.id === id ? { ...acc, status: newStatus } : acc));
       fetchData();
     } catch(e) {
       console.error(e);
@@ -81,6 +89,7 @@ export const NexusAdminDashboard = () => {
         setCreatedInfo({ ...data, email: formData.email });
         fetchData();
         setFormData({ company_name: '', owner_name: '', email: '', plan: 'pro' });
+        setIsAddModalOpen(false);
       } else {
         const errData = await res.json();
         alert(`Falha ao criar conta: ${errData.error || 'Erro interno no servidor'}`);
@@ -92,6 +101,56 @@ export const NexusAdminDashboard = () => {
       setCreating(false);
     }
   };
+
+  const handleEditAccount = (acc: any) => {
+    setEditingAccount(acc);
+    setEditAccFormData({
+      company_name: acc.company_name,
+      owner_name: acc.owner_name,
+      email: acc.email,
+      plan: acc.plan,
+      expires_at: acc.expires_at ? acc.expires_at.split('T')[0] : ''
+    });
+    setNewPassword(null);
+  };
+
+  const handleUpdateAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`/api/admin/accounts/${editingAccount.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editAccFormData)
+      });
+      if (res.ok) {
+        setEditingAccount(null);
+        fetchData();
+      } else {
+        alert('Erro ao atualizar conta');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!confirm('Deseja gerar uma nova senha temporária para o proprietário desta conta?')) return;
+    try {
+      const res = await fetch(`/api/admin/accounts/${editingAccount.id}/reset-password`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNewPassword(data.newPassword);
+      } else {
+        alert('Erro ao resetar senha');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // --- User Handlers ---
 
   const handleCreateNexusUser = async () => {
     try {
@@ -113,6 +172,35 @@ export const NexusAdminDashboard = () => {
     }
   };
 
+  const handleEditUser = (user: any) => {
+    setEditingUser(user);
+    setEditUserFormData({
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      status: user.status
+    });
+  };
+
+  const handleUpdateNexusUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`/api/users/${editingUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editUserFormData)
+      });
+      if (res.ok) {
+        setEditingUser(null);
+        fetchData();
+      } else {
+        alert('Erro ao atualizar usuário');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleDeleteNexusUser = async (id: string) => {
     if (id === currentUser?.id) return alert('Você não pode excluir a si mesmo.');
     if (!confirm('Tem certeza que deseja remover este administrador?')) return;
@@ -124,89 +212,9 @@ export const NexusAdminDashboard = () => {
     }
   };
 
-  const handleEditUser = (user: any) => {
-    setEditingUser(user);
-    setEditFormData({
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      const [createdInfo, setCreatedInfo] = useState<any>(null);
+  // --- Settings Handlers ---
 
-      // Edit Account State
-      const [editingAccount, setEditingAccount] = useState<any>(null);
-      const [editAccFormData, setEditAccFormData] = useState({ company_name: '', owner_name: '', email: '', plan: 'pro', expires_at: '' });
-      const [newPassword, setNewPassword] = useState<string | null>(null);
-
-      // Edit User State
-      ...
-      const handleUpdateNexusUser = async (e: React.FormEvent) => {
-        e.preventDefault();
-        try {
-          const res = await fetch(`/api/users/${editingUser.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(editFormData)
-          });
-          if (res.ok) {
-            setEditingUser(null);
-            fetchData();
-          } else {
-            alert('Erro ao atualizar usuário');
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      };
-
-      const handleEditAccount = (acc: any) => {
-        setEditingAccount(acc);
-        setEditAccFormData({
-          company_name: acc.company_name,
-          owner_name: acc.owner_name,
-          email: acc.email,
-          plan: acc.plan,
-          expires_at: acc.expires_at ? acc.expires_at.split('T')[0] : ''
-        });
-        setNewPassword(null);
-      };
-
-      const handleUpdateAccount = async (e: React.FormEvent) => {
-        e.preventDefault();
-        try {
-          const res = await fetch(`/api/admin/accounts/${editingAccount.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(editAccFormData)
-          });
-          if (res.ok) {
-            setEditingAccount(null);
-            fetchData();
-          } else {
-            alert('Erro ao atualizar conta');
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      };
-
-      const handleResetPassword = async () => {
-        if (!confirm('Deseja gerar uma nova senha temporária para o proprietário desta conta?')) return;
-        try {
-          const res = await fetch(`/api/admin/accounts/${editingAccount.id}/reset-password`, {
-            method: 'POST'
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setNewPassword(data.newPassword);
-          } else {
-            alert('Erro ao resetar senha');
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      };
-
-      const handleSaveSettings = async () => {
+  const handleSaveSettings = async () => {
     setSavingSettings(true);
     try {
       const res = await fetch('/api/admin/global-settings', {
@@ -654,7 +662,7 @@ export const NexusAdminDashboard = () => {
         </div>
       )}
 
-      {/* Success Success Modal with Credentials */}
+      {/* Success Modal */}
       {createdInfo && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl border-t-8 border-green-500 text-center">
@@ -679,20 +687,20 @@ export const NexusAdminDashboard = () => {
 
             <button onClick={() => setCreatedInfo(null)} className="w-full py-3 bg-slate-900 rounded-xl text-white font-bold hover:bg-black transition-colors">
               Concluir
-            </form>
-            </div>
-            </div>
-            )}
+            </button>
+          </div>
+        </div>
+      )}
 
-            {/* Edit Account Modal */}
-            {editingAccount && (
-            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-3xl p-8 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh]">
+      {/* Edit Account Modal */}
+      {editingAccount && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh]">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-2xl font-black text-slate-900">Configurar Licença</h3>
               <button onClick={() => setEditingAccount(null)} className="text-slate-400 hover:text-slate-600"><X size={24} /></button>
             </div>
-
+            
             <form onSubmit={handleUpdateAccount} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
@@ -740,7 +748,7 @@ export const NexusAdminDashboard = () => {
                     <Key size={14} /> Gerar Nova Senha
                   </button>
                 </div>
-
+                
                 {newPassword && (
                   <div className="bg-indigo-600 rounded-xl p-4 text-white animate-in zoom-in-95 duration-200">
                     <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Nova Senha Gerada:</p>
@@ -759,12 +767,12 @@ export const NexusAdminDashboard = () => {
                 </button>
               </div>
             </form>
-            </div>
-            </div>
-            )}
+          </div>
+        </div>
+      )}
 
-            {/* Edit User Modal */}
-            {editingUser && (
+      {/* Edit User Modal */}
+      {editingUser && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl">
             <h3 className="text-2xl font-black text-slate-900 mb-2">Editar Administrador</h3>
@@ -773,23 +781,23 @@ export const NexusAdminDashboard = () => {
             <form onSubmit={handleUpdateNexusUser} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1">Nome Completo</label>
-                <input required value={editFormData.name} onChange={e => setEditFormData({...editFormData, name: e.target.value})} type="text" className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+                <input required value={editUserFormData.name} onChange={e => setEditUserFormData({...editUserFormData, name: e.target.value})} type="text" className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1">E-mail de Acesso</label>
-                <input required value={editFormData.email} onChange={e => setEditFormData({...editFormData, email: e.target.value})} type="email" className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+                <input required value={editUserFormData.email} onChange={e => setEditUserFormData({...editUserFormData, email: e.target.value})} type="email" className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1">Cargo</label>
-                  <select value={editFormData.role} onChange={e => setEditFormData({...editFormData, role: e.target.value})} className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500">
+                  <select value={editUserFormData.role} onChange={e => setEditUserFormData({...editUserFormData, role: e.target.value})} className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="NEXUS_ADMIN">Super Admin</option>
                     <option value="ACCOUNT_ADMIN">Account Admin</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1">Status</label>
-                  <select value={editFormData.status} onChange={e => setEditFormData({...editFormData, status: e.target.value})} className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500">
+                  <select value={editUserFormData.status} onChange={e => setEditUserFormData({...editUserFormData, status: e.target.value})} className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="active">Ativo</option>
                     <option value="disabled">Suspenso</option>
                   </select>
