@@ -1346,10 +1346,12 @@ app.post('/admin/accounts', async (c) => {
     const body = await c.req.json();
     const id = `acc_${crypto.randomUUID().slice(0, 8)}`;
     
+    const expires_at = body.expires_at || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+
     await c.env.DB.prepare(`
       INSERT INTO accounts (id, company_name, owner_name, email, status, plan, expires_at, created_at)
       VALUES (?, ?, ?, ?, 'active', ?, ?, datetime('now'))
-    `).bind(id, body.company_name, body.owner_name, body.email, body.plan || 'starter', body.expires_at || null).run();
+    `).bind(id, body.company_name, body.owner_name, body.email, body.plan || 'starter', expires_at).run();
     
     // Auto-create Master User
     const userId = `u_${crypto.randomUUID().slice(0, 8)}`;
