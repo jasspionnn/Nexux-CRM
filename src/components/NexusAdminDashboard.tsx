@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Activity, DollarSign, Settings, LogOut, Search, Bell, Menu, X, Plus, ShieldCheck, Play, Pause, Key, Save, Trash2, Users } from 'lucide-react';
+import { Building2, Activity, DollarSign, Settings, LogOut, Search, Bell, Menu, X, Plus, ShieldCheck, Play, Pause, Key, Save, Trash2, Users, Edit2 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 export const NexusAdminDashboard = () => {
@@ -23,6 +23,10 @@ export const NexusAdminDashboard = () => {
   const [formData, setFormData] = useState({ company_name: '', owner_name: '', email: '', plan: 'pro' });
   const [creating, setCreating] = useState(false);
   const [createdInfo, setCreatedInfo] = useState<any>(null);
+
+  // Edit User State
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [editFormData, setEditFormData] = useState({ name: '', email: '', role: 'NEXUS_ADMIN', status: 'active' });
 
   useEffect(() => {
     fetchData();
@@ -111,9 +115,39 @@ export const NexusAdminDashboard = () => {
 
   const handleDeleteNexusUser = async (id: string) => {
     if (id === currentUser?.id) return alert('Você não pode excluir a si mesmo.');
+    if (!confirm('Tem certeza que deseja remover este administrador?')) return;
     try {
       await fetch(`/api/users/${id}`, { method: 'DELETE' });
       fetchData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleEditUser = (user: any) => {
+    setEditingUser(user);
+    setEditFormData({
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      status: user.status
+    });
+  };
+
+  const handleUpdateNexusUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`/api/users/${editingUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editFormData)
+      });
+      if (res.ok) {
+        setEditingUser(null);
+        fetchData();
+      } else {
+        alert('Erro ao atualizar usuário');
+      }
     } catch (e) {
       console.error(e);
     }
@@ -388,18 +422,69 @@ export const NexusAdminDashboard = () => {
                         </td>
                         <td className="px-6 py-5">
                            <span className="text-xs font-bold text-green-600">{user.status}</span>
-                        </td>
                         <td className="px-6 py-5 text-right">
-                          <button 
-                            onClick={() => handleDeleteNexusUser(user.id)}
-                            className="p-2 text-slate-300 hover:text-red-500 transition-colors"
-                          >
-                            <Trash2 size={18} />
-                          </button>
+                          <div className="flex justify-end gap-2">
+                            <button 
+                              onClick={() => handleEditUser(user)}
+                              className="p-2 text-slate-300 hover:text-blue-500 transition-colors"
+                            >
+                              <Edit2 size={18} />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteNexusUser(user.id)}
+                              className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
                         </td>
-                      </tr>
-                    ))}
-                  </tbody>
+                        ...
+                        {/* Edit User Modal */}
+                        {editingUser && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                        <div className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl">
+                        <h3 className="text-2xl font-black text-slate-900 mb-2">Editar Administrador</h3>
+                        <p className="text-slate-500 font-medium text-sm mb-6">Atualize as informações de acesso do administrador.</p>
+
+                        <form onSubmit={handleUpdateNexusUser} className="space-y-4">
+                        <div>
+                        <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1">Nome Completo</label>
+                        <input required value={editFormData.name} onChange={e => setEditFormData({...editFormData, name: e.target.value})} type="text" className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+                        </div>
+                        <div>
+                        <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1">E-mail de Acesso</label>
+                        <input required value={editFormData.email} onChange={e => setEditFormData({...editFormData, email: e.target.value})} type="email" className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                        <div>
+                        <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1">Cargo</label>
+                        <select value={editFormData.role} onChange={e => setEditFormData({...editFormData, role: e.target.value})} className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="NEXUS_ADMIN">Super Admin</option>
+                        <option value="ACCOUNT_ADMIN">Account Admin</option>
+                        </select>
+                        </div>
+                        <div>
+                        <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1">Status</label>
+                        <select value={editFormData.status} onChange={e => setEditFormData({...editFormData, status: e.target.value})} className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="active">Ativo</option>
+                        <option value="disabled">Suspenso</option>
+                        </select>
+                        </div>
+                        </div>
+
+                        <div className="flex gap-3 pt-4">
+                        <button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-3 bg-white border border-gray-200 rounded-xl text-slate-700 font-bold hover:bg-slate-50 transition-colors">Cancelar</button>
+                        <button type="submit" className="flex-1 py-3 bg-blue-600 rounded-xl text-white font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 active:scale-95">
+                        Salvar Alterações
+                        </button>
+                        </div>
+                        </form>
+                        </div>
+                        </div>
+                        )}
+                        </div>
+                        );
+                        };
                 </table>
               </div>
             </div>
