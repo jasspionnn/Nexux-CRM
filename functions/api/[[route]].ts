@@ -1497,23 +1497,27 @@ app.post('/login', async (c) => {
     }
 
     const user: any = await c.env.DB.prepare(
-      'SELECT id, account_id, name, email, password, role FROM users WHERE email = ? AND status = "active"'
+      'SELECT id, account_id, name, email, password, role, status FROM users WHERE LOWER(email) = ?'
     ).bind(email).first();
 
     if (!user) {
       console.log(`[LOGIN] User not found for email: ${email}`);
-      return c.json({ error: 'Credenciais inválidas' }, 401);
+      return c.json({ error: 'E-mail não cadastrado ou incorreto.' }, 401);
+    }
+
+    if (user.status !== 'active') {
+      return c.json({ error: `Seu usuário está com status: ${user.status}. Entre em contato com o suporte.` }, 403);
     }
 
     if (user.password !== password) {
       console.log(`[LOGIN] Password mismatch for email: ${email}`);
-      return c.json({ error: 'Credenciais inválidas' }, 401);
+      return c.json({ error: 'Senha incorreta.' }, 401);
     }
 
     // Check if account is active
     const account: any = await c.env.DB.prepare('SELECT status FROM accounts WHERE id = ?').bind(user.account_id).first();
     if (account && account.status !== 'active') {
-       return c.json({ error: 'Conta suspensa. Entre em contato com o administrador.' }, 403);
+       return c.json({ error: `A conta da empresa (${user.account_id}) está ${account.status}.` }, 403);
     }
 
     // Don't return the password
