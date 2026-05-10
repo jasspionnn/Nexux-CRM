@@ -1375,6 +1375,43 @@ app.put('/admin/accounts/:id/status', async (c) => {
   return c.json({ success: true, status: body.status });
 });
 
+app.put('/admin/accounts/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    
+    await c.env.DB.prepare(`
+      UPDATE accounts 
+      SET company_name = ?, owner_name = ?, email = ?, plan = ?, expires_at = ?
+      WHERE id = ?
+    `).bind(body.company_name, body.owner_name, body.email, body.plan, body.expires_at || null, id).run();
+
+    // Also update the master user's name/email if it matches the account's old email
+    await c.env.DB.prepare(`
+      UPDATE users SET name = ?, email = ? WHERE account_id = ? AND role = 'ACCOUNT_ADMIN'
+    `).bind(body.owner_name, body.email, id).run();
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+app.post('/admin/accounts/:id/reset-password', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const newPassword = Math.random().toString(36).slice(-8);
+    
+    await c.env.DB.prepare(`
+      UPDATE users SET password = ? WHERE account_id = ? AND role = 'ACCOUNT_ADMIN'
+    `).bind(newPassword, id).run();
+
+    return c.json({ success: true, newPassword });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
 app.get('/global-settings', async (c) => {
   const defaultSettings = {
     login_title: 'O CRM feito para times dinâmicos e modernos.',

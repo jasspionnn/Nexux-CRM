@@ -130,30 +130,83 @@ export const NexusAdminDashboard = () => {
       name: user.name,
       email: user.email,
       role: user.role,
-      status: user.status
-    });
-  };
+      const [createdInfo, setCreatedInfo] = useState<any>(null);
 
-  const handleUpdateNexusUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch(`/api/users/${editingUser.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editFormData)
-      });
-      if (res.ok) {
-        setEditingUser(null);
-        fetchData();
-      } else {
-        alert('Erro ao atualizar usuário');
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
+      // Edit Account State
+      const [editingAccount, setEditingAccount] = useState<any>(null);
+      const [editAccFormData, setEditAccFormData] = useState({ company_name: '', owner_name: '', email: '', plan: 'pro', expires_at: '' });
+      const [newPassword, setNewPassword] = useState<string | null>(null);
 
-  const handleSaveSettings = async () => {
+      // Edit User State
+      ...
+      const handleUpdateNexusUser = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+          const res = await fetch(`/api/users/${editingUser.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(editFormData)
+          });
+          if (res.ok) {
+            setEditingUser(null);
+            fetchData();
+          } else {
+            alert('Erro ao atualizar usuário');
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      const handleEditAccount = (acc: any) => {
+        setEditingAccount(acc);
+        setEditAccFormData({
+          company_name: acc.company_name,
+          owner_name: acc.owner_name,
+          email: acc.email,
+          plan: acc.plan,
+          expires_at: acc.expires_at ? acc.expires_at.split('T')[0] : ''
+        });
+        setNewPassword(null);
+      };
+
+      const handleUpdateAccount = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+          const res = await fetch(`/api/admin/accounts/${editingAccount.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(editAccFormData)
+          });
+          if (res.ok) {
+            setEditingAccount(null);
+            fetchData();
+          } else {
+            alert('Erro ao atualizar conta');
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      const handleResetPassword = async () => {
+        if (!confirm('Deseja gerar uma nova senha temporária para o proprietário desta conta?')) return;
+        try {
+          const res = await fetch(`/api/admin/accounts/${editingAccount.id}/reset-password`, {
+            method: 'POST'
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setNewPassword(data.newPassword);
+          } else {
+            alert('Erro ao resetar senha');
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      const handleSaveSettings = async () => {
     setSavingSettings(true);
     try {
       const res = await fetch('/api/admin/global-settings', {
@@ -352,21 +405,29 @@ export const NexusAdminDashboard = () => {
                             )}
                           </td>
                           <td className="px-6 py-5 text-right font-medium">
-                            {acc.status === 'active' ? (
+                            <div className="flex justify-end gap-2">
                               <button 
-                                onClick={() => handleToggleStatus(acc.id, acc.status)}
-                                className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"
+                                onClick={() => handleEditAccount(acc)}
+                                className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors"
                               >
-                               <Pause size={14} /> Suspender
+                                <Edit2 size={14} /> Editar
                               </button>
-                            ) : (
-                              <button 
-                                onClick={() => handleToggleStatus(acc.id, acc.status)}
-                                className="inline-flex items-center gap-2 text-sm text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors"
-                              >
-                               <Play size={14} /> Reativar
-                              </button>
-                            )}
+                              {acc.status === 'active' ? (
+                                <button 
+                                  onClick={() => handleToggleStatus(acc.id, acc.status)}
+                                  className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"
+                                >
+                                 <Pause size={14} /> Suspender
+                                </button>
+                              ) : (
+                                <button 
+                                  onClick={() => handleToggleStatus(acc.id, acc.status)}
+                                  className="inline-flex items-center gap-2 text-sm text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-colors"
+                                >
+                                 <Play size={14} /> Reativar
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -618,13 +679,92 @@ export const NexusAdminDashboard = () => {
 
             <button onClick={() => setCreatedInfo(null)} className="w-full py-3 bg-slate-900 rounded-xl text-white font-bold hover:bg-black transition-colors">
               Concluir
-            </button>
-          </div>
-        </div>
-      )}
+            </form>
+            </div>
+            </div>
+            )}
 
-      {/* Edit User Modal */}
-      {editingUser && (
+            {/* Edit Account Modal */}
+            {editingAccount && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl p-8 w-full max-w-xl shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-black text-slate-900">Configurar Licença</h3>
+              <button onClick={() => setEditingAccount(null)} className="text-slate-400 hover:text-slate-600"><X size={24} /></button>
+            </div>
+
+            <form onSubmit={handleUpdateAccount} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1">Nome da Empresa</label>
+                  <input required value={editAccFormData.company_name} onChange={e => setEditAccFormData({...editAccFormData, company_name: e.target.value})} type="text" className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1">Proprietário</label>
+                  <input required value={editAccFormData.owner_name} onChange={e => setEditAccFormData({...editAccFormData, owner_name: e.target.value})} type="text" className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1">E-mail de Login (Proprietário)</label>
+                <input required value={editAccFormData.email} onChange={e => setEditAccFormData({...editAccFormData, email: e.target.value})} type="email" className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1">Plano</label>
+                  <select value={editAccFormData.plan} onChange={e => setEditAccFormData({...editAccFormData, plan: e.target.value})} className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="starter">Starter</option>
+                    <option value="pro">Pro</option>
+                    <option value="enterprise">Enterprise</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1">Data de Expiração</label>
+                  <input value={editAccFormData.expires_at} onChange={e => setEditAccFormData({...editAccFormData, expires_at: e.target.value})} type="date" className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
+
+              {/* Password Reset Section */}
+              <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800">Segurança do Acesso</h4>
+                    <p className="text-xs text-slate-500">Gere uma nova senha temporária para o proprietário.</p>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={handleResetPassword}
+                    className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-4 py-2 rounded-xl transition-all active:scale-95 text-xs"
+                  >
+                    <Key size={14} /> Gerar Nova Senha
+                  </button>
+                </div>
+
+                {newPassword && (
+                  <div className="bg-indigo-600 rounded-xl p-4 text-white animate-in zoom-in-95 duration-200">
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Nova Senha Gerada:</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xl font-mono font-bold tracking-wider">{newPassword}</p>
+                      <button type="button" onClick={() => {navigator.clipboard.writeText(newPassword); alert('Copiado!')}} className="p-2 hover:bg-white/10 rounded-lg transition-colors"><Edit2 size={16} /></button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-4 pt-4 border-t border-slate-100">
+                <button type="button" onClick={() => setEditingAccount(null)} className="flex-1 py-3.5 bg-white border border-gray-200 rounded-xl text-slate-700 font-bold hover:bg-slate-50 transition-colors">Cancelar</button>
+                <button type="submit" className="flex-1 py-3.5 bg-blue-600 rounded-xl text-white font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 active:scale-95 flex justify-center items-center gap-2">
+                  <Save size={18} /> Salvar Configurações
+                </button>
+              </div>
+            </form>
+            </div>
+            </div>
+            )}
+
+            {/* Edit User Modal */}
+            {editingUser && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl">
             <h3 className="text-2xl font-black text-slate-900 mb-2">Editar Administrador</h3>
