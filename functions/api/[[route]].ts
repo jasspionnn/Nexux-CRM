@@ -1400,11 +1400,21 @@ app.put('/admin/accounts/:id', async (c) => {
 app.post('/admin/accounts/:id/reset-password', async (c) => {
   try {
     const id = c.req.param('id');
-    const newPassword = Math.random().toString(36).slice(-8);
     
-    await c.env.DB.prepare(`
+    // Generate a secure-looking random password
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let newPassword = '';
+    for (let i = 0; i < 8; i++) {
+      newPassword += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    
+    const result = await c.env.DB.prepare(`
       UPDATE users SET password = ? WHERE account_id = ? AND role = 'ACCOUNT_ADMIN'
     `).bind(newPassword, id).run();
+
+    if (result.meta.changes === 0) {
+      return c.json({ error: 'Nenhum usuário administrador encontrado para esta conta.' }, 404);
+    }
 
     return c.json({ success: true, newPassword });
   } catch (error: any) {
@@ -1478,8 +1488,10 @@ app.post('/public/register', async (c) => {
 
 app.post('/login', async (c) => {
   try {
-    const { email, password } = await c.req.json();
-    
+    const body = await c.req.json();
+    const email = (body.email || '').trim().toLowerCase();
+    const password = body.password || '';
+
     if (!email || !password) {
       return c.json({ error: 'E-mail e senha são obrigatórios' }, 400);
     }
@@ -1488,20 +1500,31 @@ app.post('/login', async (c) => {
       'SELECT id, account_id, name, email, password, role FROM users WHERE email = ? AND status = "active"'
     ).bind(email).first();
 
-    if (!user || user.password !== password) {
+    if (!user) {
+      console.log(`[LOGIN] User not found for email: ${email}`);
       return c.json({ error: 'Credenciais inválidas' }, 401);
+    }
+
+    if (user.password !== password) {
+      console.log(`[LOGIN] Password mismatch for email: ${email}`);
+      return c.json({ error: 'Credenciais inválidas' }, 401);
+    }
+
+    // Check if account is active
+    const account: any = await c.env.DB.prepare('SELECT status FROM accounts WHERE id = ?').bind(user.account_id).first();
+    if (account && account.status !== 'active') {
+       return c.json({ error: 'Conta suspensa. Entre em contato com o administrador.' }, 403);
     }
 
     // Don't return the password
     const { password: _, ...userWithoutPassword } = user;
-    
+
     return c.json(userWithoutPassword);
   } catch (error: any) {
     console.error('Login error:', error);
     return c.json({ error: 'Erro interno no servidor' }, 500);
   }
 });
-
 // ==================== TRACKING ENDPOINTS ====================
 
 function detectFieldName(name: string): string {
