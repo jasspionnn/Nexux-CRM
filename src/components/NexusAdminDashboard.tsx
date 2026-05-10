@@ -78,7 +78,8 @@ export const NexusAdminDashboard = () => {
         fetchData();
         setFormData({ company_name: '', owner_name: '', email: '', plan: 'pro' });
       } else {
-        alert('Falha ao criar conta.');
+        const errData = await res.json();
+        alert(`Falha ao criar conta: ${errData.error || 'Erro interno no servidor'}`);
       }
     } catch (e) {
       console.error(e);
