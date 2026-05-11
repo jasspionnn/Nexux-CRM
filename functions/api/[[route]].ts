@@ -1400,21 +1400,52 @@ app.put('/admin/accounts/:id', async (c) => {
 app.post('/admin/accounts/:id/reset-password', async (c) => {
   try {
     const id = c.req.param('id');
+    console.log(`[RESET] Attempting to reset password for account: ${id}`);
     
-    // Generate a secure-looking random password
+    // Get the account's official email
+    const account: any = await c.env.DB.prepare('SELECT email FROM accounts WHERE id = ?').bind(id).first();
+    if (!account) {
+      console.error(`[RESET] Account ${id} not found`);
+      return c.json({ error: 'Conta não encontrada.' }, 404);
+    }
+
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
     let newPassword = '';
     for (let i = 0; i < 8; i++) {
       newPassword += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     
+    // Reset password for the user matching this account and email
     const result = await c.env.DB.prepare(`
-      UPDATE users SET password = ? WHERE account_id = ? AND role = 'ACCOUNT_ADMIN'
-    `).bind(newPassword, id).run();
+      UPDATE users SET password = ? WHERE account_id = ? AND LOWER(email) = LOWER(?)
+    `).bind(newPassword, id, account.email).run();
 
     if (result.meta.changes === 0) {
-      return c.json({ error: 'Nenhum usuário administrador encontrado para esta conta.' }, 404);
+      console.warn(`[RESET] No user found with email ${account.email} in account ${id}`);
+      return c.json({ error: `Nenhum usuário encontrado com o e-mail (${account.email}) nesta conta.` }, 404);
     }
+
+    console.log(`[RESET] Success for account ${id}, email ${account.email}`);
+    return c.json({ success: true, newPassword });
+  } catch (error: any) {
+    console.error('[RESET] Error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Generic user password reset (for the users tab)
+app.post('/api/admin/users/:id/reset-password', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    let newPassword = '';
+    for (let i = 0; i < 8; i++) {
+      newPassword += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    
+    const result = await c.env.DB.prepare('UPDATE users SET password = ? WHERE id = ?').bind(newPassword, id).run();
+
+    if (result.meta.changes === 0) return c.json({ error: 'Usuário não encontrado.' }, 404);
 
     return c.json({ success: true, newPassword });
   } catch (error: any) {

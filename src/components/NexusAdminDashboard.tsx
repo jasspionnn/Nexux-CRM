@@ -804,6 +804,33 @@ export const NexusAdminDashboard = () => {
                 </div>
               </div>
 
+              {/* Password Reset for Admin */}
+              <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800">Segurança</h4>
+                    <p className="text-xs text-slate-500">Gere uma nova senha para este administrador.</p>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={handleResetUserPassword}
+                    className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-4 py-2 rounded-xl transition-all active:scale-95 text-xs"
+                  >
+                    <Key size={14} /> Resetar Senha
+                  </button>
+                </div>
+                
+                {newUserPassword && (
+                  <div className="bg-indigo-600 rounded-xl p-4 text-white animate-in zoom-in-95 duration-200">
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Nova Senha Gerada:</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xl font-mono font-bold tracking-wider">{newUserPassword}</p>
+                      <button type="button" onClick={() => {navigator.clipboard.writeText(newUserPassword); alert('Copiado!')}} className="p-2 hover:bg-white/10 rounded-lg transition-colors"><Edit2 size={16} /></button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-3 bg-white border border-gray-200 rounded-xl text-slate-700 font-bold hover:bg-slate-50 transition-colors">Cancelar</button>
                 <button type="submit" className="flex-1 py-3 bg-blue-600 rounded-xl text-white font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20 active:scale-95">
