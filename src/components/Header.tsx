@@ -65,7 +65,6 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
     { id: 'kanban', label: 'Negociações', icon: BarChart2 },
     { id: 'leads-db', label: 'Contatos', icon: Inbox },
     { id: 'tasks', label: 'Tarefas', icon: CheckSquare },
-    { id: 'ai-bot', label: 'AIFlux', icon: Sparkles, color: 'text-indigo-600' },
   ];
 
   const handleMarketing = () => {
@@ -112,9 +111,8 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
               onClick={() => onChangeView(item.id)}
               className={'flex items-center gap-2 px-5 h-full border-b-2 transition-colors ' + (currentView === item.id ? 'border-slate-900 text-slate-900 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
             >
-              <item.icon size={18} className={item.color || ''} />
-              <span className={item.color || ''}>{item.label}</span>
-              {item.id === 'ai-bot' && <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 ml-1"></span>}
+              <item.icon size={18} />
+              <span>{item.label}</span>
             </button>
           ))}
           <button
