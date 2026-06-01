@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LayoutGrid, BarChart2, Inbox, CheckSquare, Sparkles, Search, Bell, Settings as SettingsIcon, LogOut, Megaphone, Users, Target, Bot, Eye, Link, Mail, BarChart3, ChevronRight, ChevronDown, Award, SlidersHorizontal } from 'lucide-react';
+import { LayoutGrid, BarChart2, Inbox, CheckSquare, Sparkles, Search, Bell, Settings as SettingsIcon, LogOut, Megaphone, Users, Target, Bot, Eye, Link, Mail, BarChart3, ChevronRight, ChevronDown, Award, SlidersHorizontal, TrendingUp, BookOpen, Flame, Network } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 const MKT_CATEGORIES: Record<string, { sub: string; label: string; icon: React.ElementType }[]> = {
@@ -19,6 +19,12 @@ const MKT_CATEGORIES: Record<string, { sub: string; label: string; icon: React.E
   ],
 };
 
+const PERFORMANCE_ITEMS = [
+  { id: 'mentorias', label: 'Mentorias', icon: BookOpen },
+  { id: 'imersoes', label: 'Imersões', icon: Flame },
+  { id: 'networking', label: 'Networking', icon: Network },
+];
+
 export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) => {
   const { currentUser, logout } = useCRM();
   const [activeSub, setActiveSub] = useState('');
@@ -28,8 +34,9 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
 
   useEffect(() => {
     const h = () => {
-      const m = window.location.hash.match(/#\/marketing\/(\w+)/);
-      const sub = m ? m[1] : '';
+      const mMkt = window.location.hash.match(/#\/marketing\/(\w+)/);
+      const mPerf = window.location.hash.match(/#\/performance\/(\w+)/);
+      const sub = mMkt ? mMkt[1] : mPerf ? mPerf[1] : '';
       setActiveSub(sub);
       if (appMode === 'marketing') {
         const found = Object.entries(MKT_CATEGORIES).find(([, items]) =>
@@ -65,6 +72,11 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
     setAppMode('marketing');
     setMktCategory('atracao');
     window.location.hash = '#/marketing/tracking';
+  };
+
+  const handlePerformance = () => {
+    setAppMode('performance');
+    window.location.hash = '#/performance/mentorias';
   };
 
   const handleSales = () => {
@@ -111,6 +123,39 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
           >
             <Megaphone size={18} className="text-purple-600" />
             <span className="text-purple-600">Marketing</span>
+          </button>
+          <button
+            onClick={handlePerformance}
+            className={'flex items-center gap-2 px-5 h-full border-b-2 transition-colors ' + (appMode === 'performance' ? 'border-emerald-600 text-emerald-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
+          >
+            <TrendingUp size={18} className="text-emerald-600" />
+            <span className="text-emerald-600">+Performance</span>
+          </button>
+        </nav>
+      ) : appMode === 'performance' ? (
+        <nav className="flex h-full flex-1 items-center">
+          {PERFORMANCE_ITEMS.map(item => {
+            const Icon = item.icon;
+            const isActive = activeSub === item.id || (!activeSub && item.id === 'mentorias');
+            return (
+              <button
+                key={item.id}
+                onClick={() => { window.location.hash = '#/performance/' + item.id; }}
+                className={'flex items-center gap-2 px-5 h-full border-b-2 transition-colors ' + (isActive ? 'border-emerald-600 text-emerald-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
+              >
+                <Icon size={16} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+          <div className="w-px h-6 bg-slate-200 mx-2" />
+          <button
+            onClick={handleSales}
+            className="flex items-center gap-2 px-5 h-full border-b-2 border-transparent text-slate-900 hover:text-slate-700 font-semibold transition-colors"
+          >
+            <BarChart3 size={18} />
+            <span>Vendas</span>
+            <ChevronRight size={14} />
           </button>
         </nav>
       ) : (

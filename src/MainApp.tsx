@@ -12,6 +12,7 @@ import { NexusAdminDashboard } from './components/NexusAdminDashboard';
 import { StrategicInsights } from './components/StrategicInsights';
 import { AIBotSettings } from './components/AIBotSettings';
 import { Marketing } from './components/Marketing';
+import { Performance } from './components/Performance';
 import { UserRole } from './types';
 import { Loader2 } from 'lucide-react';
 
@@ -23,8 +24,9 @@ const AppContent = () => {
     return hash ? hash.split('/')[0] : 'kanban';
   });
 
-  const [appMode, setAppMode] = useState<'crm' | 'marketing'>(() => {
+  const [appMode, setAppMode] = useState<'crm' | 'marketing' | 'performance'>(() => {
     const hash = window.location.hash;
+    if (hash.includes('performance')) return 'performance';
     return hash.includes('marketing') ? 'marketing' : 'crm';
   });
 
@@ -41,7 +43,8 @@ const AppContent = () => {
         const parts = hash.split('/');
         setCurrentView(parts[0]);
         setViewData(parts.length > 1 ? parts[1] : null);
-        if (hash.startsWith('marketing')) setAppMode('marketing');
+        if (hash.startsWith('performance')) setAppMode('performance');
+        else if (hash.startsWith('marketing')) setAppMode('marketing');
         else if (!hash.startsWith('admin')) setAppMode('crm');
       } else {
         if (currentUser?.role === UserRole.NEXUS_ADMIN) {
@@ -92,6 +95,7 @@ const AppContent = () => {
         case 'leads-db': return <LeadsDatabase onNavigate={handleNavigate} />;
         case 'tasks': return <TasksView onNavigate={handleNavigate} />;
         case 'marketing': return <Marketing subView={viewData} />;
+        case 'performance': return <Performance subView={viewData} />;
         case 'ai-bot': return <AIBotSettings />;
         case 'settings': return <Settings />;
         case 'lead-detail':

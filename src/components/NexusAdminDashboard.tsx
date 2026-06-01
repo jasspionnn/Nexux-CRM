@@ -813,19 +813,19 @@ export const NexusAdminDashboard = () => {
                   </div>
                   <button 
                     type="button"
-                    onClick={handleResetUserPassword}
+                    onClick={handleResetPassword}
                     className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold px-4 py-2 rounded-xl transition-all active:scale-95 text-xs"
                   >
                     <Key size={14} /> Resetar Senha
                   </button>
                 </div>
-                
-                {newUserPassword && (
+
+                {newPassword && (
                   <div className="bg-indigo-600 rounded-xl p-4 text-white animate-in zoom-in-95 duration-200">
                     <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Nova Senha Gerada:</p>
                     <div className="flex items-center justify-between">
-                      <p className="text-xl font-mono font-bold tracking-wider">{newUserPassword}</p>
-                      <button type="button" onClick={() => {navigator.clipboard.writeText(newUserPassword); alert('Copiado!')}} className="p-2 hover:bg-white/10 rounded-lg transition-colors"><Edit2 size={16} /></button>
+                      <p className="text-xl font-mono font-bold tracking-wider">{newPassword}</p>
+                      <button type="button" onClick={() => {navigator.clipboard.writeText(newPassword); alert('Copiado!')}} className="p-2 hover:bg-white/10 rounded-lg transition-colors"><Edit2 size={16} /></button>
                     </div>
                   </div>
                 )}
