@@ -997,7 +997,9 @@ app.delete('/users/:id', async (c) => {
 
 // Leads
 app.get('/leads', async (c) => {
-  const { results } = await c.env.DB.prepare('SELECT * FROM leads').all();
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json({ error: 'account_id required' }, 400);
+  const { results } = await c.env.DB.prepare('SELECT * FROM leads WHERE account_id = ?').bind(account_id).all();
   return c.json(results);
 });
 
@@ -1117,12 +1119,15 @@ app.get('/leads/:id/tasks', async (c) => {
 
 // Tasks
 app.get('/tasks', async (c) => {
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json({ error: 'account_id required' }, 400);
   const { results } = await c.env.DB.prepare(`
-    SELECT t.*, l.title as lead_title 
-    FROM tasks t 
-    LEFT JOIN leads l ON t.lead_id = l.id 
+    SELECT t.*, l.title as lead_title
+    FROM tasks t
+    INNER JOIN leads l ON t.lead_id = l.id
+    WHERE l.account_id = ?
     ORDER BY t.due_date ASC
-  `).all();
+  `).bind(account_id).all();
   return c.json(results);
 });
 

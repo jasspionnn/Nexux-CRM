@@ -37,11 +37,12 @@ export const Dashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        const aid = currentUser?.account_id || '';
         const [leadsRes, tasksRes, funnelsRes, usersRes] = await Promise.all([
-          fetch('/api/leads'),
-          fetch('/api/tasks'),
-          fetch('/api/funnels'),
-          fetch('/api/users')
+          fetch(`/api/leads?account_id=${aid}`),
+          fetch(`/api/tasks?account_id=${aid}`),
+          fetch(`/api/funnels?account_id=${aid}`),
+          fetch(`/api/users?account_id=${aid}`)
         ]);
         
         const leadsData = await leadsRes.json();

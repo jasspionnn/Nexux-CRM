@@ -64,10 +64,11 @@ export const LeadsDatabase = ({ onNavigate }: any) => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
+      const aid = currentUser?.account_id || '';
       const [leadsRes, funnelsRes, usersRes] = await Promise.all([
-        fetch('/api/leads'),
-        fetch('/api/funnels'),
-        fetch('/api/users')
+        fetch(`/api/leads?account_id=${aid}`),
+        fetch(`/api/funnels?account_id=${aid}`),
+        fetch(`/api/users?account_id=${aid}`)
       ]);
       const leadsData = await leadsRes.json();
       const funnelsData = await funnelsRes.json();

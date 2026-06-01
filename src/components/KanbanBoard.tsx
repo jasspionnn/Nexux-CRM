@@ -88,10 +88,11 @@ export const KanbanBoard = ({ onNavigate }: any) => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
+      const aid = currentUser?.account_id || '';
       const [funnelsRes, leadsRes, usersRes] = await Promise.all([
-        fetch('/api/funnels'),
-        fetch('/api/leads'),
-        fetch('/api/users')
+        fetch(`/api/funnels?account_id=${aid}`),
+        fetch(`/api/leads?account_id=${aid}`),
+        fetch(`/api/users?account_id=${aid}`)
       ]);
       
       const funnelsData = await funnelsRes.json();

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CheckSquare, Plus, Search, Calendar, Briefcase, Loader2, Check, X } from 'lucide-react';
 import { format, isToday, isTomorrow, isThisWeek, isPast, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useCRM } from '../context/CRMContext';
 
 interface Task {
   id: string;
@@ -14,6 +15,7 @@ interface Task {
 }
 
 export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: any) => void }) => {
+  const { currentUser } = useCRM();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState('TUDO');
@@ -29,7 +31,8 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
 
   const fetchTasks = async () => {
     try {
-      const res = await fetch('/api/tasks');
+      const aid = currentUser?.account_id || '';
+      const res = await fetch(`/api/tasks?account_id=${aid}`);
       const data = await res.json();
       setTasks(data);
     } catch (error) {
@@ -41,7 +44,8 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
 
   const fetchLeads = async () => {
     try {
-      const res = await fetch('/api/leads');
+      const aid = currentUser?.account_id || '';
+      const res = await fetch(`/api/leads?account_id=${aid}`);
       const data = await res.json();
       setLeads(data);
     } catch (error) {
