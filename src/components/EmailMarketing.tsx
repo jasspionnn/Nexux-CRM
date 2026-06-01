@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Plus, Trash2, Save, Eye, Send, BarChart3, FileText, Copy, X, ChevronRight, Loader2, Zap, Layout, Code } from 'lucide-react';
+import { Mail, Plus, Trash2, Save, Eye, Send, BarChart3, FileText, Copy, X, ChevronRight, Zap, Users } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 import { EmailBlockEditor } from './EmailBlockEditor';
 
@@ -52,7 +52,6 @@ export const EmailMarketing = () => {
   const [segments, setSegments] = useState<any[]>([]);
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<EmailCampaign | null>(null);
-  const [editorMode, setEditorMode] = useState<'blocks' | 'html'>('blocks');
   const [viewingMetrics, setViewingMetrics] = useState<{ campaign: EmailCampaign; metrics: Metrics } | null>(null);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
@@ -200,48 +199,73 @@ export const EmailMarketing = () => {
 
   if (editingTemplate) {
     const blocks = editingTemplate.blocks || [];
+    const saveTemplate = async () => {
+      if (!editingTemplate.name.trim()) return;
+      setSaving(true);
+      try {
+        const body = JSON.stringify(blocks);
+        const isUpdate = !!editingTemplate.id;
+        const res = await fetch(`/api/email-templates${isUpdate ? `/${editingTemplate.id}` : ''}`, {
+          method: isUpdate ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...editingTemplate, body, account_id: accountId }),
+        });
+        if (res.ok) { setEditingTemplate(null); fetchAll(); }
+        else { const d = await res.json(); alert(`Erro: ${d.error}`); }
+      } catch (e: any) { alert(`Erro: ${e.message}`); }
+      setSaving(false);
+    };
     return (
-      <div className="h-full flex flex-col bg-slate-50">
+      <div className="h-full flex flex-col" style={{ background: '#f0f2f5' }}>
         {/* Editor Header */}
-        <div className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3 flex-1">
-            <button onClick={() => { setEditingTemplate(null); setEditorMode('blocks'); }} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
-            <div className="flex-1">
-              <input type="text" value={editingTemplate.name} onChange={e => setEditingTemplate({ ...editingTemplate, name: e.target.value })} placeholder="Nome do template..." className="text-sm font-bold text-slate-900 border-none focus:outline-none bg-transparent w-full" />
-              <input type="text" value={editingTemplate.subject} onChange={e => setEditingTemplate({ ...editingTemplate, subject: e.target.value })} placeholder="Assunto do email..." className="text-xs text-slate-500 border-none focus:outline-none bg-transparent w-full" />
+        <div className="bg-white border-b border-slate-200 px-5 py-0 flex items-stretch shrink-0 shadow-sm" style={{ minHeight: 56 }}>
+          <button
+            onClick={() => setEditingTemplate(null)}
+            className="flex items-center gap-2 pr-5 mr-5 border-r border-slate-200 text-slate-400 hover:text-slate-700 transition-colors shrink-0 text-xs font-semibold"
+          >
+            <X size={15} />Fechar
+          </button>
+          <div className="flex-1 flex items-center gap-4 py-3 min-w-0">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${editingTemplate.type === 'campaign' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
+                {editingTemplate.type === 'campaign' ? 'Template de Disparo' : 'Template de Automação'}
+              </span>
+            </div>
+            <div className="w-px h-5 bg-slate-200 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <input
+                type="text"
+                value={editingTemplate.name}
+                onChange={e => setEditingTemplate({ ...editingTemplate, name: e.target.value })}
+                placeholder="Nome do template..."
+                className="text-sm font-bold text-slate-900 border-none focus:outline-none bg-transparent w-full placeholder-slate-300"
+              />
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className="text-[10px] text-slate-400 shrink-0">Assunto:</span>
+                <input
+                  type="text"
+                  value={editingTemplate.subject}
+                  onChange={e => setEditingTemplate({ ...editingTemplate, subject: e.target.value })}
+                  placeholder="Assunto do email..."
+                  className="text-xs text-slate-500 border-none focus:outline-none bg-transparent flex-1 placeholder-slate-300"
+                />
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${editingTemplate.type === 'campaign' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>
-              {editingTemplate.type === 'campaign' ? 'Disparo' : 'Automação'}
-            </span>
-            <button onClick={() => setEditorMode(editorMode === 'blocks' ? 'html' : 'blocks')} className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold">
-              {editorMode === 'blocks' ? <><Code size={14} />HTML</> : <><Layout size={14} />Blocos</>}
-            </button>
-            <button onClick={() => {
-              if (!editingTemplate.name.trim()) return;
-              setSaving(true);
-              const body = editorMode === 'html' ? editingTemplate.body : JSON.stringify(blocks);
-              const isUpdate = !!editingTemplate.id;
-              fetch(`/api/email-templates${isUpdate ? `/${editingTemplate.id}` : ''}`, {
-                method: isUpdate ? 'PUT' : 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...editingTemplate, body, account_id: accountId }),
-              }).then(res => res.ok ? (setEditingTemplate(null), fetchAll()) : res.json().then(d => alert(`Erro: ${d.error}`)));
-              setSaving(false);
-            }} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-sm disabled:opacity-50">
-              <Save size={16} />Salvar
+          <div className="flex items-center gap-2 pl-4 border-l border-slate-200 shrink-0">
+            <button
+              onClick={saveTemplate}
+              disabled={saving || !editingTemplate.name.trim()}
+              className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-bold text-sm transition-colors"
+            >
+              <Save size={14} />{saving ? 'Salvando...' : 'Salvar template'}
             </button>
           </div>
         </div>
 
         {/* Editor Body */}
         <div className="flex-1 overflow-hidden">
-          {editorMode === 'blocks' ? (
-            <EmailBlockEditor blocks={blocks} onChange={newBlocks => setEditingTemplate({ ...editingTemplate, blocks: newBlocks })} />
-          ) : (
-            <textarea value={editingTemplate.body} onChange={e => setEditingTemplate({ ...editingTemplate, body: e.target.value })} rows={1} className="w-full h-full p-4 font-mono text-xs focus:outline-none resize-none" placeholder="HTML do email..." />
-          )}
+          <EmailBlockEditor blocks={blocks} onChange={newBlocks => setEditingTemplate({ ...editingTemplate, blocks: newBlocks })} />
         </div>
       </div>
     );
@@ -249,50 +273,81 @@ export const EmailMarketing = () => {
 
   if (editingCampaign) {
     const blocks = editingCampaign.blocks || [];
-    const campaignTemplates = templates.filter(t => t.type === 'campaign');
+    const saveCampaign = async () => {
+      if (!editingCampaign.name.trim()) return;
+      setSaving(true);
+      try {
+        const body = JSON.stringify(blocks);
+        const isUpdate = !!editingCampaign.id;
+        const res = await fetch(`/api/email-campaigns${isUpdate ? `/${editingCampaign.id}` : ''}`, {
+          method: isUpdate ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...editingCampaign, body, account_id: accountId }),
+        });
+        if (res.ok) { setEditingCampaign(null); fetchAll(); }
+        else { const d = await res.json(); alert(`Erro: ${d.error}`); }
+      } catch (e: any) { alert(`Erro: ${e.message}`); }
+      setSaving(false);
+    };
+    const selectedSegment = segments.find(s => s.id === editingCampaign.segment_id);
     return (
-      <div className="h-full flex flex-col bg-slate-50">
+      <div className="h-full flex flex-col" style={{ background: '#f0f2f5' }}>
         {/* Editor Header */}
-        <div className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3 flex-1">
-            <button onClick={() => { setEditingCampaign(null); setEditorMode('blocks'); }} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
-            <div className="flex-1">
-              <input type="text" value={editingCampaign.name} onChange={e => setEditingCampaign({ ...editingCampaign, name: e.target.value })} placeholder="Nome da campanha..." className="text-sm font-bold text-slate-900 border-none focus:outline-none bg-transparent w-full" />
-              <input type="text" value={editingCampaign.subject} onChange={e => setEditingCampaign({ ...editingCampaign, subject: e.target.value })} placeholder="Assunto do email..." className="text-xs text-slate-500 border-none focus:outline-none bg-transparent w-full" />
+        <div className="bg-white border-b border-slate-200 px-5 py-0 flex items-stretch shrink-0 shadow-sm" style={{ minHeight: 56 }}>
+          <button
+            onClick={() => setEditingCampaign(null)}
+            className="flex items-center gap-2 pr-5 mr-5 border-r border-slate-200 text-slate-400 hover:text-slate-700 transition-colors shrink-0 text-xs font-semibold"
+          >
+            <X size={15} />Fechar
+          </button>
+          <div className="flex-1 flex items-center gap-4 py-3 min-w-0">
+            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 shrink-0">Campanha</span>
+            <div className="w-px h-5 bg-slate-200 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <input
+                type="text"
+                value={editingCampaign.name}
+                onChange={e => setEditingCampaign({ ...editingCampaign, name: e.target.value })}
+                placeholder="Nome da campanha..."
+                className="text-sm font-bold text-slate-900 border-none focus:outline-none bg-transparent w-full placeholder-slate-300"
+              />
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className="text-[10px] text-slate-400 shrink-0">Assunto:</span>
+                <input
+                  type="text"
+                  value={editingCampaign.subject}
+                  onChange={e => setEditingCampaign({ ...editingCampaign, subject: e.target.value })}
+                  placeholder="Assunto do email..."
+                  className="text-xs text-slate-500 border-none focus:outline-none bg-transparent flex-1 placeholder-slate-300"
+                />
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <select value={editingCampaign.segment_id} onChange={e => setEditingCampaign({ ...editingCampaign, segment_id: e.target.value })} className="px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none bg-white">
-              <option value="">Selecionar segmento...</option>
-              {segments.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-            <button onClick={() => setEditorMode(editorMode === 'blocks' ? 'html' : 'blocks')} className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold">
-              {editorMode === 'blocks' ? <><Code size={14} />HTML</> : <><Layout size={14} />Blocos</>}
-            </button>
-            <button onClick={() => {
-              if (!editingCampaign.name.trim()) return;
-              setSaving(true);
-              const body = editorMode === 'html' ? editingCampaign.body : JSON.stringify(blocks);
-              const isUpdate = !!editingCampaign.id;
-              fetch(`/api/email-campaigns${isUpdate ? `/${editingCampaign.id}` : ''}`, {
-                method: isUpdate ? 'PUT' : 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...editingCampaign, body, account_id: accountId }),
-              }).then(res => res.ok ? (setEditingCampaign(null), fetchAll()) : res.json().then(d => alert(`Erro: ${d.error}`)));
-              setSaving(false);
-            }} disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-sm disabled:opacity-50">
-              <Save size={16} />Salvar
+          <div className="flex items-center gap-2 pl-4 border-l border-slate-200 shrink-0">
+            <div className="flex items-center gap-1.5">
+              <Users size={13} className="text-slate-400" />
+              <select
+                value={editingCampaign.segment_id}
+                onChange={e => setEditingCampaign({ ...editingCampaign, segment_id: e.target.value })}
+                className="px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-700 font-medium"
+              >
+                <option value="">Selecionar segmento...</option>
+                {segments.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <button
+              onClick={saveCampaign}
+              disabled={saving || !editingCampaign.name.trim()}
+              className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-bold text-sm transition-colors"
+            >
+              <Save size={14} />{saving ? 'Salvando...' : 'Salvar campanha'}
             </button>
           </div>
         </div>
 
         {/* Editor Body */}
         <div className="flex-1 overflow-hidden">
-          {editorMode === 'blocks' ? (
-            <EmailBlockEditor blocks={blocks} onChange={newBlocks => setEditingCampaign({ ...editingCampaign, blocks: newBlocks })} />
-          ) : (
-            <textarea value={editingCampaign.body} onChange={e => setEditingCampaign({ ...editingCampaign, body: e.target.value })} rows={1} className="w-full h-full p-4 font-mono text-xs focus:outline-none resize-none" placeholder="HTML do email..." />
-          )}
+          <EmailBlockEditor blocks={blocks} onChange={newBlocks => setEditingCampaign({ ...editingCampaign, blocks: newBlocks })} />
         </div>
       </div>
     );
