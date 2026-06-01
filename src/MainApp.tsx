@@ -122,8 +122,23 @@ const AppContent = () => {
     }
   };
 
+  const handlePerformanceBanner = () => {
+    setAppMode('performance');
+    window.location.hash = '#/performance/mentorias';
+  };
+
   return (
     <div className={`flex flex-col h-screen bg-slate-50 overflow-hidden`}>
+      {currentUser.role !== UserRole.NEXUS_ADMIN && (
+        <button
+          onClick={handlePerformanceBanner}
+          className="w-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white text-sm font-semibold py-2 px-4 flex items-center justify-center gap-2 transition-all shrink-0"
+        >
+          <span>⚡</span>
+          <span>Tenha +Performance em Marketing &amp; Vendas clicando aqui</span>
+          <span className="ml-1 opacity-75">→</span>
+        </button>
+      )}
       {currentUser.role !== UserRole.NEXUS_ADMIN && <Navbar currentView={currentView} onChangeView={handleNavigate} appMode={appMode} setAppMode={setAppMode} />}
       <main className="flex-1 overflow-y-auto relative">
         {renderView()}

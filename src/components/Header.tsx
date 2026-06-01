@@ -124,13 +124,6 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
             <Megaphone size={18} className="text-purple-600" />
             <span className="text-purple-600">Marketing</span>
           </button>
-          <button
-            onClick={handlePerformance}
-            className={'flex items-center gap-2 px-5 h-full border-b-2 transition-colors ' + (appMode === 'performance' ? 'border-emerald-600 text-emerald-600 font-semibold' : 'border-transparent text-slate-500 hover:text-slate-700 font-medium')}
-          >
-            <TrendingUp size={18} className="text-emerald-600" />
-            <span className="text-emerald-600">+Performance</span>
-          </button>
         </nav>
       ) : appMode === 'performance' ? (
         <nav className="flex h-full flex-1 items-center">
