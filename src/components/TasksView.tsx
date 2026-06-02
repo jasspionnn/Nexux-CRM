@@ -27,6 +27,8 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
   const [showLeadDropdown, setShowLeadDropdown] = useState(false);
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const leadSearchRef = useRef<HTMLDivElement>(null);
+  const leadInputRef = useRef<HTMLInputElement>(null);
+  const [dropdownRect, setDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null);
 
   useEffect(() => {
     fetchTasks();
@@ -324,19 +326,28 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
                     <div className="relative">
                       <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                       <input
+                        ref={leadInputRef}
                         type="text"
                         value={leadSearch}
                         onChange={e => { setLeadSearch(e.target.value); setShowLeadDropdown(true); }}
-                        onFocus={() => setShowLeadDropdown(true)}
+                        onFocus={() => {
+                          setShowLeadDropdown(true);
+                          if (leadInputRef.current) {
+                            const r = leadInputRef.current.getBoundingClientRect();
+                            setDropdownRect({ top: r.bottom + 4, left: r.left, width: r.width });
+                          }
+                        }}
                         placeholder="Buscar cliente pelo nome..."
                         className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                       />
                     </div>
                   )}
 
-                  {/* Dropdown */}
-                  {showLeadDropdown && !selectedLead && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+                  {/* Dropdown — rendered via fixed positioning to break out of modal overflow */}
+                  {showLeadDropdown && !selectedLead && dropdownRect && (
+                    <div
+                      style={{ position: 'fixed', top: dropdownRect.top, left: dropdownRect.left, width: dropdownRect.width, zIndex: 9999 }}
+                      className="bg-white border border-slate-200 rounded-xl shadow-2xl overflow-y-auto max-h-72">
                       {(() => {
                         const filtered = leads.filter(l =>
                           !leadSearch || l.title?.toLowerCase().includes(leadSearch.toLowerCase())
