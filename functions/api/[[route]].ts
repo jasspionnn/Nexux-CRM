@@ -690,6 +690,35 @@ app.get('/migrate-db', async (c) => {
       );
     `).run();
 
+    // Schema migration: remove account_id if present from old version
+    try {
+      const tableInfo = await c.env.DB.prepare('PRAGMA table_info(performance_items)').all();
+      const cols = (tableInfo.results || []) as any[];
+      const hasAccountId = cols.some((col: any) => col.name === 'account_id');
+      if (hasAccountId) {
+        await c.env.DB.prepare(`
+          CREATE TABLE IF NOT EXISTS performance_items_v2 (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            thumb_url TEXT,
+            status TEXT DEFAULT 'active',
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+          )
+        `).run();
+        await c.env.DB.prepare(`
+          INSERT OR IGNORE INTO performance_items_v2 (id, type, name, description, thumb_url, status, created_at, updated_at)
+          SELECT id, type, name, description, thumb_url, status, created_at, updated_at FROM performance_items
+        `).run();
+        await c.env.DB.prepare('DROP TABLE performance_items').run();
+        await c.env.DB.prepare('ALTER TABLE performance_items_v2 RENAME TO performance_items').run();
+      }
+    } catch (migrationErr: any) {
+      console.log('performance_items migration note:', migrationErr.message);
+    }
+
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Migration error:', error);
