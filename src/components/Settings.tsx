@@ -344,7 +344,7 @@ export const Settings = () => {
 
   const openResetPassword = (member: any) => {
     setResetPasswordFor(member);
-    setResetPasswordValue(generatePassword());
+    setResetPasswordValue('');
     setShowResetPassword(false);
   };
 
@@ -1276,28 +1276,41 @@ export const Settings = () => {
             <div className="px-6 py-5 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nova senha</label>
-                <div className="flex gap-2">
-                  <div className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
-                    <Key size={14} className="text-amber-500 shrink-0" />
-                    <input type={showResetPassword ? 'text' : 'password'} value={resetPasswordValue}
-                      onChange={e => setResetPasswordValue(e.target.value)}
-                      className="flex-1 bg-transparent font-mono text-sm font-bold text-amber-800 outline-none" />
-                    <button onClick={() => setShowResetPassword(!showResetPassword)} className="text-amber-500">
-                      {showResetPassword ? <EyeOff size={13} /> : <Eye size={13} />}
-                    </button>
-                    <button onClick={() => navigator.clipboard?.writeText(resetPasswordValue)} className="text-amber-500 hover:text-amber-700"><Copy size={13} /></button>
-                  </div>
-                  <button onClick={() => setResetPasswordValue(generatePassword())}
-                    className="px-3 border border-slate-200 hover:border-slate-300 rounded-xl text-slate-500 hover:text-slate-700" title="Gerar nova">
-                    <RefreshCw size={15} />
+                {!resetPasswordValue ? (
+                  /* Empty state — waiting for user to generate */
+                  <button
+                    onClick={() => setResetPasswordValue(generatePassword())}
+                    className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-amber-300 hover:border-amber-400 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl text-sm font-bold transition-all"
+                  >
+                    <RefreshCw size={15} />Gerar nova senha aleatória
                   </button>
-                </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <div className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                      <Key size={14} className="text-amber-500 shrink-0" />
+                      <input type={showResetPassword ? 'text' : 'password'} value={resetPasswordValue}
+                        onChange={e => setResetPasswordValue(e.target.value)}
+                        className="flex-1 bg-transparent font-mono text-sm font-bold text-amber-800 outline-none" />
+                      <button onClick={() => setShowResetPassword(!showResetPassword)} className="text-amber-500">
+                        {showResetPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                      <button onClick={() => navigator.clipboard?.writeText(resetPasswordValue)} className="text-amber-500 hover:text-amber-700"><Copy size={13} /></button>
+                    </div>
+                    <button onClick={() => setResetPasswordValue(generatePassword())}
+                      className="px-3 border border-slate-200 hover:border-amber-300 hover:bg-amber-50 rounded-xl text-slate-500 hover:text-amber-700 transition-colors" title="Gerar outra">
+                      <RefreshCw size={15} />
+                    </button>
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-400 mt-1.5">
+                  {resetPasswordValue ? 'Copie antes de salvar. A senha não será exibida novamente.' : 'A senha atual permanece ativa até você gerar uma nova.'}
+                </p>
               </div>
             </div>
             <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 justify-end">
               <button onClick={() => setResetPasswordFor(null)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl text-sm font-medium">Cancelar</button>
-              <button onClick={handleSavePassword}
-                className="flex items-center gap-2 px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-sm">
+              <button onClick={handleSavePassword} disabled={!resetPasswordValue}
+                className="flex items-center gap-2 px-5 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded-xl font-bold text-sm transition-colors">
                 <Key size={14} />Salvar Senha
               </button>
             </div>
