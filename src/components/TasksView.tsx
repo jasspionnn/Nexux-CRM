@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { CheckSquare, Plus, Search, Calendar, Briefcase, Loader2, Check, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { CheckSquare, Plus, Search, Calendar, Briefcase, Loader2, Check, X, Phone, Mail, User } from 'lucide-react';
 import { format, isToday, isTomorrow, isThisWeek, isPast, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useCRM } from '../context/CRMContext';
@@ -23,10 +23,24 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', due_date: '', lead_id: '' });
   const [leads, setLeads] = useState<any[]>([]);
+  const [leadSearch, setLeadSearch] = useState('');
+  const [showLeadDropdown, setShowLeadDropdown] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<any>(null);
+  const leadSearchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchTasks();
     fetchLeads();
+  }, []);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (leadSearchRef.current && !leadSearchRef.current.contains(e.target as Node)) {
+        setShowLeadDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
   const fetchTasks = async () => {
@@ -90,6 +104,8 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
       if (res.ok) {
         setIsModalOpen(false);
         setNewTask({ title: '', due_date: '', lead_id: '' });
+        setSelectedLead(null);
+        setLeadSearch('');
         fetchTasks();
       }
     } catch (error) {
@@ -272,23 +288,111 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Negociação Relacionada (Opcional)</label>
-                <select 
-                  value={newTask.lead_id}
-                  onChange={e => setNewTask({...newTask, lead_id: e.target.value})}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                >
-                  <option value="">Selecione uma negociação...</option>
-                  {leads.map(lead => (
-                    <option key={lead.id} value={lead.id}>{lead.title}</option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Cliente Relacionado (Opcional)</label>
+                <div className="relative" ref={leadSearchRef}>
+                  {selectedLead ? (
+                    /* Selected state */
+                    <div className="flex items-center gap-3 px-3 py-2.5 border border-blue-400 bg-blue-50 rounded-lg">
+                      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
+                        <User size={14} className="text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate">{selectedLead.title}</p>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          {selectedLead.contact_phone && (
+                            <span className="flex items-center gap-1 text-xs text-slate-500">
+                              <Phone size={10} />{selectedLead.contact_phone}
+                            </span>
+                          )}
+                          {selectedLead.contact_email && (
+                            <span className="flex items-center gap-1 text-xs text-slate-500">
+                              <Mail size={10} />{selectedLead.contact_email}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedLead(null); setNewTask({ ...newTask, lead_id: '' }); setLeadSearch(''); }}
+                        className="text-slate-400 hover:text-slate-600 shrink-0"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    /* Search input */
+                    <div className="relative">
+                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={leadSearch}
+                        onChange={e => { setLeadSearch(e.target.value); setShowLeadDropdown(true); }}
+                        onFocus={() => setShowLeadDropdown(true)}
+                        placeholder="Buscar cliente pelo nome..."
+                        className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                  )}
+
+                  {/* Dropdown */}
+                  {showLeadDropdown && !selectedLead && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+                      {(() => {
+                        const filtered = leads.filter(l =>
+                          !leadSearch || l.title?.toLowerCase().includes(leadSearch.toLowerCase())
+                        );
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="px-4 py-6 text-center">
+                              <p className="text-sm text-slate-400">Nenhum cliente encontrado</p>
+                            </div>
+                          );
+                        }
+                        return filtered.map(lead => (
+                          <button
+                            key={lead.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedLead(lead);
+                              setNewTask({ ...newTask, lead_id: lead.id });
+                              setShowLeadDropdown(false);
+                              setLeadSearch('');
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100 last:border-0"
+                          >
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 text-white font-bold text-sm">
+                              {(lead.title || '?').charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-slate-900 truncate">{lead.title}</p>
+                              <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                                {lead.contact_phone && (
+                                  <span className="flex items-center gap-1 text-xs text-slate-400">
+                                    <Phone size={10} />{lead.contact_phone}
+                                  </span>
+                                )}
+                                {lead.contact_email && (
+                                  <span className="flex items-center gap-1 text-xs text-slate-400">
+                                    <Mail size={10} />{lead.contact_email}
+                                  </span>
+                                )}
+                                {!lead.contact_phone && !lead.contact_email && (
+                                  <span className="text-xs text-slate-300">Sem contato cadastrado</span>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        ));
+                      })()}
+                    </div>
+                  )}
+                </div>
               </div>
               
               <div className="pt-4 flex justify-end gap-3">
-                <button 
+                <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => { setIsModalOpen(false); setSelectedLead(null); setLeadSearch(''); }}
                   className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors"
                 >
                   Cancelar
