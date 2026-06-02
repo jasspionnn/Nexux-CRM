@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft, ThumbsDown, ThumbsUp, Briefcase, Phone, MessageSquare, Send, Layers,
   Edit2, Check, X, Calendar, Trash2, CheckCircle2, Circle, Plus, Globe, ChevronUp, ChevronDown,
-  Mail, User
+  Mail, User, Clock, RotateCcw
 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
-import { format } from 'date-fns';
+import { format, isPast, isToday, parseISO, addHours, addDays, startOfDay, addWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const EditableField = ({ label, value, onSave, type = "text" }: any) => {
@@ -122,6 +122,11 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [reschedulingTask, setReschedulingTask] = useState<any>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [forwardForm, setForwardForm] = useState({ funnel_id: '', stage_id: '', assigned_user_id: '' });
+  const [forwarding, setForwarding] = useState(false);
   const [funnels, setFunnels] = useState<any[]>([]);
   const [customFields, setCustomFields] = useState<any[]>([]);
 
@@ -316,6 +321,93 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
     await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
   };
 
+  const openReschedule = (task: any) => {
+    const current = task.due_date
+      ? format(new Date(task.due_date), "yyyy-MM-dd'T'HH:mm")
+      : format(addHours(new Date(), 1), "yyyy-MM-dd'T'HH:mm");
+    setRescheduleDate(current);
+    setReschedulingTask(task);
+  };
+
+  const handleReschedule = async (dateStr: string) => {
+    if (!reschedulingTask) return;
+    const isoDate = new Date(dateStr).toISOString();
+    setTasks(prev => prev.map(t => t.id === reschedulingTask.id ? { ...t, due_date: isoDate, completed: 0 } : t));
+    setReschedulingTask(null);
+    await fetch(`/api/tasks/${reschedulingTask.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ due_date: isoDate, completed: 0 }),
+    });
+  };
+
+  const openForwardModal = () => {
+    setForwardForm({
+      funnel_id: lead.funnel_id || '',
+      stage_id: lead.stage_id || '',
+      assigned_user_id: lead.assigned_user_id || '',
+    });
+    setShowForwardModal(true);
+  };
+
+  const handleForward = async () => {
+    setForwarding(true);
+    const selectedFunnel = funnels.find(f => f.id === forwardForm.funnel_id);
+    const updates: Record<string, any> = {};
+    if (forwardForm.funnel_id && forwardForm.funnel_id !== lead.funnel_id) {
+      updates.funnel_id = forwardForm.funnel_id;
+      updates.stage_id = forwardForm.stage_id || selectedFunnel?.stages?.[0]?.id || '';
+    }
+    if (forwardForm.stage_id && forwardForm.stage_id !== lead.stage_id) {
+      updates.stage_id = forwardForm.stage_id;
+    }
+    if (forwardForm.assigned_user_id !== lead.assigned_user_id) {
+      updates.assigned_user_id = forwardForm.assigned_user_id || null;
+    }
+    if (Object.keys(updates).length > 0) {
+      await updateLead(updates);
+      // Refresh funnel info
+      const funnelsRes = await fetch(`/api/funnels?account_id=${currentUser?.account_id || ''}`);
+      if (funnelsRes.ok) {
+        const funnelsData = await funnelsRes.json();
+        const newFunnel = funnelsData.find((f: any) => f.id === (updates.funnel_id || lead.funnel_id));
+        setFunnel(newFunnel);
+        setFunnels(funnelsData);
+      }
+      // Add a note about the forwarding
+      const user = users.find(u => u.id === forwardForm.assigned_user_id);
+      const fromFunnel = funnels.find(f => f.id === lead.funnel_id);
+      const toFunnel = funnels.find(f => f.id === forwardForm.funnel_id);
+      let noteContent = '🔀 Lead encaminhado:';
+      if (updates.funnel_id) noteContent += ` Funil alterado de "${fromFunnel?.name || '—'}" para "${toFunnel?.name || '—'}".`;
+      if (updates.stage_id && !updates.funnel_id) {
+        const stage = selectedFunnel?.stages?.find((s: any) => s.id === updates.stage_id);
+        noteContent += ` Movido para etapa "${stage?.name || '—'}".`;
+      }
+      if (updates.assigned_user_id !== undefined) {
+        noteContent += user ? ` Responsável: ${user.name}.` : ' Responsável removido.';
+      }
+      await fetch(`/api/leads/${leadId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: noteContent, author_name: currentUser?.name || 'Sistema' }),
+      });
+      fetchData();
+    }
+    setShowForwardModal(false);
+    setForwarding(false);
+  };
+
+  const quickRescheduleOptions = () => {
+    const now = new Date();
+    return [
+      { label: 'Hoje — tarde', icon: '☀️', date: format(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 0), "yyyy-MM-dd'T'HH:mm") },
+      { label: 'Amanhã — manhã', icon: '🌅', date: format(new Date(addDays(startOfDay(now), 1).getTime() + 9 * 3600000), "yyyy-MM-dd'T'HH:mm") },
+      { label: 'Próxima semana', icon: '📅', date: format(new Date(addWeeks(startOfDay(now), 1).getTime() + 9 * 3600000), "yyyy-MM-dd'T'HH:mm") },
+      { label: 'Em 1 hora', icon: '⏰', date: format(addHours(now, 1), "yyyy-MM-dd'T'HH:mm") },
+    ];
+  };
+
   if (isLoading) {
     return <div className="flex items-center justify-center h-full bg-white"><div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>;
   }
@@ -415,7 +507,10 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
       <div className="flex flex-1">
         {/* Left Sidebar - No independent scroll */}
         <div className="w-80 bg-slate-50 border-r border-gray-200 p-6 shrink-0 flex flex-col gap-8">
-          <button className="w-full flex items-center justify-center gap-2 py-3.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors shadow-sm">
+          <button
+            onClick={openForwardModal}
+            className="w-full flex items-center justify-center gap-2 py-3.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors shadow-sm"
+          >
             <Layers size={18} />
             ENCAMINHAR LEAD
           </button>
@@ -747,48 +842,78 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                       </button>
                     </div>
                   ) : (
-                    tasks.map(task => (
-                      <div
-                        key={task.id}
-                        className={`group flex items-center justify-between p-4 rounded-2xl border transition-all ${
-                          task.completed
-                            ? 'bg-slate-50 border-slate-100 opacity-60'
-                            : 'bg-white border-slate-200 hover:border-indigo-200 hover:shadow-lg shadow-slate-200/40'
-                        }`}
-                      >
-                        <div className="flex items-center gap-4 flex-1">
-                          <button
-                            onClick={() => handleToggleTask(task)}
-                            className={`p-1 rounded-lg transition-colors ${
-                              task.completed ? 'text-green-500' : 'text-slate-300 hover:text-indigo-500'
-                            }`}
-                          >
-                            {task.completed ? <CheckCircle2 size={24} /> : <Circle size={24} />}
-                          </button>
+                    tasks.map(task => {
+                      const isOverdue = task.due_date && !task.completed && isPast(new Date(task.due_date)) && !isToday(new Date(task.due_date));
+                      const isToday_ = task.due_date && isToday(new Date(task.due_date));
+                      return (
+                        <div
+                          key={task.id}
+                          className={`rounded-2xl border transition-all ${
+                            task.completed
+                              ? 'bg-slate-50 border-slate-100 opacity-60'
+                              : isOverdue
+                              ? 'bg-white border-red-200 shadow-sm'
+                              : 'bg-white border-slate-200 hover:border-indigo-200 hover:shadow-md'
+                          }`}
+                        >
+                          {/* Main content */}
+                          <div className="flex items-center gap-3 p-4">
+                            <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                              task.completed ? 'bg-green-400' : isOverdue ? 'bg-red-400' : isToday_ ? 'bg-amber-400' : 'bg-slate-300'
+                            }`} />
+                            <div className="flex-1 min-w-0">
+                              <h4 className={`font-bold text-sm ${task.completed ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+                                {task.title}
+                              </h4>
+                              {task.due_date && (
+                                <div className={`flex items-center gap-1.5 mt-1 text-xs font-medium ${
+                                  task.completed ? 'text-slate-300' : isOverdue ? 'text-red-500' : isToday_ ? 'text-amber-600' : 'text-slate-400'
+                                }`}>
+                                  <Calendar size={11} />
+                                  {format(new Date(task.due_date), "dd MMM 'às' HH:mm", { locale: ptBR })}
+                                  {isOverdue && <span className="ml-1 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">ATRASADA</span>}
+                                  {isToday_ && !task.completed && <span className="ml-1 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold">HOJE</span>}
+                                </div>
+                              )}
+                            </div>
+                            {/* Delete */}
+                            <button
+                              onClick={() => handleDeleteTask(task.id)}
+                              className="p-1.5 text-slate-200 hover:text-red-400 hover:bg-red-50 rounded-lg transition-all shrink-0"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
 
-                          <div className="min-w-0 flex-1">
-                            <h4 className={`font-bold text-sm truncate ${task.completed ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
-                              {task.title}
-                            </h4>
-                            {task.due_date && (
-                              <div className={`flex items-center gap-2 mt-1 text-[11px] font-bold uppercase tracking-wider ${
-                                task.completed ? 'text-slate-300' : 'text-slate-400 text-indigo-500'
-                              }`}>
-                                <Calendar size={12} />
-                                {format(new Date(task.due_date), "dd MMM HH:mm", { locale: ptBR })}
-                              </div>
+                          {/* Action buttons */}
+                          <div className="px-4 pb-3 flex items-center gap-2 border-t border-slate-100 pt-3">
+                            {task.completed ? (
+                              <button
+                                onClick={() => handleToggleTask(task)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 rounded-lg text-xs font-semibold transition-all"
+                              >
+                                <RotateCcw size={12} />Reabrir
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => openReschedule(task)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 text-slate-600 rounded-lg text-xs font-semibold transition-all"
+                                >
+                                  <Clock size={12} />Reagendar
+                                </button>
+                                <button
+                                  onClick={() => handleToggleTask(task)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold transition-colors"
+                                >
+                                  <CheckCircle2 size={12} />Concluir
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
-
-                        <button
-                          onClick={() => handleDeleteTask(task.id)}
-                          className="p-2 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all rounded-xl hover:bg-red-50"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -929,6 +1054,131 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
           </div>
         </div>
       </div>
+
+      {/* ── Forward Lead Modal ── */}
+      {showForwardModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">
+                  <Layers size={18} className="text-indigo-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Encaminhar Lead</h2>
+                  <p className="text-xs text-slate-400">Mover para funil, etapa ou responsável diferente</p>
+                </div>
+              </div>
+              <button onClick={() => setShowForwardModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              {/* Funnel */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Funil de Destino</label>
+                <select value={forwardForm.funnel_id}
+                  onChange={e => {
+                    const f = funnels.find(fn => fn.id === e.target.value);
+                    setForwardForm({ ...forwardForm, funnel_id: e.target.value, stage_id: f?.stages?.[0]?.id || '' });
+                  }}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                  {funnels.map(f => (
+                    <option key={f.id} value={f.id}>
+                      {f.id === lead.funnel_id ? `${f.name} (atual)` : f.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Stage */}
+              {forwardForm.funnel_id && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Etapa</label>
+                  <select value={forwardForm.stage_id}
+                    onChange={e => setForwardForm({ ...forwardForm, stage_id: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                    {(funnels.find(f => f.id === forwardForm.funnel_id)?.stages || []).map((s: any) => (
+                      <option key={s.id} value={s.id}>
+                        {s.id === lead.stage_id && forwardForm.funnel_id === lead.funnel_id ? `${s.name} (atual)` : s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Responsible */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Responsável</label>
+                <select value={forwardForm.assigned_user_id}
+                  onChange={e => setForwardForm({ ...forwardForm, assigned_user_id: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                  <option value="">Sem responsável</option>
+                  {users.map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.id === lead.assigned_user_id ? `${u.name} (atual)` : u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <p className="text-xs text-slate-400 bg-slate-50 px-3 py-2 rounded-lg">
+                Uma anotação automática será registrada sobre o encaminhamento.
+              </p>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 justify-end">
+              <button onClick={() => setShowForwardModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl font-medium text-sm transition-colors">Cancelar</button>
+              <button onClick={handleForward} disabled={forwarding}
+                className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition-colors">
+                {forwarding ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Layers size={15} />}
+                Encaminhar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reschedule Task Modal ── */}
+      {reschedulingTask && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-indigo-100 rounded-xl flex items-center justify-center">
+                  <Clock size={16} className="text-indigo-600" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">Reagendar tarefa</h2>
+                  <p className="text-xs text-slate-400 truncate max-w-[220px]">{reschedulingTask.title}</p>
+                </div>
+              </div>
+              <button onClick={() => setReschedulingTask(null)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Opções rápidas</p>
+              <div className="grid grid-cols-2 gap-2">
+                {quickRescheduleOptions().map(opt => (
+                  <button key={opt.label} onClick={() => handleReschedule(opt.date)}
+                    className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 rounded-xl text-xs font-semibold text-slate-700 hover:text-indigo-700 transition-all text-left">
+                    <span className="text-base leading-none">{opt.icon}</span>
+                    <span>{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="pt-1">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Escolher data e hora</p>
+                <input type="datetime-local" value={rescheduleDate} onChange={e => setRescheduleDate(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none" />
+              </div>
+            </div>
+            <div className="px-5 py-4 bg-slate-50 border-t border-slate-100 flex gap-2 justify-end">
+              <button onClick={() => setReschedulingTask(null)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl text-sm font-medium transition-colors">Cancelar</button>
+              <button onClick={() => handleReschedule(rescheduleDate)} disabled={!rescheduleDate}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold transition-colors">
+                <Clock size={14} />Reagendar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Edit Contact Modal ── */}
       {showEditContact && (
