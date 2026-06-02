@@ -696,6 +696,16 @@ app.get('/migrate-db', async (c) => {
       await c.env.DB.prepare(`ALTER TABLE performance_items ADD COLUMN cta_url TEXT`).run();
     } catch (_) { /* column already exists */ }
 
+    // Add permissions column to teams (idempotent)
+    try {
+      await c.env.DB.prepare(`ALTER TABLE teams ADD COLUMN permissions TEXT DEFAULT '{}'`).run();
+    } catch (_) { /* column already exists */ }
+
+    // Add team_id to users if missing (idempotent)
+    try {
+      await c.env.DB.prepare(`ALTER TABLE users ADD COLUMN team_id TEXT`).run();
+    } catch (_) { /* column already exists */ }
+
     // Schema migration: remove account_id if present from old version
     try {
       const tableInfo = await c.env.DB.prepare('PRAGMA table_info(performance_items)').all();
@@ -1073,12 +1083,30 @@ app.post('/users', async (c) => {
 app.put('/users/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  
-  await c.env.DB.prepare('UPDATE users SET name = ?, email = ?, role = ?, status = ? WHERE id = ?')
-    .bind(body.name, body.email, body.role, body.status, id)
-    .run();
-    
+
+  if (body.password) {
+    await c.env.DB.prepare('UPDATE users SET name = ?, email = ?, role = ?, status = ?, team_id = ?, password = ? WHERE id = ?')
+      .bind(body.name, body.email, body.role, body.status, body.team_id || null, body.password, id)
+      .run();
+  } else {
+    await c.env.DB.prepare('UPDATE users SET name = ?, email = ?, role = ?, status = ?, team_id = ? WHERE id = ?')
+      .bind(body.name, body.email, body.role, body.status, body.team_id || null, id)
+      .run();
+  }
+
   return c.json({ success: true });
+});
+
+app.put('/users/:id/password', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    if (!body.password) return c.json({ error: 'password required' }, 400);
+    await c.env.DB.prepare('UPDATE users SET password = ? WHERE id = ?').bind(body.password, id).run();
+    return c.json({ success: true });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
 });
 
 app.delete('/users/:id', async (c) => {
@@ -1327,8 +1355,8 @@ app.post('/teams', async (c) => {
 app.put('/teams/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  await c.env.DB.prepare('UPDATE teams SET name = ?, goal = ? WHERE id = ?')
-    .bind(body.name, body.goal, id).run();
+  await c.env.DB.prepare('UPDATE teams SET name = ?, goal = ?, permissions = ? WHERE id = ?')
+    .bind(body.name, body.goal || 0, body.permissions ? JSON.stringify(body.permissions) : '{}', id).run();
   return c.json({ success: true });
 });
 

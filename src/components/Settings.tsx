@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Layers, SlidersHorizontal, Zap, Shield, CreditCard, Plus, ChevronRight, Trash2, GripVertical, 
-  Check, X, Edit2, Copy, ExternalLink, Info, Hash, Type, Calendar, List, Users, User, 
-  MoreVertical, ShieldCheck, Activity, ChevronDown, ChevronUp 
+import {
+  Layers, SlidersHorizontal, Zap, Shield, CreditCard, Plus, ChevronRight, Trash2, GripVertical,
+  Check, X, Edit2, Copy, ExternalLink, Info, Hash, Type, Calendar, List, Users, User,
+  MoreVertical, ShieldCheck, Activity, ChevronDown, ChevronUp, Key, RefreshCw, Eye, EyeOff
 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 import { UserRole } from '../types';
@@ -31,6 +31,37 @@ export const Settings = () => {
 
   // State for Teams
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
+
+  // New member modal
+  const [showNewMemberModal, setShowNewMemberModal] = useState(false);
+  const [newMemberForm, setNewMemberForm] = useState({ name: '', email: '', role: UserRole.USER, password: '' });
+  const [creatingMember, setCreatingMember] = useState(false);
+  const [createdMember, setCreatedMember] = useState<any>(null);
+
+  // Password reset modal
+  const [resetPasswordFor, setResetPasswordFor] = useState<any>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [showResetPassword, setShowResetPassword] = useState(false);
+
+  // New team modal
+  const [showNewTeamModal, setShowNewTeamModal] = useState(false);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [editingTeam, setEditingTeam] = useState<any>(null);
+
+  const generatePassword = () => {
+    const upper = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+    const lower = 'abcdefghjkmnpqrstuvwxyz';
+    const digits = '23456789';
+    const special = '@#!';
+    const all = upper + lower + digits + special;
+    let pwd = upper[Math.floor(Math.random() * upper.length)]
+      + lower[Math.floor(Math.random() * lower.length)]
+      + digits[Math.floor(Math.random() * digits.length)]
+      + special[Math.floor(Math.random() * special.length)];
+    for (let i = 0; i < 8; i++) pwd += all[Math.floor(Math.random() * all.length)];
+    return pwd.split('').sort(() => Math.random() - 0.5).join('');
+  };
 
   useEffect(() => {
     fetchData();
@@ -39,11 +70,12 @@ export const Settings = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [funnelsRes, fieldsRes, webhooksRes, usersRes] = await Promise.all([
+      const [funnelsRes, fieldsRes, webhooksRes, usersRes, teamsRes] = await Promise.all([
         fetch(`/api/funnels?account_id=${aid}`),
         fetch(`/api/custom-fields?account_id=${aid}`),
         fetch(`/api/webhooks?account_id=${aid}`),
-        fetch(`/api/users?account_id=${aid}`)
+        fetch(`/api/users?account_id=${aid}`),
+        fetch(`/api/teams?account_id=${aid}`)
       ]);
 
       const funnelsData = await funnelsRes.json();
@@ -52,7 +84,13 @@ export const Settings = () => {
 
       setCustomFields(await fieldsRes.json());
       setWebhooks(await webhooksRes.json());
-      setTeamMembers(await usersRes.json());
+      const usersData = await usersRes.json();
+      setTeamMembers(Array.isArray(usersData) ? usersData : []);
+      const teamsData = await teamsRes.json();
+      setTeams(Array.isArray(teamsData) ? teamsData.map((t: any) => ({
+        ...t,
+        permissions: t.permissions ? (typeof t.permissions === 'string' ? JSON.parse(t.permissions) : t.permissions) : {}
+      })) : []);
     } catch (error) {
       console.error('Failed to fetch settings data:', error);
     } finally {
@@ -263,30 +301,29 @@ export const Settings = () => {
     }
   };
 
-  // --- Team Handlers ---
-  const handleAddTeamMember = async () => {
+  // --- Team Member Handlers ---
+
+  const openNewMember = () => {
+    setNewMemberForm({ name: '', email: '', role: UserRole.USER, password: generatePassword() });
+    setCreatedMember(null);
+    setShowNewMemberModal(true);
+  };
+
+  const handleCreateMember = async () => {
+    if (!newMemberForm.name || !newMemberForm.email || !newMemberForm.password) return;
+    setCreatingMember(true);
     try {
-      const res = await fetch('/api/users', {
+      const res = await fetch(`/api/users?account_id=${aid}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: 'Novo Usuário', 
-          email: `novo_${Date.now()}@email.com`, 
-          role: UserRole.USER, 
-          status: 'Pendente',
-          account_id: aid 
-        })
+        body: JSON.stringify({ ...newMemberForm, status: 'active', account_id: aid }),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to create user');
-      }
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
       const newUser = await res.json();
       setTeamMembers(prev => [...prev, newUser]);
-    } catch (error: any) {
-      console.error('Error adding team member:', error);
-      alert(`Erro ao adicionar usuário: ${error.message}`);
-    }
+      setCreatedMember({ ...newUser, password: newMemberForm.password, email: newMemberForm.email });
+    } catch (err: any) { alert(`Erro: ${err.message}`); }
+    setCreatingMember(false);
   };
 
   const handleUpdateTeamMember = async (id: string, updates: any) => {
@@ -295,13 +332,75 @@ export const Settings = () => {
     await fetch(`/api/users/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...member, ...updates })
+      body: JSON.stringify({ ...member, ...updates }),
     });
   };
 
   const handleDeleteTeamMember = async (id: string) => {
+    if (!confirm('Remover este membro?')) return;
     await fetch(`/api/users/${id}`, { method: 'DELETE' });
     setTeamMembers(teamMembers.filter(m => m.id !== id));
+  };
+
+  const openResetPassword = (member: any) => {
+    setResetPasswordFor(member);
+    setResetPasswordValue(generatePassword());
+    setShowResetPassword(false);
+  };
+
+  const handleSavePassword = async () => {
+    if (!resetPasswordFor || !resetPasswordValue) return;
+    await fetch(`/api/users/${resetPasswordFor.id}/password`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: resetPasswordValue }),
+    });
+    setResetPasswordFor(null);
+  };
+
+  // --- Team Handlers ---
+
+  const handleCreateTeam = async () => {
+    if (!newTeamName.trim()) return;
+    const res = await fetch(`/api/teams?account_id=${aid}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newTeamName, account_id: aid }),
+    });
+    if (res.ok) {
+      const t = await res.json();
+      setTeams(prev => [...prev, { ...t, permissions: {} }]);
+      setNewTeamName('');
+      setShowNewTeamModal(false);
+    }
+  };
+
+  const handleUpdateTeamPermissions = async (teamId: string, permissions: Record<string, boolean>) => {
+    setTeams(teams.map(t => t.id === teamId ? { ...t, permissions } : t));
+    const team = teams.find(t => t.id === teamId);
+    await fetch(`/api/teams/${teamId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...team, permissions }),
+    });
+  };
+
+  const handleUpdateTeamName = async (teamId: string, name: string) => {
+    setTeams(teams.map(t => t.id === teamId ? { ...t, name } : t));
+    const team = teams.find(t => t.id === teamId);
+    await fetch(`/api/teams/${teamId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...team, name }),
+    });
+  };
+
+  const handleDeleteTeam = async (teamId: string) => {
+    if (!confirm('Excluir esta equipe?')) return;
+    await fetch(`/api/teams/${teamId}`, { method: 'DELETE' });
+    setTeams(teams.filter(t => t.id !== teamId));
+    // Remove team_id from members of this team
+    teamMembers.filter(m => m.team_id === teamId).forEach(m => handleUpdateTeamMember(m.id, { team_id: '' }));
   };
 
   // --- Renderers ---
@@ -808,135 +907,186 @@ export const Settings = () => {
     </div>
   );
 
+  const MODULE_PERMISSIONS = [
+    { key: 'crm',         label: 'Negociações / CRM',  icon: '📊' },
+    { key: 'contacts',    label: 'Contatos',            icon: '👥' },
+    { key: 'tasks',       label: 'Tarefas',             icon: '✅' },
+    { key: 'marketing',   label: 'Marketing',           icon: '📣' },
+    { key: 'performance', label: '+Performance',        icon: '⚡' },
+    { key: 'settings',    label: 'Configurações',       icon: '⚙️' },
+  ];
+
   const renderEquipesTab = () => (
     <div className="p-8 flex-1 overflow-y-auto bg-slate-50/50">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="text-3xl font-black text-slate-900 tracking-tight">Equipe e Acessos</h2>
-            <p className="text-slate-500 text-sm mt-1">Gerencie quem tem acesso à sua conta e quais as permissões.</p>
+      <div className="max-w-5xl mx-auto space-y-10">
+
+        {/* ── MEMBROS ── */}
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">Membros da Equipe</h2>
+              <p className="text-slate-500 text-sm mt-0.5">Gerencie quem tem acesso e defina as senhas dos vendedores.</p>
+            </div>
+            <button onClick={openNewMember}
+              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">
+              <Plus size={16} />Novo Membro
+            </button>
           </div>
-          <button 
-            onClick={handleAddTeamMember}
-            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:-translate-y-0.5 active:translate-y-0"
-          >
-            <Plus size={18} />
-            Convidar Membro
-          </button>
+
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            {teamMembers.length === 0 ? (
+              <div className="p-12 text-center text-slate-400">Nenhum membro cadastrado.</div>
+            ) : (
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="px-6 py-3.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Membro</th>
+                    <th className="px-6 py-3.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Equipe</th>
+                    <th className="px-6 py-3.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nível</th>
+                    <th className="px-6 py-3.5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                    <th className="px-6 py-3.5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {teamMembers.map((member, idx) => {
+                    const colors = ['bg-indigo-500', 'bg-blue-500', 'bg-purple-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500'];
+                    const color = colors[idx % colors.length];
+                    const initials = (member.name || '?').split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+                    const memberTeam = teams.find(t => t.id === member.team_id);
+                    return (
+                      <tr key={member.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-full ${color} flex items-center justify-center text-white font-black text-sm shrink-0`}>{initials}</div>
+                            <div className="min-w-0">
+                              <input type="text" value={member.name}
+                                onChange={e => handleUpdateTeamMember(member.id, { name: e.target.value })}
+                                className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full font-bold text-slate-900 text-sm" />
+                              <input type="text" value={member.email}
+                                onChange={e => handleUpdateTeamMember(member.id, { email: e.target.value })}
+                                className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full text-xs text-slate-400" />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <select value={member.team_id || ''}
+                            onChange={e => handleUpdateTeamMember(member.id, { team_id: e.target.value })}
+                            className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <option value="">Sem equipe</option>
+                            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-6 py-4">
+                          <select value={member.role}
+                            onChange={e => handleUpdateTeamMember(member.id, { role: e.target.value })}
+                            className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <option value={UserRole.ACCOUNT_ADMIN}>Admin</option>
+                            <option value={UserRole.MANAGER}>Gerente</option>
+                            <option value={UserRole.USER}>Vendedor</option>
+                          </select>
+                        </td>
+                        <td className="px-6 py-4">
+                          <select value={member.status}
+                            onChange={e => handleUpdateTeamMember(member.id, { status: e.target.value })}
+                            className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <option value="active">Ativo</option>
+                            <option value="inactive">Inativo</option>
+                          </select>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => openResetPassword(member)} title="Redefinir senha"
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-[11px] font-bold transition-colors">
+                              <Key size={12} />Senha
+                            </button>
+                            <button onClick={() => handleDeleteTeamMember(member.id)}
+                              className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-200/50 overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200">
-                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Identificação do Membro</th>
-                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nível de Acesso</th>
-                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado Atual</th>
-                <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {teamMembers.map((member, idx) => {
-                const colors = ['bg-indigo-500', 'bg-blue-500', 'bg-purple-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500'];
-                const color = colors[idx % colors.length];
-                const initials = member.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
-                
+        {/* ── EQUIPES ── */}
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">Equipes</h2>
+              <p className="text-slate-500 text-sm mt-0.5">Crie grupos e defina quais módulos cada equipe pode acessar.</p>
+            </div>
+            <button onClick={() => setShowNewTeamModal(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-sm hover:bg-black transition-all">
+              <Plus size={16} />Nova Equipe
+            </button>
+          </div>
+
+          {teams.length === 0 ? (
+            <div className="bg-white border border-dashed border-slate-200 rounded-2xl p-12 text-center text-slate-400">
+              <Users size={36} className="mx-auto mb-3 text-slate-200" />
+              <p className="font-semibold">Nenhuma equipe criada</p>
+              <p className="text-sm mt-1">Crie equipes para agrupar vendedores e definir seus acessos.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {teams.map(team => {
+                const members = teamMembers.filter(m => m.team_id === team.id);
                 return (
-                  <tr key={member.id} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-full ${color} flex items-center justify-center text-white font-black text-sm shadow-inner`}>
-                          {initials}
+                  <div key={team.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center shrink-0">
+                          <Users size={16} className="text-indigo-600" />
                         </div>
-                        <div className="flex-1 space-y-0.5">
-                          <input 
-                            type="text" 
-                            value={member.name}
-                            onChange={(e) => handleUpdateTeamMember(member.id, { name: e.target.value })}
-                            className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full font-bold text-slate-900"
-                            placeholder="Nome Completo"
-                          />
-                          <input 
-                            type="text" 
-                            value={member.email}
-                            onChange={(e) => handleUpdateTeamMember(member.id, { email: e.target.value })}
-                            className="bg-transparent border-none p-0 focus:ring-0 outline-none w-full text-xs font-medium text-slate-400 hover:text-indigo-600 transition-colors"
-                            placeholder="email@empresa.com"
-                          />
+                        <div className="flex-1">
+                          <input type="text" value={team.name}
+                            onChange={e => handleUpdateTeamName(team.id, e.target.value)}
+                            className="text-base font-bold text-slate-900 bg-transparent border-none outline-none focus:ring-0 w-full" />
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {members.length === 0 ? 'Sem membros' : `${members.length} membro${members.length !== 1 ? 's' : ''}: ${members.slice(0, 3).map(m => m.name.split(' ')[0]).join(', ')}${members.length > 3 ? '...' : ''}`}
+                          </p>
                         </div>
                       </div>
-                    </td>
-                    <td className="px-8 py-6">
-                       <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center gap-2">
-                          <Shield size={12} className={
-                            member.role === UserRole.NEXUS_ADMIN ? 'text-red-600' :
-                            member.role === UserRole.ACCOUNT_ADMIN ? 'text-indigo-600' : 
-                            member.role === UserRole.MANAGER ? 'text-blue-600' : 'text-slate-400'
-                          } />
-                          <span className={`text-[10px] font-black tracking-widest uppercase ${
-                            member.role === UserRole.NEXUS_ADMIN ? 'text-red-600' :
-                            member.role === UserRole.ACCOUNT_ADMIN ? 'text-indigo-600' : 
-                            member.role === UserRole.MANAGER ? 'text-blue-600' : 'text-slate-400'
-                          }`}>
-                            {member.role === UserRole.NEXUS_ADMIN ? 'Super Admin' : 
-                             member.role === UserRole.ACCOUNT_ADMIN ? 'Admin' : 
-                             member.role === UserRole.MANAGER ? 'Gerente' : 'Usuário'}
-                          </span>
-                        </div>
-                        <select 
-                          value={member.role}
-                          onChange={(e) => handleUpdateTeamMember(member.id, { role: e.target.value })}
-                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-[11px] font-bold text-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer"
-                        >
-                          {currentUser?.role === UserRole.NEXUS_ADMIN && (
-                            <option value={UserRole.NEXUS_ADMIN}>Super Admin</option>
-                          )}
-                          <option value={UserRole.ACCOUNT_ADMIN}>Admin</option>
-                          <option value={UserRole.MANAGER}>Gerente</option>
-                          <option value={UserRole.USER}>Usuário</option>
-                        </select>
-                      </div>
-                    </td>
-                    <td className="px-8 py-6">
-                      <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-1.5 h-1.5 rounded-full ${member.status === 'Ativo' ? 'bg-green-500' : 'bg-amber-500'}`}></div>
-                          <span className={`text-[10px] font-black tracking-widest uppercase ${member.status === 'Ativo' ? 'text-green-600' : 'text-amber-600'}`}>
-                            {member.status}
-                          </span>
-                        </div>
-                        <select 
-                          value={member.status}
-                          onChange={(e) => handleUpdateTeamMember(member.id, { status: e.target.value })}
-                          className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-[11px] font-bold text-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer"
-                        >
-                          <option>Ativo</option>
-                          <option>Pendente</option>
-                          <option>Inativo</option>
-                        </select>
-                      </div>
-                    </td>
-                    <td className="px-8 py-6 text-right">
-                      <button 
-                        onClick={() => handleDeleteTeamMember(member.id)}
-                        className="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                        title="Remover Acesso"
-                      >
-                        <Trash2 size={20} />
+                      <button onClick={() => handleDeleteTeam(team.id)}
+                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                        <Trash2 size={15} />
                       </button>
-                    </td>
-                  </tr>
+                    </div>
+
+                    {/* Permissions toggles */}
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2.5">Módulos com acesso</p>
+                      <div className="flex flex-wrap gap-2">
+                        {MODULE_PERMISSIONS.map(mod => {
+                          const active = team.permissions?.[mod.key] !== false; // default true
+                          return (
+                            <button key={mod.key}
+                              onClick={() => handleUpdateTeamPermissions(team.id, { ...team.permissions, [mod.key]: !active })}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                                active
+                                  ? 'bg-indigo-600 border-indigo-600 text-white'
+                                  : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300'
+                              }`}>
+                              <span>{mod.icon}</span>{mod.label}
+                              {active && <Check size={11} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-          {teamMembers.length === 0 && (
-            <div className="p-16 text-center text-slate-400 font-medium">
-              Não há outros membros na equipe.
             </div>
           )}
         </div>
+
       </div>
     </div>
   );
@@ -1021,6 +1171,165 @@ export const Settings = () => {
       {activeTab === 'webhooks' && renderWebhooksTab()}
       {activeTab === 'equipes' && renderEquipesTab()}
       {activeTab === 'plano' && renderPlanoTab()}
+
+      {/* ── New Member Modal ── */}
+      {showNewMemberModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            {!createdMember ? (
+              <>
+                <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">Novo Membro</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Uma senha aleatória será gerada automaticamente.</p>
+                  </div>
+                  <button onClick={() => setShowNewMemberModal(false)}><X size={20} className="text-slate-400 hover:text-slate-600" /></button>
+                </div>
+                <div className="px-6 py-5 space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nome completo</label>
+                    <input type="text" value={newMemberForm.name} onChange={e => setNewMemberForm({ ...newMemberForm, name: e.target.value })}
+                      placeholder="Ex: João Silva" autoFocus
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">E-mail de acesso</label>
+                    <input type="email" value={newMemberForm.email} onChange={e => setNewMemberForm({ ...newMemberForm, email: e.target.value })}
+                      placeholder="email@empresa.com"
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nível de acesso</label>
+                    <select value={newMemberForm.role} onChange={e => setNewMemberForm({ ...newMemberForm, role: e.target.value as UserRole })}
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                      <option value={UserRole.ACCOUNT_ADMIN}>Admin</option>
+                      <option value={UserRole.MANAGER}>Gerente</option>
+                      <option value={UserRole.USER}>Vendedor</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Senha gerada</label>
+                    <div className="flex gap-2">
+                      <div className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                        <Key size={14} className="text-amber-500 shrink-0" />
+                        <span className="font-mono text-sm font-bold text-amber-800 flex-1 select-all">{newMemberForm.password}</span>
+                        <button type="button" onClick={() => navigator.clipboard?.writeText(newMemberForm.password)}
+                          className="text-amber-500 hover:text-amber-700"><Copy size={13} /></button>
+                      </div>
+                      <button type="button" onClick={() => setNewMemberForm({ ...newMemberForm, password: generatePassword() })}
+                        className="px-3 py-2.5 border border-slate-200 hover:border-slate-300 rounded-xl text-slate-500 hover:text-slate-700 transition-colors" title="Gerar nova senha">
+                        <RefreshCw size={15} />
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1.5">Copie e entregue ao vendedor. Ele pode trocar depois.</p>
+                  </div>
+                </div>
+                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 justify-end">
+                  <button onClick={() => setShowNewMemberModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl text-sm font-medium">Cancelar</button>
+                  <button onClick={handleCreateMember} disabled={creatingMember || !newMemberForm.name || !newMemberForm.email}
+                    className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm">
+                    {creatingMember ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus size={15} />}
+                    Criar Membro
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* Success state */
+              <div className="p-8 text-center">
+                <div className="w-14 h-14 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Check size={24} className="text-green-600" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 mb-1">Membro criado!</h3>
+                <p className="text-sm text-slate-500 mb-6">Entregue os dados de acesso abaixo ao vendedor.</p>
+                <div className="bg-slate-50 rounded-xl p-4 text-left space-y-3 border border-slate-200 mb-6">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">E-mail</p>
+                    <p className="font-mono text-slate-900 font-bold mt-0.5">{createdMember.email}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Key size={10} />Senha</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="font-mono text-indigo-700 font-bold text-lg tracking-wider">{createdMember.password}</p>
+                      <button onClick={() => navigator.clipboard?.writeText(createdMember.password)} className="text-slate-400 hover:text-slate-600"><Copy size={14} /></button>
+                    </div>
+                  </div>
+                </div>
+                <button onClick={() => { setShowNewMemberModal(false); setCreatedMember(null); }}
+                  className="w-full py-3 bg-slate-900 hover:bg-black text-white rounded-xl font-bold text-sm">Concluído</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Reset Password Modal ── */}
+      {resetPasswordFor && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Redefinir Senha</h2>
+                <p className="text-xs text-slate-400 mt-0.5">{resetPasswordFor.name}</p>
+              </div>
+              <button onClick={() => setResetPasswordFor(null)}><X size={20} className="text-slate-400 hover:text-slate-600" /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nova senha</label>
+                <div className="flex gap-2">
+                  <div className="flex-1 flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                    <Key size={14} className="text-amber-500 shrink-0" />
+                    <input type={showResetPassword ? 'text' : 'password'} value={resetPasswordValue}
+                      onChange={e => setResetPasswordValue(e.target.value)}
+                      className="flex-1 bg-transparent font-mono text-sm font-bold text-amber-800 outline-none" />
+                    <button onClick={() => setShowResetPassword(!showResetPassword)} className="text-amber-500">
+                      {showResetPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+                    </button>
+                    <button onClick={() => navigator.clipboard?.writeText(resetPasswordValue)} className="text-amber-500 hover:text-amber-700"><Copy size={13} /></button>
+                  </div>
+                  <button onClick={() => setResetPasswordValue(generatePassword())}
+                    className="px-3 border border-slate-200 hover:border-slate-300 rounded-xl text-slate-500 hover:text-slate-700" title="Gerar nova">
+                    <RefreshCw size={15} />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 justify-end">
+              <button onClick={() => setResetPasswordFor(null)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl text-sm font-medium">Cancelar</button>
+              <button onClick={handleSavePassword}
+                className="flex items-center gap-2 px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-sm">
+                <Key size={14} />Salvar Senha
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── New Team Modal ── */}
+      {showNewTeamModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <h2 className="text-base font-bold text-slate-900">Nova Equipe</h2>
+              <button onClick={() => setShowNewTeamModal(false)}><X size={20} className="text-slate-400 hover:text-slate-600" /></button>
+            </div>
+            <div className="px-6 py-5">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nome da equipe</label>
+              <input type="text" value={newTeamName} onChange={e => setNewTeamName(e.target.value)}
+                placeholder="Ex: Time de Vendas SP" autoFocus
+                onKeyDown={e => e.key === 'Enter' && handleCreateTeam()}
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 justify-end">
+              <button onClick={() => setShowNewTeamModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl text-sm font-medium">Cancelar</button>
+              <button onClick={handleCreateTeam} disabled={!newTeamName.trim()}
+                className="flex items-center gap-2 px-5 py-2 bg-slate-900 hover:bg-black disabled:opacity-50 text-white rounded-xl font-bold text-sm">
+                <Plus size={14} />Criar Equipe
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
