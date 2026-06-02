@@ -733,7 +733,8 @@ app.get('/migrate-db', async (c) => {
 });
 
 app.get('/funnels', async (c) => {
-  const account_id = c.req.query('account_id') || 'acc_demo';
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json([]);
   // Auto-add colorOpacity column if missing
   try { await c.env.DB.prepare("ALTER TABLE stages ADD COLUMN colorOpacity TEXT DEFAULT '1a'").run(); } catch (e) { /* column already exists */ }
   try { await c.env.DB.prepare("ALTER TABLE stages ADD COLUMN borderOpacity TEXT DEFAULT '4d'").run(); } catch (e) { /* column already exists */ }
@@ -1064,9 +1065,11 @@ app.get('/test-db', async (c) => {
 app.post('/leads', async (c) => {
   try {
     const body = await c.req.json();
-    console.log('POST /leads body:', body);
     const id = crypto.randomUUID();
-    const account_id = c.req.query('account_id') || body.account_id || 'acc_demo';
+    const account_id = c.req.query('account_id') || body.account_id;
+    if (!account_id) {
+      return c.json({ error: 'account_id is required' }, 400);
+    }
     
     await c.env.DB.prepare(`
       INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, assigned_user_id, probability, created_at)

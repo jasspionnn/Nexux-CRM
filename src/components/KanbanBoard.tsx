@@ -285,28 +285,50 @@ export const KanbanBoard = ({ onNavigate }: any) => {
   };
 
   const handleCreateLead = async (stageId?: string) => {
+    const accountId = currentUser?.account_id;
+    if (!accountId) {
+      console.error('[KanbanBoard] account_id ausente no currentUser:', currentUser);
+      alert('Erro: usuário sem conta associada. Faça logout e login novamente.');
+      return;
+    }
+
     const targetStageId = stageId || (stages.length > 0 ? stages[0].id : '');
-    const newLead = {
-      title: 'Nova Negociação',
-      company: 'Empresa',
-      value: 0,
-      funnel_id: activeFunnelId,
-      stage_id: targetStageId,
-      assigned_user_id: currentUser?.id,
-      account_id: currentUser?.account_id
-    };
+    if (!activeFunnelId) {
+      alert('Nenhum funil ativo. Crie um funil primeiro nas configurações.');
+      return;
+    }
 
     try {
-      const res = await fetch('/api/leads', {
+      const res = await fetch(`/api/leads?account_id=${accountId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newLead)
+        body: JSON.stringify({
+          title: 'Nova Negociação',
+          company: 'Empresa',
+          value: 0,
+          funnel_id: activeFunnelId,
+          stage_id: targetStageId,
+          assigned_user_id: currentUser?.id,
+          account_id: accountId,
+        }),
       });
+
+      if (!res.ok) {
+        const err = await res.json();
+        console.error('[KanbanBoard] Erro ao criar lead:', err);
+        alert(`Erro ao criar negociação: ${err.error || res.status}`);
+        return;
+      }
+
       const data = await res.json();
-      setLeads([...leads, data]);
+      if (!data.id) {
+        console.error('[KanbanBoard] Lead criado sem id:', data);
+        return;
+      }
+      setLeads(prev => [...prev, data]);
       onNavigate('lead-detail', data.id);
     } catch (error) {
-      console.error(error);
+      console.error('[KanbanBoard] Exceção ao criar lead:', error);
     }
   };
 

@@ -109,35 +109,42 @@ export const LeadsDatabase = ({ onNavigate }: any) => {
   };
 
   const handleCreateLead = async () => {
+    const accountId = currentUser?.account_id;
+    if (!accountId) {
+      alert('Erro: usuário sem conta associada. Faça logout e login novamente.');
+      return;
+    }
     if (funnels.length === 0) {
       alert('Crie um funil de vendas primeiro nas configurações.');
       return;
     }
-    
     const funnel = funnels[0];
     if (!funnel.stages || funnel.stages.length === 0) {
       alert('O funil não possui etapas. Adicione etapas nas configurações.');
       return;
     }
 
-    const newLead = {
-      title: 'Novo Contato',
-      company: '',
-      value: 0,
-      funnel_id: funnel.id,
-      stage_id: funnel.stages[0].id,
-      assigned_user_id: currentUser?.id,
-      account_id: currentUser?.account_id
-    };
-
     try {
-      const res = await fetch('/api/leads', {
+      const res = await fetch(`/api/leads?account_id=${accountId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newLead)
+        body: JSON.stringify({
+          title: 'Novo Contato',
+          company: '',
+          value: 0,
+          funnel_id: funnel.id,
+          stage_id: funnel.stages[0].id,
+          assigned_user_id: currentUser?.id,
+          account_id: accountId,
+        }),
       });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(`Erro ao criar contato: ${err.error || res.status}`);
+        return;
+      }
       const createdLead = await res.json();
-      onNavigate('lead-detail', createdLead.id);
+      if (createdLead.id) onNavigate('lead-detail', createdLead.id);
     } catch (error) {
       console.error(error);
     }
