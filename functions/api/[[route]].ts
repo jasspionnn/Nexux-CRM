@@ -942,7 +942,7 @@ app.post('/webhooks', async (c) => {
     }
     
     await c.env.DB.prepare('INSERT INTO webhooks (id, account_id, name, url, events, is_active, funnel_id, stage_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, account_id, body.name, body.url, 'all', body.active ? 1 : 0, funnel_id, stage_id)
+      .bind(id, account_id, body.name || 'Novo Webhook', body.url || '', 'all', body.active ? 1 : 0, funnel_id, stage_id)
       .run();
       
     return c.json({ id, account_id, name: body.name, url: body.url, active: body.active, funnel_id, stage_id });
@@ -957,7 +957,7 @@ app.put('/webhooks/:id', async (c) => {
   const body = await c.req.json();
   
   await c.env.DB.prepare('UPDATE webhooks SET name = ?, url = ?, is_active = ?, funnel_id = ?, stage_id = ? WHERE id = ?')
-    .bind(body.name, body.url, body.active ? 1 : 0, body.funnel_id || null, body.stage_id || null, id)
+    .bind(body.name || 'Webhook', body.url || '', body.active ? 1 : 0, body.funnel_id || null, body.stage_id || null, id)
     .run();
     
   return c.json({ success: true });
