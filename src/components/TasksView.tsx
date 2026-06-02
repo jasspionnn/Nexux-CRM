@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CheckSquare, Plus, Search, Calendar, Briefcase, Loader2, Check, X, Phone, Mail, User } from 'lucide-react';
-import { format, isToday, isTomorrow, isThisWeek, isPast, parseISO } from 'date-fns';
+import { CheckSquare, Plus, Search, Calendar, Briefcase, Loader2, Check, X, Phone, Mail, User, Clock, RotateCcw, CheckCircle2 } from 'lucide-react';
+import { format, isToday, isTomorrow, isThisWeek, isPast, parseISO, addDays, addHours, startOfDay, addWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useCRM } from '../context/CRMContext';
 
@@ -23,6 +23,10 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', due_date: '', lead_id: '' });
   const [leads, setLeads] = useState<any[]>([]);
+  // Reschedule state
+  const [reschedulingTask, setReschedulingTask] = useState<Task | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+
   const [leadSearch, setLeadSearch] = useState('');
   const [showLeadDropdown, setShowLeadDropdown] = useState(false);
   const [selectedLead, setSelectedLead] = useState<any>(null);
@@ -86,6 +90,37 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
       // Revert on error
       setTasks(tasks.map(t => t.id === task.id ? { ...t, completed: task.completed } : t));
     }
+  };
+
+  const openReschedule = (task: Task) => {
+    // Pre-fill with current due_date or now + 1h
+    const current = task.due_date
+      ? format(parseISO(task.due_date), "yyyy-MM-dd'T'HH:mm")
+      : format(addHours(new Date(), 1), "yyyy-MM-dd'T'HH:mm");
+    setRescheduleDate(current);
+    setReschedulingTask(task);
+  };
+
+  const handleReschedule = async (dateStr: string) => {
+    if (!reschedulingTask) return;
+    const isoDate = new Date(dateStr).toISOString();
+    setTasks(prev => prev.map(t => t.id === reschedulingTask.id ? { ...t, due_date: isoDate, completed: 0 } : t));
+    setReschedulingTask(null);
+    await fetch(`/api/tasks/${reschedulingTask.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ due_date: isoDate, completed: 0 }),
+    });
+  };
+
+  const quickRescheduleOptions = () => {
+    const now = new Date();
+    return [
+      { label: 'Hoje — tarde', icon: '☀️', date: format(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 0), "yyyy-MM-dd'T'HH:mm") },
+      { label: 'Amanhã — manhã', icon: '🌅', date: format(new Date(addDays(startOfDay(now), 1).getTime() + 9 * 3600000), "yyyy-MM-dd'T'HH:mm") },
+      { label: 'Próxima semana', icon: '📅', date: format(new Date(addWeeks(startOfDay(now), 1).getTime() + 9 * 3600000), "yyyy-MM-dd'T'HH:mm") },
+      { label: 'Em 1 hora', icon: '⏰', date: format(addHours(now, 1), "yyyy-MM-dd'T'HH:mm") },
+    ];
   };
 
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -202,55 +237,148 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
               Nenhuma tarefa encontrada.
             </div>
           ) : (
-            filteredTasks.map(task => (
-              <div 
-                key={task.id} 
-                className={`bg-white border rounded-xl p-5 flex items-center justify-between transition-all hover:shadow-md ${
-                  task.completed ? 'border-gray-200 opacity-60' : 'border-gray-200'
-                }`}
-              >
-                <div className="flex items-start gap-4">
-                  <button 
-                    onClick={() => toggleTask(task)}
-                    className={`mt-0.5 w-6 h-6 rounded border flex items-center justify-center transition-colors ${
-                      task.completed 
-                        ? 'bg-blue-600 border-blue-600 text-white' 
-                        : 'border-gray-300 hover:border-blue-500'
-                    }`}
-                  >
-                    {task.completed ? <Check size={16} /> : null}
-                  </button>
-                  
-                  <div>
-                    <h3 className={`font-bold text-lg ${task.completed ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
-                      {task.title}
-                    </h3>
-                    {task.due_date && (
-                      <div className="flex items-center gap-1.5 mt-1.5 text-sm font-medium text-red-600">
-                        <Calendar size={14} />
-                        <span>
-                          {format(parseISO(task.due_date), "dd/MM/yyyy, HH:mm:ss", { locale: ptBR })}
-                        </span>
+            filteredTasks.map(task => {
+              const isOverdue = task.due_date && !task.completed && isPast(parseISO(task.due_date)) && !isToday(parseISO(task.due_date));
+              const isToday_ = task.due_date && isToday(parseISO(task.due_date));
+              return (
+                <div
+                  key={task.id}
+                  className={`bg-white border rounded-xl transition-all hover:shadow-md ${
+                    task.completed ? 'border-slate-100 opacity-60' : isOverdue ? 'border-red-200' : 'border-gray-200'
+                  }`}
+                >
+                  {/* Main row */}
+                  <div className="p-4 flex items-center gap-4">
+                    {/* Status indicator */}
+                    <div className={`w-3 h-3 rounded-full shrink-0 ${
+                      task.completed ? 'bg-green-400' : isOverdue ? 'bg-red-400' : isToday_ ? 'bg-amber-400' : 'bg-slate-300'
+                    }`} />
+
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <h3 className={`font-semibold text-base leading-snug ${task.completed ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+                        {task.title}
+                      </h3>
+                      <div className="flex items-center gap-3 mt-1 flex-wrap">
+                        {task.due_date && (
+                          <span className={`flex items-center gap-1 text-xs font-medium ${
+                            task.completed ? 'text-slate-400' : isOverdue ? 'text-red-500' : isToday_ ? 'text-amber-600' : 'text-slate-500'
+                          }`}>
+                            <Calendar size={11} />
+                            {format(parseISO(task.due_date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                            {isOverdue && <span className="ml-1 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">ATRASADA</span>}
+                            {isToday_ && !task.completed && <span className="ml-1 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold">HOJE</span>}
+                          </span>
+                        )}
+                        {task.lead_title && (
+                          <button
+                            onClick={() => onNavigate('lead-detail', task.lead_id)}
+                            className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md transition-colors"
+                          >
+                            <Briefcase size={10} />
+                            <span className="truncate max-w-[120px]">{task.lead_title}</span>
+                          </button>
+                        )}
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="px-4 pb-3 flex items-center gap-2 border-t border-slate-50 pt-3">
+                    {task.completed ? (
+                      /* Reopen button */
+                      <button
+                        onClick={() => toggleTask(task)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 rounded-lg text-xs font-semibold transition-all"
+                      >
+                        <RotateCcw size={13} />Reabrir tarefa
+                      </button>
+                    ) : (
+                      <>
+                        {/* Reschedule */}
+                        <button
+                          onClick={() => openReschedule(task)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 text-slate-600 rounded-lg text-xs font-semibold transition-all"
+                        >
+                          <Clock size={13} />Reagendar
+                        </button>
+                        {/* Complete */}
+                        <button
+                          onClick={() => toggleTask(task)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold transition-colors shadow-sm"
+                        >
+                          <CheckCircle2 size={13} />Concluir
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
-                
-                {task.lead_title && (
-                  <button 
-                    onClick={() => onNavigate('lead-detail', task.lead_id)}
-                    className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide hover:bg-blue-100 transition-colors"
-                  >
-                    <Briefcase size={12} />
-                    <span className="truncate max-w-[150px]">{task.lead_title}</span>
-                    <span className="ml-1">&gt;</span>
-                  </button>
-                )}
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
+
+      {/* Reschedule Modal */}
+      {reschedulingTask && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
+                  <Clock size={16} className="text-blue-600" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">Reagendar tarefa</h2>
+                  <p className="text-xs text-slate-400 truncate max-w-[220px]">{reschedulingTask.title}</p>
+                </div>
+              </div>
+              <button onClick={() => setReschedulingTask(null)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+            </div>
+
+            <div className="px-5 py-4 space-y-3">
+              {/* Quick options */}
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Opções rápidas</p>
+              <div className="grid grid-cols-2 gap-2">
+                {quickRescheduleOptions().map(opt => (
+                  <button
+                    key={opt.label}
+                    onClick={() => handleReschedule(opt.date)}
+                    className="flex items-center gap-2 px-3 py-2.5 border border-slate-200 hover:border-blue-400 hover:bg-blue-50 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-700 transition-all text-left"
+                  >
+                    <span className="text-base leading-none">{opt.icon}</span>
+                    <span>{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom date */}
+              <div className="pt-1">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Escolher data e hora</p>
+                <input
+                  type="datetime-local"
+                  value={rescheduleDate}
+                  onChange={e => setRescheduleDate(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="px-5 py-4 bg-slate-50 border-t border-slate-100 flex gap-2 justify-end">
+              <button onClick={() => setReschedulingTask(null)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl text-sm font-medium transition-colors">
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleReschedule(rescheduleDate)}
+                disabled={!rescheduleDate}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold transition-colors"
+              >
+                <Clock size={14} />Reagendar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Task Modal */}
       {isModalOpen && (
