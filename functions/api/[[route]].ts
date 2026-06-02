@@ -1187,7 +1187,7 @@ app.put('/leads/:id', async (c) => {
   const fields = [];
   const values = [];
   
-  const allowedFields = ['title', 'company', 'value', 'contact_name', 'contact_email', 'contact_phone', 'stage_id', 'assigned_user_id', 'probability', 'tags', 'custom_values', 'closed_at', 'closing_forecast_at'];
+  const allowedFields = ['title', 'company', 'value', 'contact_name', 'contact_email', 'contact_phone', 'funnel_id', 'stage_id', 'assigned_user_id', 'probability', 'tags', 'custom_values', 'closed_at', 'closing_forecast_at'];
   
   for (const key of Object.keys(body)) {
     if (allowedFields.includes(key)) {
