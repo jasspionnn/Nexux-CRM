@@ -760,29 +760,42 @@ app.get('/funnels', async (c) => {
 app.post('/funnels', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
-  const account_id = body.account_id || 'acc_demo'; 
-  
+  const account_id = c.req.query('account_id') || body.account_id;
+  if (!account_id) return c.json({ error: 'account_id is required' }, 400);
+
   await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)')
     .bind(id, account_id, body.name)
     .run();
-    
+
   return c.json({ id, name: body.name, stages: [] });
 });
 
 app.put('/funnels/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  
-  await c.env.DB.prepare('UPDATE funnels SET name = ?, default_won_stage_id = ?, default_lost_stage_id = ? WHERE id = ?')
-    .bind(body.name, body.default_won_stage_id || null, body.default_lost_stage_id || null, id)
-    .run();
-    
+  const account_id = c.req.query('account_id') || body.account_id;
+
+  if (account_id) {
+    await c.env.DB.prepare('UPDATE funnels SET name = ?, default_won_stage_id = ?, default_lost_stage_id = ? WHERE id = ? AND account_id = ?')
+      .bind(body.name, body.default_won_stage_id || null, body.default_lost_stage_id || null, id, account_id)
+      .run();
+  } else {
+    await c.env.DB.prepare('UPDATE funnels SET name = ?, default_won_stage_id = ?, default_lost_stage_id = ? WHERE id = ?')
+      .bind(body.name, body.default_won_stage_id || null, body.default_lost_stage_id || null, id)
+      .run();
+  }
+
   return c.json({ success: true });
 });
 
 app.delete('/funnels/:id', async (c) => {
   const id = c.req.param('id');
-  await c.env.DB.prepare('DELETE FROM funnels WHERE id = ?').bind(id).run();
+  const account_id = c.req.query('account_id');
+  if (account_id) {
+    await c.env.DB.prepare('DELETE FROM funnels WHERE id = ? AND account_id = ?').bind(id, account_id).run();
+  } else {
+    await c.env.DB.prepare('DELETE FROM funnels WHERE id = ?').bind(id).run();
+  }
   return c.json({ success: true });
 });
 
@@ -802,23 +815,36 @@ app.post('/funnels/:funnelId/stages', async (c) => {
 app.put('/stages/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  
-  await c.env.DB.prepare('UPDATE stages SET name = ?, color = ?, colorOpacity = ?, borderOpacity = ? WHERE id = ?')
-    .bind(body.name, body.color, body.colorOpacity || '1a', body.borderOpacity || '4d', id)
-    .run();
-    
+  const account_id = c.req.query('account_id') || body.account_id;
+
+  if (account_id) {
+    await c.env.DB.prepare('UPDATE stages SET name = ?, color = ?, colorOpacity = ?, borderOpacity = ? WHERE id = ? AND funnel_id IN (SELECT id FROM funnels WHERE account_id = ?)')
+      .bind(body.name, body.color, body.colorOpacity || '1a', body.borderOpacity || '4d', id, account_id)
+      .run();
+  } else {
+    await c.env.DB.prepare('UPDATE stages SET name = ?, color = ?, colorOpacity = ?, borderOpacity = ? WHERE id = ?')
+      .bind(body.name, body.color, body.colorOpacity || '1a', body.borderOpacity || '4d', id)
+      .run();
+  }
+
   return c.json({ success: true });
 });
 
 app.delete('/stages/:id', async (c) => {
   const id = c.req.param('id');
-  await c.env.DB.prepare('DELETE FROM stages WHERE id = ?').bind(id).run();
+  const account_id = c.req.query('account_id');
+  if (account_id) {
+    await c.env.DB.prepare('DELETE FROM stages WHERE id = ? AND funnel_id IN (SELECT id FROM funnels WHERE account_id = ?)').bind(id, account_id).run();
+  } else {
+    await c.env.DB.prepare('DELETE FROM stages WHERE id = ?').bind(id).run();
+  }
   return c.json({ success: true });
 });
 
 // Custom Fields
 app.get('/custom-fields', async (c) => {
-  const account_id = c.req.query('account_id') || 'acc_demo';
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json([]);
   const { results } = await c.env.DB.prepare('SELECT * FROM custom_fields WHERE account_id = ?').bind(account_id).all();
   return c.json(results);
 });
@@ -827,8 +853,9 @@ app.post('/custom-fields', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const account_id = body.account_id || 'acc_demo';
-    
+    const account_id = c.req.query('account_id') || body.account_id;
+    if (!account_id) return c.json({ error: 'account_id is required' }, 400);
+
     // Provide a valid funnel_id to satisfy NOT NULL and FOREIGN KEY constraints on older schemas
     let funnel_id = body.funnel_id;
     if (!funnel_id) {
@@ -850,23 +877,36 @@ app.post('/custom-fields', async (c) => {
 app.put('/custom-fields/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  
-  await c.env.DB.prepare('UPDATE custom_fields SET name = ?, type = ?, context = ?, options = ?, visible_stage_ids = ?, funnel_id = ? WHERE id = ?')
-    .bind(body.name, body.type, body.context, body.options || null, body.visible_stage_ids || null, body.funnel_id || null, id)
-    .run();
-    
+  const account_id = c.req.query('account_id') || body.account_id;
+
+  if (account_id) {
+    await c.env.DB.prepare('UPDATE custom_fields SET name = ?, type = ?, context = ?, options = ?, visible_stage_ids = ?, funnel_id = ? WHERE id = ? AND account_id = ?')
+      .bind(body.name, body.type, body.context, body.options || null, body.visible_stage_ids || null, body.funnel_id || null, id, account_id)
+      .run();
+  } else {
+    await c.env.DB.prepare('UPDATE custom_fields SET name = ?, type = ?, context = ?, options = ?, visible_stage_ids = ?, funnel_id = ? WHERE id = ?')
+      .bind(body.name, body.type, body.context, body.options || null, body.visible_stage_ids || null, body.funnel_id || null, id)
+      .run();
+  }
+
   return c.json({ success: true });
 });
 
 app.delete('/custom-fields/:id', async (c) => {
   const id = c.req.param('id');
-  await c.env.DB.prepare('DELETE FROM custom_fields WHERE id = ?').bind(id).run();
+  const account_id = c.req.query('account_id');
+  if (account_id) {
+    await c.env.DB.prepare('DELETE FROM custom_fields WHERE id = ? AND account_id = ?').bind(id, account_id).run();
+  } else {
+    await c.env.DB.prepare('DELETE FROM custom_fields WHERE id = ?').bind(id).run();
+  }
   return c.json({ success: true });
 });
 
 // Webhooks
 app.get('/webhooks', async (c) => {
-  const account_id = c.req.query('account_id') || 'acc_demo';
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json([]);
   const { results } = await c.env.DB.prepare('SELECT * FROM webhooks WHERE account_id = ?').bind(account_id).all();
   return c.json(results.map((w: any) => ({ ...w, active: w.is_active === 1 })));
 });
@@ -875,7 +915,8 @@ app.post('/webhooks', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const account_id = body.account_id || 'acc_demo';
+    const account_id = c.req.query('account_id') || body.account_id;
+    if (!account_id) return c.json({ error: 'account_id is required' }, 400);
     
     // Provide valid funnel_id and stage_id to satisfy NOT NULL and FOREIGN KEY constraints on older schemas
     let funnel_id = body.funnel_id;
@@ -982,10 +1023,10 @@ app.post('/webhooks/incoming/:id', async (c) => {
     ).run();
 
     // Trigger automations for the new lead
-    await triggerAutomations(webhook.account_id || 'acc_demo', 'new_lead', leadId, c.env.DB);
-    
+    await triggerAutomations(webhook.account_id, 'new_lead', leadId, c.env.DB);
+
     // Calculate initial score
-    await calculateLeadScore(c.env.DB, webhook.account_id || 'acc_demo', leadId);
+    await calculateLeadScore(c.env.DB, webhook.account_id, leadId);
 
     return c.json({ success: true, lead_id: leadId });
   } catch (error: any) {
@@ -1002,7 +1043,8 @@ app.delete('/webhooks/:id', async (c) => {
 
 // Users (Team)
 app.get('/users', async (c) => {
-  const account_id = c.req.query('account_id') || 'acc_demo';
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json([]);
   const { results } = await c.env.DB.prepare('SELECT id, name, email, role, status, account_id FROM users WHERE account_id = ?').bind(account_id).all();
   return c.json(results);
 });
@@ -1011,7 +1053,8 @@ app.post('/users', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const account_id = body.account_id || 'acc_demo';
+    const account_id = c.req.query('account_id') || body.account_id;
+    if (!account_id) return c.json({ error: 'account_id is required' }, 400);
 
     const team_id = body.team_id || null;
     const avatar = body.avatar || null;
@@ -1097,7 +1140,13 @@ app.post('/leads', async (c) => {
 
 app.get('/leads/:id', async (c) => {
   const id = c.req.param('id');
-  const lead = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ?').bind(id).first();
+  const account_id = c.req.query('account_id');
+  let lead: any;
+  if (account_id) {
+    lead = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ? AND account_id = ?').bind(id, account_id).first();
+  } else {
+    lead = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ?').bind(id).first();
+  }
   if (!lead) return c.json({ error: 'Lead not found' }, 404);
   return c.json(lead);
 });
@@ -1258,14 +1307,17 @@ app.delete('/notes/:id', async (c) => {
 
 // Teams
 app.get('/teams', async (c) => {
-  const { results } = await c.env.DB.prepare('SELECT * FROM teams').all();
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json([]);
+  const { results } = await c.env.DB.prepare('SELECT * FROM teams WHERE account_id = ?').bind(account_id).all();
   return c.json(results);
 });
 
 app.post('/teams', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
-  const account_id = c.req.query('account_id') || 'acc_demo';
+  const account_id = c.req.query('account_id') || body.account_id;
+  if (!account_id) return c.json({ error: 'account_id is required' }, 400);
   await c.env.DB.prepare('INSERT INTO teams (id, account_id, name, goal) VALUES (?, ?, ?, ?)')
     .bind(id, account_id, body.name, body.goal || 0)
     .run();
@@ -1288,13 +1340,15 @@ app.delete('/teams/:id', async (c) => {
 
 // Bot Settings
 app.get('/bot-settings', async (c) => {
-  const account_id = c.req.query('account_id') || 'acc_demo';
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json({});
   const settings = await c.env.DB.prepare('SELECT * FROM bot_settings WHERE account_id = ?').bind(account_id).first();
   return c.json(settings || {});
 });
 
 app.put('/bot-settings', async (c) => {
-  const account_id = c.req.query('account_id') || 'acc_demo';
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json({ error: 'account_id is required' }, 400);
   const body = await c.req.json();
   
   const existing = await c.env.DB.prepare('SELECT account_id FROM bot_settings WHERE account_id = ?').bind(account_id).first();
@@ -1310,7 +1364,8 @@ app.put('/bot-settings', async (c) => {
 
 // Knowledge Sources
 app.get('/knowledge-sources', async (c) => {
-  const account_id = c.req.query('account_id') || 'acc_demo';
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json([]);
   const { results } = await c.env.DB.prepare('SELECT * FROM knowledge_sources WHERE account_id = ?').bind(account_id).all();
   return c.json(results);
 });
@@ -1318,7 +1373,8 @@ app.get('/knowledge-sources', async (c) => {
 app.post('/knowledge-sources', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
-  const account_id = c.req.query('account_id') || 'acc_demo';
+  const account_id = c.req.query('account_id') || body.account_id;
+  if (!account_id) return c.json({ error: 'account_id is required' }, 400);
   await c.env.DB.prepare('INSERT INTO knowledge_sources (id, account_id, name, type) VALUES (?, ?, ?, ?)')
     .bind(id, account_id, body.name, body.type).run();
   return c.json({ id, account_id, name: body.name, type: body.type });
@@ -1341,7 +1397,8 @@ app.post('/knowledge-sources/:sourceId/chunks', async (c) => {
   const sourceId = c.req.param('sourceId');
   const body = await c.req.json();
   const id = crypto.randomUUID();
-  const account_id = c.req.query('account_id') || 'acc_demo';
+  const account_id = c.req.query('account_id') || body.account_id;
+  if (!account_id) return c.json({ error: 'account_id is required' }, 400);
   await c.env.DB.prepare('INSERT INTO knowledge_chunks (id, account_id, source_id, content) VALUES (?, ?, ?, ?)')
     .bind(id, account_id, sourceId, body.content).run();
   return c.json({ id, account_id, source_id: sourceId, content: body.content });
@@ -1356,7 +1413,8 @@ app.delete('/knowledge-chunks/:id', async (c) => {
 // Bot Chat History
 app.get('/bot-chat-history/:phone', async (c) => {
   const phone = c.req.param('phone');
-  const account_id = c.req.query('account_id') || 'acc_demo';
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json([]);
   const { results } = await c.env.DB.prepare('SELECT * FROM bot_chat_history WHERE account_id = ? AND lead_phone = ? ORDER BY created_at ASC')
     .bind(account_id, phone).all();
   return c.json(results);
@@ -1643,7 +1701,8 @@ app.get('/tracking/test', async (c) => {
 // Get tracking settings for current account
 app.get('/tracking', async (c) => {
   try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
+    const accountId = c.req.query('account_id');
+    if (!accountId) return c.json({});
 
     let settings = await c.env.DB.prepare(
       'SELECT * FROM tracking_settings WHERE account_id = ?'
@@ -1668,7 +1727,8 @@ app.get('/tracking', async (c) => {
 app.post('/tracking/regenerate', async (c) => {
   try {
     const body = await c.req.json();
-    const accountId = body.account_id || 'acc_demo';
+    const accountId = c.req.query('account_id') || body.account_id;
+    if (!accountId) return c.json({ error: 'account_id is required' }, 400);
 
     const newTrackingId = 'trk_' + crypto.randomUUID().substring(0, 12);
 
@@ -1685,7 +1745,8 @@ app.post('/tracking/regenerate', async (c) => {
 // Get tracking events
 app.get('/tracking/events', async (c) => {
   try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
+    const accountId = c.req.query('account_id');
+    if (!accountId) return c.json([]);
     const eventType = c.req.query('event_type');
     const limit = parseInt(c.req.query('limit') || '100');
 
@@ -2032,7 +2093,8 @@ app.post('/tracking/events', async (c) => {
 // Get tracking stats (counts by event type)
 app.get('/tracking/stats', async (c) => {
   try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
+    const accountId = c.req.query('account_id');
+    if (!accountId) return c.json({});
 
     const pageviews = await c.env.DB.prepare(
       "SELECT COUNT(*) as count FROM tracking_events WHERE account_id = ? AND event_type = 'pageview'"
@@ -2060,7 +2122,8 @@ app.get('/tracking/stats', async (c) => {
 
 app.get('/tracking-forms', async (c) => {
   try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
+    const accountId = c.req.query('account_id');
+    if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare('SELECT * FROM tracking_forms WHERE account_id = ? ORDER BY created_at DESC').bind(accountId).all();
     return c.json(results.map((f: any) => ({ ...f, fields: f.fields ? JSON.parse(f.fields) : [], field_mapping: f.field_mapping ? JSON.parse(f.field_mapping) : {} })));
   } catch (error: any) { return c.json({ error: error.message }, 500); }
@@ -2069,7 +2132,9 @@ app.get('/tracking-forms', async (c) => {
 app.post('/tracking-forms', async (c) => {
   try {
     const body = await c.req.json();
-    const { account_id = 'acc_demo', name, url_pattern, form_selector, fields, field_mapping, is_active } = body;
+    const account_id = c.req.query('account_id') || body.account_id;
+    if (!account_id) return c.json({ error: 'account_id is required' }, 400);
+    const { name, url_pattern, form_selector, fields, field_mapping, is_active } = body;
     if (!name) return c.json({ error: 'name is required' }, 400);
     const id = crypto.randomUUID();
     await c.env.DB.prepare('INSERT INTO tracking_forms (id, account_id, name, url_pattern, form_selector, fields, field_mapping, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
@@ -2101,7 +2166,8 @@ app.delete('/tracking-forms/:id', async (c) => {
 
 app.get('/marketing/custom-fields', async (c) => {
   try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
+    const accountId = c.req.query('account_id');
+    if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare('SELECT * FROM marketing_custom_fields WHERE account_id = ? ORDER BY created_at DESC').bind(accountId).all();
     return c.json(results);
   } catch (error: any) { return c.json({ error: error.message }, 500); }
@@ -2110,7 +2176,9 @@ app.get('/marketing/custom-fields', async (c) => {
 app.post('/marketing/custom-fields', async (c) => {
   try {
     const body = await c.req.json();
-    const { account_id = 'acc_demo', name, type, options } = body;
+    const account_id = c.req.query('account_id') || body.account_id;
+    if (!account_id) return c.json({ error: 'account_id is required' }, 400);
+    const { name, type, options } = body;
     const id = crypto.randomUUID();
     await c.env.DB.prepare('INSERT INTO marketing_custom_fields (id, account_id, name, type, options) VALUES (?, ?, ?, ?, ?)')
       .bind(id, account_id, name, type, options || null).run();
@@ -2139,7 +2207,8 @@ app.delete('/marketing/custom-fields/:id', async (c) => {
 
 app.get('/marketing/field-mappings', async (c) => {
   try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
+    const accountId = c.req.query('account_id');
+    if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare('SELECT * FROM marketing_crm_mappings WHERE account_id = ?').bind(accountId).all();
     return c.json(results);
   } catch (error: any) { return c.json({ error: error.message }, 500); }
@@ -2148,7 +2217,9 @@ app.get('/marketing/field-mappings', async (c) => {
 app.post('/marketing/field-mappings', async (c) => {
   try {
     const body = await c.req.json();
-    const { account_id = 'acc_demo', mappings } = body;
+    const account_id = c.req.query('account_id') || body.account_id;
+    if (!account_id) return c.json({ error: 'account_id is required' }, 400);
+    const { mappings } = body;
     
     await c.env.DB.prepare('DELETE FROM marketing_crm_mappings WHERE account_id = ?').bind(account_id).run();
     
@@ -2336,7 +2407,8 @@ app.get('/lead-timeline', async (c) => {
 
 app.get('/marketing-leads', async (c) => {
   try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
+    const accountId = c.req.query('account_id');
+    if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare(
       'SELECT * FROM marketing_leads WHERE account_id = ? ORDER BY created_at DESC LIMIT 500'
     ).bind(accountId).all();
@@ -2347,7 +2419,9 @@ app.get('/marketing-leads', async (c) => {
 app.post('/marketing-leads/sync-to-crm', async (c) => {
   try {
     const body = await c.req.json();
-    const { account_id = 'acc_demo', lead_ids } = body;
+    const account_id = c.req.query('account_id') || body.account_id;
+    if (!account_id) return c.json({ error: 'account_id is required' }, 400);
+    const { lead_ids } = body;
 
     let synced = 0;
     let skipped = 0;
@@ -2404,7 +2478,8 @@ app.delete('/marketing-leads/:id', async (c) => {
 // Get all bio link pages for an account
 app.get('/bio-links', async (c) => {
   try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
+    const accountId = c.req.query('account_id');
+    if (!accountId) return c.json([]);
     console.log('Fetching bio links for:', accountId);
     const { results } = await c.env.DB.prepare(
       'SELECT * FROM bio_links WHERE account_id = ? ORDER BY created_at DESC'
@@ -2449,7 +2524,8 @@ app.get('/admin/deduplicate-marketing-leads', async (c) => {
     `;
     
     if (!allAccounts) {
-      query += ` AND account_id = '${accountId || 'acc_demo'}'`;
+      if (!accountId) return c.json({ error: 'account_id is required when not using all=true' }, 400);
+      query += ` AND account_id = '${accountId}'`;
     }
     
     query += ` GROUP BY LOWER(TRIM(contact_email)), account_id HAVING count > 1`;
@@ -2488,7 +2564,8 @@ app.post('/bio-links', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const accountId = body.account_id || 'acc_demo';
+    const accountId = c.req.query('account_id') || body.account_id;
+    if (!accountId) return c.json({ error: 'account_id is required' }, 400);
     const slug = body.slug || id.slice(0, 8);
     const links = JSON.stringify(body.links || []);
 
@@ -2629,7 +2706,8 @@ app.get('/bio-links/:id/analytics', async (c) => {
 // --- Email Templates ---
 app.get('/email-templates', async (c) => {
   try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
+    const accountId = c.req.query('account_id');
+    if (!accountId) return c.json([]);
     const type = c.req.query('type');
     const query = type ? 'SELECT * FROM email_templates WHERE account_id = ? AND type = ? ORDER BY created_at DESC' : 'SELECT * FROM email_templates WHERE account_id = ? ORDER BY created_at DESC';
     const { results } = await c.env.DB.prepare(query).bind(type ? [accountId, type] : [accountId]).all();
@@ -2641,7 +2719,8 @@ app.post('/email-templates', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const accountId = body.account_id || 'acc_demo';
+    const accountId = c.req.query('account_id') || body.account_id;
+    if (!accountId) return c.json({ error: 'account_id is required' }, 400);
     await c.env.DB.prepare(
       'INSERT INTO email_templates (id, account_id, name, subject, body, type) VALUES (?, ?, ?, ?, ?, ?)'
     ).bind(id, accountId, body.name, body.subject, body.body, body.type || 'campaign').run();
@@ -2672,7 +2751,8 @@ app.delete('/email-templates/:id', async (c) => {
 // --- Email Campaigns ---
 app.get('/email-campaigns', async (c) => {
   try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
+    const accountId = c.req.query('account_id');
+    if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare(
       'SELECT * FROM email_campaigns WHERE account_id = ? ORDER BY created_at DESC'
     ).bind(accountId).all();
@@ -2699,7 +2779,8 @@ app.post('/email-campaigns', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const accountId = body.account_id || 'acc_demo';
+    const accountId = c.req.query('account_id') || body.account_id;
+    if (!accountId) return c.json({ error: 'account_id is required' }, 400);
     await c.env.DB.prepare(
       'INSERT INTO email_campaigns (id, account_id, name, segment_id, template_id, subject, body, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(id, accountId, body.name, body.segment_id || null, body.template_id || null, body.subject, body.body, body.status || 'draft', body.scheduled_at || null).run();
@@ -2910,7 +2991,8 @@ async function buildSegmentQuery(db: any, accountId: string, rules: any[]) {
 // Get all segments
 app.get('/segments', async (c) => {
   try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
+    const accountId = c.req.query('account_id');
+    if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare(
       'SELECT * FROM segments WHERE account_id = ? ORDER BY created_at DESC'
     ).bind(accountId).all();
@@ -2949,7 +3031,9 @@ app.get('/segments', async (c) => {
 app.post('/segments', async (c) => {
   try {
     const body = await c.req.json();
-    const { account_id = 'acc_demo', name, description, rules } = body;
+    const account_id = c.req.query('account_id') || body.account_id;
+    if (!account_id) return c.json({ error: 'account_id is required' }, 400);
+    const { name, description, rules } = body;
 
     console.log('[SEGMENTS] Creating segment:', { account_id, name, rulesCount: rules?.length });
 
@@ -3005,7 +3089,9 @@ app.delete('/segments/:id', async (c) => {
 app.post('/segments/preview', async (c) => {
   try {
     const body = await c.req.json();
-    const { account_id = 'acc_demo', rules } = body;
+    const account_id = c.req.query('account_id') || body.account_id;
+    if (!account_id) return c.json({ error: 'account_id is required' }, 400);
+    const { rules } = body;
 
     console.log('[SEGMENTS PREVIEW] Input:', { account_id, rulesCount: rules?.length, rules: JSON.stringify(rules) });
 
@@ -3038,7 +3124,8 @@ app.post('/segments/preview', async (c) => {
 // Get all automations
 app.get('/automations', async (c) => {
   try {
-    const accountId = c.req.query('account_id') || 'acc_demo';
+    const accountId = c.req.query('account_id');
+    if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare(
       'SELECT * FROM automations WHERE account_id = ? ORDER BY created_at DESC'
     ).bind(accountId).all();
@@ -3060,7 +3147,9 @@ app.get('/automations', async (c) => {
 app.post('/automations', async (c) => {
   try {
     const body = await c.req.json();
-    const { account_id = 'acc_demo', name, description, is_active, trigger_type, trigger_config, nodes, connections } = body;
+    const account_id = c.req.query('account_id') || body.account_id;
+    if (!account_id) return c.json({ error: 'account_id is required' }, 400);
+    const { name, description, is_active, trigger_type, trigger_config, nodes, connections } = body;
 
     if (!name) return c.json({ error: 'name is required' }, 400);
 
@@ -3487,7 +3576,8 @@ app.post('/login', async (c) => {
 // Profile Rules CRUD
 app.get('/scoring/profile-rules', async (c) => {
   try {
-    const account_id = c.req.query('account_id') || 'acc_demo';
+    const account_id = c.req.query('account_id');
+    if (!account_id) return c.json([]);
     const { results: rules } = await c.env.DB.prepare(
       'SELECT * FROM scoring_profile_rules WHERE account_id = ? ORDER BY created_at DESC'
     ).bind(account_id).all();
@@ -3526,7 +3616,8 @@ app.post('/scoring/profile-rules', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const account_id = c.req.query('account_id') || 'acc_demo';
+    const account_id = c.req.query('account_id') || body.account_id;
+    if (!account_id) return c.json({ error: 'account_id is required' }, 400);
 
     await c.env.DB.prepare(
       'INSERT INTO scoring_profile_rules (id, account_id, name, description, is_active) VALUES (?, ?, ?, ?, ?)'
@@ -3604,7 +3695,8 @@ app.post('/scoring/profile-rules/:id/fields', async (c) => {
 // Interest Rules CRUD
 app.get('/scoring/interest-rules', async (c) => {
   try {
-    const account_id = c.req.query('account_id') || 'acc_demo';
+    const account_id = c.req.query('account_id');
+    if (!account_id) return c.json([]);
     const { results: rules } = await c.env.DB.prepare(
       'SELECT * FROM scoring_interest_rules WHERE account_id = ? ORDER BY created_at DESC'
     ).bind(account_id).all();
@@ -3631,7 +3723,8 @@ app.post('/scoring/interest-rules', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const account_id = c.req.query('account_id') || 'acc_demo';
+    const account_id = c.req.query('account_id') || body.account_id;
+    if (!account_id) return c.json({ error: 'account_id is required' }, 400);
 
     await c.env.DB.prepare(
       'INSERT INTO scoring_interest_rules (id, account_id, name, description, is_active) VALUES (?, ?, ?, ?, ?)'
@@ -3707,7 +3800,8 @@ app.post('/scoring/interest-rules/:id/conversions', async (c) => {
 // Get leads with scores
 app.get('/scoring/leads', async (c) => {
   try {
-    const account_id = c.req.query('account_id') || 'acc_demo';
+    const account_id = c.req.query('account_id');
+    if (!account_id) return c.json([]);
     const { results: leads } = await c.env.DB.prepare(
       'SELECT id, title, contact_email, score_profile, score_interest, score_grade FROM leads WHERE account_id = ? ORDER BY (score_profile + score_interest) DESC'
     ).bind(account_id).all();
@@ -3722,7 +3816,8 @@ app.get('/scoring/leads', async (c) => {
 // Recalculate scores for all leads
 app.post('/scoring/recalculate', async (c) => {
   try {
-    const account_id = c.req.query('account_id') || 'acc_demo';
+    const account_id = c.req.query('account_id');
+    if (!account_id) return c.json({ error: 'account_id is required' }, 400);
     const result = await calculateLeadScore(c.env.DB, account_id);
     return c.json(result);
   } catch (error: any) {
@@ -3734,7 +3829,8 @@ app.post('/scoring/recalculate', async (c) => {
 // Scoring Stats Dashboard
 app.get('/scoring/stats', async (c) => {
   try {
-    const account_id = c.req.query('account_id') || 'acc_demo';
+    const account_id = c.req.query('account_id');
+    if (!account_id) return c.json([]);
     const { results } = await c.env.DB.prepare(
       'SELECT score_grade, COUNT(id) as total, AVG(score_interest) as avg_interest FROM leads WHERE account_id = ? GROUP BY score_grade'
     ).bind(account_id).all();
