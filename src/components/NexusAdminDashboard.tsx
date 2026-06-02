@@ -35,10 +35,9 @@ export const NexusAdminDashboard = () => {
 
   // +Performance State
   const [perfItems, setPerfItems] = useState<any[]>([]);
-  const [perfFilterAccount, setPerfFilterAccount] = useState('');
   const [perfFilterType, setPerfFilterType] = useState('');
   const [perfModal, setPerfModal] = useState<'create' | 'edit' | null>(null);
-  const [perfForm, setPerfForm] = useState({ id: '', account_id: '', type: 'mentoria', name: '', description: '', thumb_url: '', status: 'active' });
+  const [perfForm, setPerfForm] = useState({ id: '', type: 'mentoria', name: '', description: '', thumb_url: '', status: 'active' });
   const [perfSaving, setPerfSaving] = useState(false);
 
   useEffect(() => {
@@ -46,11 +45,9 @@ export const NexusAdminDashboard = () => {
     fetchPerfItems();
   }, []);
 
-  const fetchPerfItems = async (accountId?: string, type?: string) => {
+  const fetchPerfItems = async (type?: string) => {
     try {
-      let url = '/api/admin/performance-items?';
-      if (accountId) url += `account_id=${accountId}&`;
-      if (type) url += `type=${type}&`;
+      const url = `/api/admin/performance-items${type ? `?type=${type}` : ''}`;
       const res = await fetch(url);
       if (res.ok) setPerfItems(await res.json());
     } catch (e) { console.error(e); }
@@ -234,12 +231,12 @@ export const NexusAdminDashboard = () => {
   // --- +Performance Handlers ---
 
   const openCreatePerf = () => {
-    setPerfForm({ id: '', account_id: accounts.filter(a => a.id !== 'acc_nexus')[0]?.id || '', type: 'mentoria', name: '', description: '', thumb_url: '', status: 'active' });
+    setPerfForm({ id: '', type: 'mentoria', name: '', description: '', thumb_url: '', status: 'active' });
     setPerfModal('create');
   };
 
   const openEditPerf = (item: any) => {
-    setPerfForm({ id: item.id, account_id: item.account_id, type: item.type, name: item.name, description: item.description || '', thumb_url: item.thumb_url || '', status: item.status });
+    setPerfForm({ id: item.id, type: item.type, name: item.name, description: item.description || '', thumb_url: item.thumb_url || '', status: item.status });
     setPerfModal('edit');
   };
 
@@ -254,7 +251,7 @@ export const NexusAdminDashboard = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(perfForm),
       });
-      if (res.ok) { setPerfModal(null); fetchPerfItems(perfFilterAccount, perfFilterType); }
+      if (res.ok) { setPerfModal(null); fetchPerfItems(perfFilterType); }
       else alert('Erro ao salvar item');
     } catch (e) { alert('Erro de comunicação'); }
     setPerfSaving(false);
@@ -264,11 +261,11 @@ export const NexusAdminDashboard = () => {
     if (!confirm('Excluir este item?')) return;
     try {
       await fetch(`/api/admin/performance-items/${id}`, { method: 'DELETE' });
-      fetchPerfItems(perfFilterAccount, perfFilterType);
+      fetchPerfItems(perfFilterType);
     } catch (e) { console.error(e); }
   };
 
-  const applyPerfFilter = () => fetchPerfItems(perfFilterAccount, perfFilterType);
+  const applyPerfFilter = () => fetchPerfItems(perfFilterType);
 
   // --- Settings Handlers ---
 
@@ -582,15 +579,12 @@ export const NexusAdminDashboard = () => {
           )}
 
           {activeTab === 'performance' && (() => {
-            const typeConfig: Record<string, { label: string; icon: any; color: string; bg: string }> = {
-              mentoria:   { label: 'Mentoria',   icon: BookOpen, color: 'text-blue-600',    bg: 'bg-blue-50' },
-              imersao:    { label: 'Imersão',    icon: Flame,    color: 'text-orange-600',  bg: 'bg-orange-50' },
-              networking: { label: 'Networking', icon: Network,  color: 'text-emerald-600', bg: 'bg-emerald-50' },
+            const typeConfig: Record<string, { label: string; icon: any; color: string; bg: string; gradient: string }> = {
+              mentoria:   { label: 'Mentoria',   icon: BookOpen, color: 'text-blue-700',    bg: 'bg-blue-50',    gradient: 'from-blue-500 to-indigo-600' },
+              imersao:    { label: 'Imersão',    icon: Flame,    color: 'text-orange-700',  bg: 'bg-orange-50',  gradient: 'from-orange-500 to-red-600' },
+              networking: { label: 'Networking', icon: Network,  color: 'text-emerald-700', bg: 'bg-emerald-50', gradient: 'from-emerald-500 to-teal-600' },
             };
-            const filtered = perfItems.filter(i =>
-              (!perfFilterAccount || i.account_id === perfFilterAccount) &&
-              (!perfFilterType || i.type === perfFilterType)
-            );
+            const filtered = perfFilterType ? perfItems.filter(i => i.type === perfFilterType) : perfItems;
             return (
               <div>
                 <div className="flex items-center justify-between mb-6">
@@ -599,7 +593,7 @@ export const NexusAdminDashboard = () => {
                       <span className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center"><Zap size={20} className="text-emerald-600" /></span>
                       +Performance
                     </h2>
-                    <p className="text-slate-500 font-medium mt-1">Crie e gerencie Mentorias, Imersões e Networkings por conta mãe.</p>
+                    <p className="text-slate-500 font-medium mt-1">Conteúdos globais que aparecem para <strong>todas as contas</strong> — Mentorias, Imersões e Networkings.</p>
                   </div>
                   <button onClick={openCreatePerf}
                     className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 transition-all active:scale-95">
@@ -607,40 +601,32 @@ export const NexusAdminDashboard = () => {
                   </button>
                 </div>
 
-                {/* Filters */}
-                <div className="bg-white rounded-2xl border border-gray-200/60 p-4 mb-6 flex flex-wrap items-end gap-4 shadow-sm">
-                  <div className="flex-1 min-w-[200px]">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Conta Mãe</label>
-                    <select value={perfFilterAccount} onChange={e => setPerfFilterAccount(e.target.value)}
-                      className="w-full bg-slate-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500">
-                      <option value="">Todas as contas</option>
-                      {accounts.filter(a => a.id !== 'acc_nexus').map(a => (
-                        <option key={a.id} value={a.id}>{a.company_name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex-1 min-w-[160px]">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Tipo</label>
-                    <select value={perfFilterType} onChange={e => setPerfFilterType(e.target.value)}
-                      className="w-full bg-slate-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500">
-                      <option value="">Todos os tipos</option>
-                      <option value="mentoria">Mentorias</option>
-                      <option value="imersao">Imersões</option>
-                      <option value="networking">Networkings</option>
-                    </select>
-                  </div>
-                  <button onClick={applyPerfFilter}
-                    className="px-5 py-2.5 bg-slate-900 hover:bg-black text-white font-bold rounded-xl text-sm transition-colors">
-                    Filtrar
-                  </button>
+                {/* Type filter tabs */}
+                <div className="flex gap-2 mb-6">
+                  {[
+                    { value: '', label: 'Todos' },
+                    { value: 'mentoria', label: 'Mentorias' },
+                    { value: 'imersao', label: 'Imersões' },
+                    { value: 'networking', label: 'Networkings' },
+                  ].map(tab => (
+                    <button key={tab.value}
+                      onClick={() => { setPerfFilterType(tab.value); fetchPerfItems(tab.value || undefined); }}
+                      className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${perfFilterType === tab.value ? 'bg-slate-900 text-white' : 'bg-white border border-gray-200 text-slate-500 hover:bg-slate-50'}`}>
+                      {tab.label}
+                    </button>
+                  ))}
+                  <span className="ml-auto text-sm text-slate-400 font-medium self-center">{filtered.length} item{filtered.length !== 1 ? 's' : ''}</span>
                 </div>
 
                 {/* Items grid */}
                 {filtered.length === 0 ? (
                   <div className="bg-white rounded-2xl border border-gray-200/60 p-16 text-center shadow-sm">
                     <Zap size={40} className="text-slate-200 mx-auto mb-4" />
-                    <p className="text-slate-400 font-bold text-lg">Nenhum item encontrado</p>
-                    <p className="text-slate-400 text-sm mt-1">Clique em "Novo Item" para criar uma mentoria, imersão ou networking.</p>
+                    <p className="text-slate-400 font-bold text-lg">Nenhum item criado ainda</p>
+                    <p className="text-slate-400 text-sm mt-1 mb-6">Crie mentorias, imersões ou networkings. Eles aparecem para todos os clientes.</p>
+                    <button onClick={openCreatePerf} className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors">
+                      <Plus size={16} />Criar primeiro item
+                    </button>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
@@ -648,29 +634,28 @@ export const NexusAdminDashboard = () => {
                       const cfg = typeConfig[item.type] || typeConfig.mentoria;
                       const Icon = cfg.icon;
                       return (
-                        <div key={item.id} className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden hover:shadow-md transition-shadow group">
+                        <div key={item.id} className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden hover:shadow-md transition-all group">
                           {/* Thumb */}
-                          <div className="h-40 bg-slate-100 relative overflow-hidden">
+                          <div className="h-44 bg-slate-100 relative overflow-hidden">
                             {item.thumb_url ? (
-                              <img src={item.thumb_url} alt={item.name} className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                              <img src={item.thumb_url} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                             ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <ImageIcon size={32} className="text-slate-300" />
+                              <div className={`w-full h-full bg-gradient-to-br ${cfg.gradient} flex items-center justify-center`}>
+                                <Icon size={36} className="text-white/50" />
                               </div>
                             )}
                             <div className="absolute top-3 left-3">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${cfg.bg} ${cfg.color} border border-white/50 shadow-sm`}>
-                                <Icon size={12} />{cfg.label}
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${cfg.bg} ${cfg.color} shadow-sm`}>
+                                <Icon size={11} />{cfg.label}
                               </span>
                             </div>
                             {item.status !== 'active' && (
-                              <div className="absolute top-3 right-3 px-2 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full">Inativo</div>
+                              <div className="absolute top-3 right-3 px-2.5 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full">Inativo</div>
                             )}
                           </div>
                           {/* Info */}
                           <div className="p-4">
-                            <p className="text-xs text-slate-400 font-medium mb-1">{item.company_name || item.account_id}</p>
-                            <h3 className="text-sm font-bold text-slate-900 mb-1 line-clamp-1">{item.name}</h3>
+                            <h3 className="text-sm font-bold text-slate-900 mb-1.5 line-clamp-1">{item.name}</h3>
                             <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{item.description || 'Sem descrição'}</p>
                           </div>
                           {/* Actions */}
@@ -810,18 +795,6 @@ export const NexusAdminDashboard = () => {
             </div>
 
             <form onSubmit={handleSavePerf} className="space-y-5">
-              {/* Conta Mãe */}
-              <div>
-                <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1.5">Conta Mãe</label>
-                <select required value={perfForm.account_id} onChange={e => setPerfForm({ ...perfForm, account_id: e.target.value })}
-                  className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-emerald-500 text-sm">
-                  <option value="">Selecionar conta...</option>
-                  {accounts.filter(a => a.id !== 'acc_nexus').map(a => (
-                    <option key={a.id} value={a.id}>{a.company_name}</option>
-                  ))}
-                </select>
-              </div>
-
               {/* Tipo */}
               <div>
                 <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1.5">Tipo</label>

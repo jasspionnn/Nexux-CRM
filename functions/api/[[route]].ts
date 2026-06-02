@@ -680,15 +680,13 @@ app.get('/migrate-db', async (c) => {
     await c.env.DB.prepare(`
       CREATE TABLE IF NOT EXISTS performance_items (
           id TEXT PRIMARY KEY,
-          account_id TEXT NOT NULL,
           type TEXT NOT NULL,
           name TEXT NOT NULL,
           description TEXT,
           thumb_url TEXT,
           status TEXT DEFAULT 'active',
           created_at TEXT DEFAULT (datetime('now')),
-          updated_at TEXT DEFAULT (datetime('now')),
-          FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+          updated_at TEXT DEFAULT (datetime('now'))
       );
     `).run();
 
@@ -3714,17 +3712,14 @@ app.get('/scoring/stats', async (c) => {
 // PERFORMANCE ITEMS (Admin CRUD + Public read)
 // ─────────────────────────────────────────────
 
-// Admin: list all items (optionally filter by account_id and/or type)
+// Admin: list all items (optionally filter by type)
 app.get('/admin/performance-items', async (c) => {
   try {
-    const account_id = c.req.query('account_id');
     const type = c.req.query('type');
-    let query = `SELECT pi.*, a.company_name FROM performance_items pi
-                 LEFT JOIN accounts a ON a.id = pi.account_id WHERE 1=1`;
+    let query = `SELECT * FROM performance_items WHERE 1=1`;
     const params: any[] = [];
-    if (account_id) { query += ' AND pi.account_id = ?'; params.push(account_id); }
-    if (type)       { query += ' AND pi.type = ?'; params.push(type); }
-    query += ' ORDER BY pi.created_at DESC';
+    if (type) { query += ' AND type = ?'; params.push(type); }
+    query += ' ORDER BY created_at DESC';
     const { results } = await c.env.DB.prepare(query).bind(...params).all();
     return c.json(results || []);
   } catch (error: any) {
@@ -3738,9 +3733,9 @@ app.post('/admin/performance-items', async (c) => {
     const body = await c.req.json();
     const id = crypto.randomUUID();
     await c.env.DB.prepare(
-      `INSERT INTO performance_items (id, account_id, type, name, description, thumb_url, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, body.account_id, body.type, body.name, body.description || null, body.thumb_url || null, body.status || 'active').run();
+      `INSERT INTO performance_items (id, type, name, description, thumb_url, status)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(id, body.type, body.name, body.description || null, body.thumb_url || null, body.status || 'active').run();
     return c.json({ id, ...body });
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
@@ -3753,8 +3748,8 @@ app.put('/admin/performance-items/:id', async (c) => {
     const id = c.req.param('id');
     const body = await c.req.json();
     await c.env.DB.prepare(
-      `UPDATE performance_items SET account_id=?, type=?, name=?, description=?, thumb_url=?, status=?, updated_at=datetime('now') WHERE id=?`
-    ).bind(body.account_id, body.type, body.name, body.description || null, body.thumb_url || null, body.status || 'active', id).run();
+      `UPDATE performance_items SET type=?, name=?, description=?, thumb_url=?, status=?, updated_at=datetime('now') WHERE id=?`
+    ).bind(body.type, body.name, body.description || null, body.thumb_url || null, body.status || 'active', id).run();
     return c.json({ success: true });
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
@@ -3772,14 +3767,13 @@ app.delete('/admin/performance-items/:id', async (c) => {
   }
 });
 
-// Public: fetch items for an account (used by Performance.tsx)
+// Public: fetch global items (used by Performance.tsx — visible to all accounts)
 app.get('/performance-items', async (c) => {
   try {
-    const account_id = c.req.query('account_id') || 'acc_demo';
     const type = c.req.query('type');
-    let query = `SELECT id, account_id, type, name, description, thumb_url, status, created_at
-                 FROM performance_items WHERE account_id = ? AND status = 'active'`;
-    const params: any[] = [account_id];
+    let query = `SELECT id, type, name, description, thumb_url, status, created_at
+                 FROM performance_items WHERE status = 'active'`;
+    const params: any[] = [];
     if (type) { query += ' AND type = ?'; params.push(type); }
     query += ' ORDER BY created_at DESC';
     const { results } = await c.env.DB.prepare(query).bind(...params).all();

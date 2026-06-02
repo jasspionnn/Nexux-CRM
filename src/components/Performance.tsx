@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Flame, Network, ArrowRight, ExternalLink } from 'lucide-react';
-import { useCRM } from '../context/CRMContext';
+import { BookOpen, Flame, Network, ArrowRight } from 'lucide-react';
 
 interface PerformanceItem {
   id: string;
@@ -74,7 +73,6 @@ const EmptyState: React.FC<{ cfg: typeof SECTION_CONFIG['mentorias'] }> = ({ cfg
 };
 
 const PerformanceSection: React.FC<{ subView: string }> = ({ subView }) => {
-  const { currentUser } = useCRM();
   const [items, setItems] = useState<PerformanceItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -82,14 +80,13 @@ const PerformanceSection: React.FC<{ subView: string }> = ({ subView }) => {
   const Icon = cfg.icon;
 
   useEffect(() => {
-    const accountId = currentUser?.account_id || 'acc_demo';
     setLoading(true);
-    fetch(`/api/performance-items?account_id=${accountId}&type=${cfg.type}`)
+    fetch(`/api/performance-items?type=${cfg.type}`)
       .then(r => r.ok ? r.json() : [])
       .then(data => setItems(data))
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
-  }, [subView, currentUser?.account_id]);
+  }, [subView]);
 
   return (
     <div className="p-8 max-w-6xl">
