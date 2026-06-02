@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Building2, Activity, DollarSign, Settings, LogOut, Search, Bell, Menu, X, Plus, ShieldCheck, Play, Pause, Key, Save, Trash2, Users, Edit2, Zap, BookOpen, Flame, Network, Image as ImageIcon, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Building2, Activity, DollarSign, Settings, LogOut, Search, Bell, Menu, X, Plus, ShieldCheck, Play, Pause, Key, Save, Trash2, Users, Edit2, Zap, BookOpen, Flame, Network, Image as ImageIcon, Upload, ExternalLink, Link } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 export const NexusAdminDashboard = () => {
@@ -37,8 +37,9 @@ export const NexusAdminDashboard = () => {
   const [perfItems, setPerfItems] = useState<any[]>([]);
   const [perfFilterType, setPerfFilterType] = useState('');
   const [perfModal, setPerfModal] = useState<'create' | 'edit' | null>(null);
-  const [perfForm, setPerfForm] = useState({ id: '', type: 'mentoria', name: '', description: '', thumb_url: '', status: 'active' });
+  const [perfForm, setPerfForm] = useState({ id: '', type: 'mentoria', name: '', description: '', thumb_url: '', cta_url: '', status: 'active' });
   const [perfSaving, setPerfSaving] = useState(false);
+  const perfFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchData();
@@ -231,13 +232,39 @@ export const NexusAdminDashboard = () => {
   // --- +Performance Handlers ---
 
   const openCreatePerf = () => {
-    setPerfForm({ id: '', type: 'mentoria', name: '', description: '', thumb_url: '', status: 'active' });
+    setPerfForm({ id: '', type: 'mentoria', name: '', description: '', thumb_url: '', cta_url: '', status: 'active' });
     setPerfModal('create');
   };
 
   const openEditPerf = (item: any) => {
-    setPerfForm({ id: item.id, type: item.type, name: item.name, description: item.description || '', thumb_url: item.thumb_url || '', status: item.status });
+    setPerfForm({ id: item.id, type: item.type, name: item.name, description: item.description || '', thumb_url: item.thumb_url || '', cta_url: item.cta_url || '', status: item.status });
     setPerfModal('edit');
+  };
+
+  const handlePerfImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { alert('Selecione uma imagem válida.'); return; }
+    if (file.size > 5 * 1024 * 1024) { alert('Imagem muito grande. Máximo: 5MB'); return; }
+
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_W = 900, MAX_H = 600;
+        let { width, height } = img;
+        if (width > MAX_W) { height = Math.round(height * MAX_W / width); width = MAX_W; }
+        if (height > MAX_H) { width = Math.round(width * MAX_H / height); height = MAX_H; }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+        const base64 = canvas.toDataURL('image/jpeg', 0.82);
+        setPerfForm(f => ({ ...f, thumb_url: base64 }));
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleSavePerf = async (e: React.FormEvent) => {
@@ -833,19 +860,46 @@ export const NexusAdminDashboard = () => {
                   className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-emerald-500 text-sm resize-none" />
               </div>
 
-              {/* Thumbnail URL */}
+              {/* Image Upload */}
               <div>
-                <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1.5">URL da Imagem (Thumbnail)</label>
-                <div className="flex gap-3 items-start">
-                  <input value={perfForm.thumb_url} onChange={e => setPerfForm({ ...perfForm, thumb_url: e.target.value })}
-                    type="text" placeholder="https://..."
-                    className="flex-1 bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-emerald-500 text-sm" />
-                  {perfForm.thumb_url && (
-                    <div className="w-16 h-12 rounded-xl overflow-hidden border border-gray-200 shrink-0 bg-slate-100">
-                      <img src={perfForm.thumb_url} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+                <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1.5">Imagem de Capa</label>
+                <input ref={perfFileRef} type="file" accept="image/*" onChange={handlePerfImageUpload} className="hidden" />
+                {perfForm.thumb_url ? (
+                  <div className="relative rounded-xl overflow-hidden border border-gray-200 group/img">
+                    <img src={perfForm.thumb_url} alt="Preview" className="w-full h-44 object-cover" />
+                    <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/40 transition-colors flex items-center justify-center gap-3 opacity-0 group-hover/img:opacity-100">
+                      <button type="button" onClick={() => perfFileRef.current?.click()}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-white text-slate-900 font-bold text-xs rounded-xl shadow-lg">
+                        <Upload size={13} />Trocar imagem
+                      </button>
+                      <button type="button" onClick={() => setPerfForm(f => ({ ...f, thumb_url: '' }))}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-red-500 text-white font-bold text-xs rounded-xl shadow-lg">
+                        <X size={13} />Remover
+                      </button>
                     </div>
-                  )}
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => perfFileRef.current?.click()}
+                    className="w-full h-36 border-2 border-dashed border-gray-200 rounded-xl hover:border-emerald-400 hover:bg-emerald-50 transition-all flex flex-col items-center justify-center gap-2 group/drop">
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 group-hover/drop:bg-emerald-100 flex items-center justify-center transition-colors">
+                      <Upload size={20} className="text-slate-400 group-hover/drop:text-emerald-600 transition-colors" />
+                    </div>
+                    <span className="text-sm font-semibold text-slate-500 group-hover/drop:text-emerald-600 transition-colors">Clique para selecionar imagem</span>
+                    <span className="text-xs text-slate-400">JPG, PNG, WebP • máx. 5MB</span>
+                  </button>
+                )}
+              </div>
+
+              {/* CTA URL */}
+              <div>
+                <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1.5">Link do Botão (CTA)</label>
+                <div className="flex items-center gap-2 bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-transparent">
+                  <Link size={15} className="text-slate-400 shrink-0" />
+                  <input value={perfForm.cta_url} onChange={e => setPerfForm({ ...perfForm, cta_url: e.target.value })}
+                    type="text" placeholder="https://... (link ao clicar no botão do card)"
+                    className="flex-1 bg-transparent font-medium outline-none text-sm placeholder-slate-400" />
                 </div>
+                <p className="text-[11px] text-slate-400 mt-1.5">O usuário será redirecionado para esta URL ao clicar no CTA do card.</p>
               </div>
 
               {/* Status */}

@@ -684,11 +684,17 @@ app.get('/migrate-db', async (c) => {
           name TEXT NOT NULL,
           description TEXT,
           thumb_url TEXT,
+          cta_url TEXT,
           status TEXT DEFAULT 'active',
           created_at TEXT DEFAULT (datetime('now')),
           updated_at TEXT DEFAULT (datetime('now'))
       );
     `).run();
+
+    // Add cta_url column to existing tables (idempotent)
+    try {
+      await c.env.DB.prepare(`ALTER TABLE performance_items ADD COLUMN cta_url TEXT`).run();
+    } catch (_) { /* column already exists */ }
 
     // Schema migration: remove account_id if present from old version
     try {
@@ -3745,7 +3751,7 @@ app.get('/scoring/stats', async (c) => {
 app.get('/admin/performance-items', async (c) => {
   try {
     const type = c.req.query('type');
-    let query = `SELECT * FROM performance_items WHERE 1=1`;
+    let query = `SELECT id, type, name, description, thumb_url, cta_url, status, created_at FROM performance_items WHERE 1=1`;
     const params: any[] = [];
     if (type) { query += ' AND type = ?'; params.push(type); }
     query += ' ORDER BY created_at DESC';
@@ -3762,9 +3768,9 @@ app.post('/admin/performance-items', async (c) => {
     const body = await c.req.json();
     const id = crypto.randomUUID();
     await c.env.DB.prepare(
-      `INSERT INTO performance_items (id, type, name, description, thumb_url, status)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ).bind(id, body.type, body.name, body.description || null, body.thumb_url || null, body.status || 'active').run();
+      `INSERT INTO performance_items (id, type, name, description, thumb_url, cta_url, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, body.type, body.name, body.description || null, body.thumb_url || null, body.cta_url || null, body.status || 'active').run();
     return c.json({ id, ...body });
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
@@ -3777,8 +3783,8 @@ app.put('/admin/performance-items/:id', async (c) => {
     const id = c.req.param('id');
     const body = await c.req.json();
     await c.env.DB.prepare(
-      `UPDATE performance_items SET type=?, name=?, description=?, thumb_url=?, status=?, updated_at=datetime('now') WHERE id=?`
-    ).bind(body.type, body.name, body.description || null, body.thumb_url || null, body.status || 'active', id).run();
+      `UPDATE performance_items SET type=?, name=?, description=?, thumb_url=?, cta_url=?, status=?, updated_at=datetime('now') WHERE id=?`
+    ).bind(body.type, body.name, body.description || null, body.thumb_url || null, body.cta_url || null, body.status || 'active', id).run();
     return c.json({ success: true });
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
@@ -3800,7 +3806,7 @@ app.delete('/admin/performance-items/:id', async (c) => {
 app.get('/performance-items', async (c) => {
   try {
     const type = c.req.query('type');
-    let query = `SELECT id, type, name, description, thumb_url, status, created_at
+    let query = `SELECT id, type, name, description, thumb_url, cta_url, status, created_at
                  FROM performance_items WHERE status = 'active'`;
     const params: any[] = [];
     if (type) { query += ' AND type = ?'; params.push(type); }
