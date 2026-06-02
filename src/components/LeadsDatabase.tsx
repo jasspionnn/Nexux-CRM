@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, Filter, Download, Plus, X, Building2, Mail, Phone, Briefcase, ChevronDown, Check, User, CheckCircle2 } from 'lucide-react';
+import { Search, Filter, Download, Plus, X, Building2, Mail, Phone, Briefcase, ChevronDown, Check, User, CheckCircle2, Edit2, ExternalLink } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 import { createPortal } from 'react-dom';
 
@@ -41,6 +41,16 @@ export const LeadsDatabase = ({ onNavigate }: any) => {
   const [stageDropdownPosition, setStageDropdownPosition] = useState<{ top: number; left: number } | null>(null);
 
   const [showFilters, setShowFilters] = useState(false);
+
+  // Edit contact modal
+  const [showEditContact, setShowEditContact] = useState(false);
+  const [editContactForm, setEditContactForm] = useState({ name: '', phone: '', company: '' });
+  const [savingContact, setSavingContact] = useState(false);
+
+  // Add deal modal (from contact panel)
+  const [showAddDeal, setShowAddDeal] = useState(false);
+  const [addDealForm, setAddDealForm] = useState({ title: '', funnel_id: '', stage_id: '' });
+  const [addingDeal, setAddingDeal] = useState(false);
 
   useEffect(() => {
     if (showFunnelDropdown && funnelDropdownButtonRef.current) {
@@ -148,6 +158,88 @@ export const LeadsDatabase = ({ onNavigate }: any) => {
     } catch (error) {
       console.error(error);
     }
+  };
+
+  const openEditContact = (contact: ContactGroup) => {
+    setEditContactForm({ name: contact.name, phone: contact.phone, company: contact.company });
+    setShowEditContact(true);
+  };
+
+  const handleSaveContact = async () => {
+    if (!selectedContact) return;
+    setSavingContact(true);
+    const aid = currentUser?.account_id || '';
+    // Update all leads that belong to this contact (same email or phone)
+    const contactLeads = selectedContact.leads;
+    try {
+      await Promise.all(contactLeads.map(lead =>
+        fetch(`/api/leads/${lead.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contact_name: editContactForm.name,
+            contact_phone: editContactForm.phone,
+            company: editContactForm.company,
+          }),
+        })
+      ));
+      // Update local state
+      setLeads(prev => prev.map(l =>
+        contactLeads.some(cl => cl.id === l.id)
+          ? { ...l, contact_name: editContactForm.name, contact_phone: editContactForm.phone, company: editContactForm.company }
+          : l
+      ));
+      setSelectedContact({
+        ...selectedContact,
+        name: editContactForm.name,
+        phone: editContactForm.phone,
+        company: editContactForm.company,
+        leads: contactLeads.map(l => ({ ...l, contact_name: editContactForm.name, contact_phone: editContactForm.phone, company: editContactForm.company })),
+      });
+      setShowEditContact(false);
+    } catch (e) { console.error(e); }
+    setSavingContact(false);
+  };
+
+  const openAddDeal = () => {
+    const firstFunnel = funnels[0];
+    setAddDealForm({
+      title: `Negociação - ${selectedContact?.name || 'Contato'}`,
+      funnel_id: firstFunnel?.id || '',
+      stage_id: firstFunnel?.stages?.[0]?.id || '',
+    });
+    setShowAddDeal(true);
+  };
+
+  const handleAddDeal = async () => {
+    if (!selectedContact || !addDealForm.title || !addDealForm.funnel_id) return;
+    setAddingDeal(true);
+    const aid = currentUser?.account_id || '';
+    const selectedFunnel = funnels.find(f => f.id === addDealForm.funnel_id);
+    const stageId = addDealForm.stage_id || selectedFunnel?.stages?.[0]?.id || '';
+    try {
+      const res = await fetch(`/api/leads?account_id=${aid}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: addDealForm.title,
+          funnel_id: addDealForm.funnel_id,
+          stage_id: stageId,
+          contact_name: selectedContact.name,
+          contact_email: selectedContact.email,
+          contact_phone: selectedContact.phone,
+          company: selectedContact.company,
+          account_id: aid,
+        }),
+      });
+      if (res.ok) {
+        const newLead = await res.json();
+        setShowAddDeal(false);
+        setSelectedContact(null);
+        onNavigate('lead-detail', newLead.id);
+      }
+    } catch (e) { console.error(e); }
+    setAddingDeal(false);
   };
 
   // Group leads into contacts
@@ -527,31 +619,58 @@ export const LeadsDatabase = ({ onNavigate }: any) => {
       {selectedContact && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-start bg-slate-50">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-900 mb-1">{selectedContact.name || 'Contato Sem Nome'}</h2>
-                <div className="flex items-center gap-4 text-sm text-slate-600">
-                  {selectedContact.email && <span className="flex items-center gap-1.5"><Mail size={14} /> {selectedContact.email}</span>}
-                  {selectedContact.phone && <span className="flex items-center gap-1.5"><Phone size={14} /> {selectedContact.phone}</span>}
-                  {selectedContact.company && <span className="flex items-center gap-1.5"><Building2 size={14} /> {selectedContact.company}</span>}
+            {/* Contact header */}
+            <div className="px-6 py-4 border-b border-gray-200 bg-white">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shrink-0">
+                    {(selectedContact.name || selectedContact.email || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900">{selectedContact.name || 'Contato Sem Nome'}</h2>
+                    {selectedContact.company && <p className="text-sm text-slate-500">{selectedContact.company}</p>}
+                  </div>
                 </div>
+                <button onClick={() => setSelectedContact(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                  <X size={18} />
+                </button>
               </div>
-              <button 
-                onClick={() => setSelectedContact(null)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
-              >
-                <X size={20} />
-              </button>
+              <div className="flex flex-wrap items-center gap-3 mb-4">
+                {selectedContact.email && (
+                  <span className="flex items-center gap-1.5 text-sm text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
+                    <Mail size={13} className="text-slate-400" />{selectedContact.email}
+                  </span>
+                )}
+                {selectedContact.phone && (
+                  <span className="flex items-center gap-1.5 text-sm text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
+                    <Phone size={13} className="text-slate-400" />{selectedContact.phone}
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => openEditContact(selectedContact)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 rounded-lg text-xs font-bold transition-all"
+                >
+                  <Edit2 size={13} />Editar Contato
+                </button>
+                <button
+                  onClick={openAddDeal}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-colors"
+                >
+                  <Plus size={13} />Nova Negociação
+                </button>
+              </div>
             </div>
-            
+
             <div className="p-6 overflow-y-auto flex-1 bg-white">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <Briefcase size={20} className="text-indigo-600" />
-                  Negociações Atreladas
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2 uppercase tracking-wider">
+                  <Briefcase size={15} className="text-indigo-600" />
+                  Negociações ({selectedContact.leads.length})
                 </h3>
-                <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-                  Total: R$ {selectedContact.totalValue.toLocaleString('pt-BR')}
+                <span className="text-sm font-bold text-indigo-600">
+                  R$ {selectedContact.totalValue.toLocaleString('pt-BR')}
                 </span>
               </div>
 
@@ -590,6 +709,119 @@ export const LeadsDatabase = ({ onNavigate }: any) => {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Contact Modal ── */}
+      {showEditContact && selectedContact && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Editar Contato</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Atualiza em todas as negociações deste contato</p>
+              </div>
+              <button onClick={() => setShowEditContact(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nome</label>
+                <input type="text" value={editContactForm.name} onChange={e => setEditContactForm({ ...editContactForm, name: e.target.value })}
+                  placeholder="Nome do contato" autoFocus
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Telefone / WhatsApp</label>
+                <input type="text" value={editContactForm.phone} onChange={e => setEditContactForm({ ...editContactForm, phone: e.target.value })}
+                  placeholder="(11) 99999-9999"
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Empresa</label>
+                <input type="text" value={editContactForm.company} onChange={e => setEditContactForm({ ...editContactForm, company: e.target.value })}
+                  placeholder="Nome da empresa"
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+              </div>
+              <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
+                O e-mail não pode ser alterado aqui pois é o identificador do contato.
+              </p>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 justify-end">
+              <button onClick={() => setShowEditContact(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl font-medium text-sm">Cancelar</button>
+              <button onClick={handleSaveContact} disabled={savingContact}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm flex items-center gap-2">
+                {savingContact ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : null}
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Deal Modal ── */}
+      {showAddDeal && selectedContact && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Nova Negociação</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Para {selectedContact.name || selectedContact.email}</p>
+              </div>
+              <button onClick={() => setShowAddDeal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              {/* Contact preview */}
+              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                  {(selectedContact.name || '?').charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-800 truncate">{selectedContact.name || 'Sem nome'}</p>
+                  <div className="flex gap-3">
+                    {selectedContact.phone && <span className="text-xs text-slate-400">{selectedContact.phone}</span>}
+                    {selectedContact.email && <span className="text-xs text-slate-400">{selectedContact.email}</span>}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Título da negociação</label>
+                <input type="text" value={addDealForm.title} onChange={e => setAddDealForm({ ...addDealForm, title: e.target.value })}
+                  placeholder="Ex: Proposta de serviços" autoFocus
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Funil</label>
+                <select value={addDealForm.funnel_id}
+                  onChange={e => {
+                    const f = funnels.find(fn => fn.id === e.target.value);
+                    setAddDealForm({ ...addDealForm, funnel_id: e.target.value, stage_id: f?.stages?.[0]?.id || '' });
+                  }}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                  <option value="">Selecionar funil...</option>
+                  {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+              </div>
+              {addDealForm.funnel_id && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Etapa inicial</label>
+                  <select value={addDealForm.stage_id} onChange={e => setAddDealForm({ ...addDealForm, stage_id: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                    {(funnels.find(f => f.id === addDealForm.funnel_id)?.stages || []).map((s: any) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 justify-end">
+              <button onClick={() => setShowAddDeal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl font-medium text-sm">Cancelar</button>
+              <button onClick={handleAddDeal} disabled={addingDeal || !addDealForm.title || !addDealForm.funnel_id}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm flex items-center gap-2">
+                {addingDeal ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus size={14} />}
+                Criar Negociação
+              </button>
             </div>
           </div>
         </div>

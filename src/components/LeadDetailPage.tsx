@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft, ThumbsDown, ThumbsUp, Briefcase, Phone, MessageSquare, Send, Layers,
   Edit2, Check, X, Calendar, Trash2, CheckCircle2, Circle, Plus, Globe, ChevronUp, ChevronDown,
-  Mail, User, ExternalLink, Search
+  Mail, User
 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 import { format } from 'date-fns';
@@ -129,13 +129,6 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
   const [showEditContact, setShowEditContact] = useState(false);
   const [editContact, setEditContact] = useState({ contact_name: '', contact_email: '', contact_phone: '' });
 
-  // Add deal modal
-  const [showAddDeal, setShowAddDeal] = useState(false);
-  const [dealForm, setDealForm] = useState({ title: '', funnel_id: '', stage_id: '' });
-  const [addingDeal, setAddingDeal] = useState(false);
-
-  // Related deals (same contact email or phone)
-  const [relatedDeals, setRelatedDeals] = useState<any[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -183,19 +176,6 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
         setCustomFields(Array.isArray(cfData) ? cfData : []);
       }
 
-      // Fetch related deals (same contact email or phone)
-      if (aid && (leadData.contact_email || leadData.contact_phone)) {
-        const allLeadsRes = await fetch(`/api/leads?account_id=${aid}`);
-        if (allLeadsRes.ok) {
-          const allLeads = await allLeadsRes.json();
-          const related = (allLeads as any[]).filter((l: any) =>
-            l.id !== leadId &&
-            ((leadData.contact_email && l.contact_email === leadData.contact_email) ||
-             (leadData.contact_phone && l.contact_phone === leadData.contact_phone))
-          );
-          setRelatedDeals(related);
-        }
-      }
 
       const visitsRes = await fetch(`/api/lead-timeline?lead_id=${leadId}`);
       if (visitsRes.ok) {
@@ -248,45 +228,6 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
     setShowEditContact(false);
   };
 
-  const openAddDeal = () => {
-    const firstFunnel = funnels[0];
-    setDealForm({
-      title: `Negociação - ${lead.contact_name || lead.title}`,
-      funnel_id: firstFunnel?.id || '',
-      stage_id: firstFunnel?.stages?.[0]?.id || '',
-    });
-    setShowAddDeal(true);
-  };
-
-  const handleAddDeal = async () => {
-    if (!dealForm.title || !dealForm.funnel_id) return;
-    setAddingDeal(true);
-    const aid = currentUser?.account_id || '';
-    try {
-      const selectedFunnel = funnels.find(f => f.id === dealForm.funnel_id);
-      const stageId = dealForm.stage_id || selectedFunnel?.stages?.[0]?.id || '';
-      const res = await fetch(`/api/leads?account_id=${aid}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: dealForm.title,
-          funnel_id: dealForm.funnel_id,
-          stage_id: stageId,
-          contact_name: lead.contact_name,
-          contact_email: lead.contact_email,
-          contact_phone: lead.contact_phone,
-          company: lead.company,
-          account_id: aid,
-        }),
-      });
-      if (res.ok) {
-        const newLead = await res.json();
-        setShowAddDeal(false);
-        onNavigate('lead-detail', newLead.id);
-      }
-    } catch (e) { console.error(e); }
-    setAddingDeal(false);
-  };
 
   const handleAddNote = async () => {
     if (!noteText.trim()) return;
@@ -632,44 +573,7 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
               </div>
             </div>
 
-            {/* Add deal button */}
-            <button
-              onClick={openAddDeal}
-              className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 border-2 border-dashed border-indigo-200 text-indigo-600 rounded-xl text-xs font-bold hover:border-indigo-400 hover:bg-indigo-50 transition-all"
-            >
-              <Plus size={15} />
-              NOVA NEGOCIAÇÃO PARA ESTE CONTATO
-            </button>
           </div>
-
-          {/* Related deals section */}
-          {relatedDeals.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 text-gray-400 mb-3">
-                <Briefcase size={16} />
-                <h3 className="text-xs font-bold tracking-wider uppercase">Outras Negociações</h3>
-                <span className="ml-auto text-[10px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full font-bold">{relatedDeals.length}</span>
-              </div>
-              <div className="space-y-2">
-                {relatedDeals.map(deal => (
-                  <button
-                    key={deal.id}
-                    onClick={() => onNavigate('lead-detail', deal.id)}
-                    className="w-full flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all text-left group"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
-                      <Briefcase size={13} className="text-indigo-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-slate-800 truncate">{deal.title}</p>
-                      <p className="text-[10px] text-slate-400 truncate">{deal.company || 'Sem empresa'}</p>
-                    </div>
-                    <ExternalLink size={13} className="text-slate-300 group-hover:text-indigo-500 shrink-0 transition-colors" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Right Content - No independent scroll */}
@@ -1076,79 +980,6 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
         </div>
       )}
 
-      {/* ── Add Deal Modal ── */}
-      {showAddDeal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center">
-                  <Plus size={18} className="text-green-600" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">Nova Negociação</h2>
-                  <p className="text-xs text-slate-400">Criar deal para este contato</p>
-                </div>
-              </div>
-              <button onClick={() => setShowAddDeal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
-            </div>
-            <div className="px-6 py-5 space-y-4">
-              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                  {(lead.contact_name || lead.title || '?').charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-slate-800 truncate">{lead.contact_name || lead.title}</p>
-                  <div className="flex items-center gap-3">
-                    {lead.contact_phone && <span className="text-xs text-slate-400">{lead.contact_phone}</span>}
-                    {lead.contact_email && <span className="text-xs text-slate-400">{lead.contact_email}</span>}
-                  </div>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Título da negociação</label>
-                <input type="text" value={dealForm.title}
-                  onChange={e => setDealForm({ ...dealForm, title: e.target.value })}
-                  placeholder="Ex: Proposta de serviços"
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
-                  autoFocus />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Funil</label>
-                <select value={dealForm.funnel_id}
-                  onChange={e => {
-                    const f = funnels.find(fn => fn.id === e.target.value);
-                    setDealForm({ ...dealForm, funnel_id: e.target.value, stage_id: f?.stages?.[0]?.id || '' });
-                  }}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none">
-                  <option value="">Selecionar funil...</option>
-                  {funnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                </select>
-              </div>
-              {dealForm.funnel_id && (
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Etapa inicial</label>
-                  <select value={dealForm.stage_id}
-                    onChange={e => setDealForm({ ...dealForm, stage_id: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none">
-                    {(funnels.find(f => f.id === dealForm.funnel_id)?.stages || []).map((s: any) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex gap-3 justify-end">
-              <button onClick={() => setShowAddDeal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl font-medium text-sm transition-colors">Cancelar</button>
-              <button onClick={handleAddDeal} disabled={addingDeal || !dealForm.title || !dealForm.funnel_id}
-                className="px-5 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition-colors flex items-center gap-2">
-                {addingDeal ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus size={15} />}
-                Criar Negociação
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
