@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Activity, DollarSign, Settings, LogOut, Search, Bell, Menu, X, Plus, ShieldCheck, Play, Pause, Key, Save, Trash2, Users, Edit2 } from 'lucide-react';
+import { Building2, Activity, DollarSign, Settings, LogOut, Search, Bell, Menu, X, Plus, ShieldCheck, Play, Pause, Key, Save, Trash2, Users, Edit2, Zap, BookOpen, Flame, Network, Image as ImageIcon, ChevronDown } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 export const NexusAdminDashboard = () => {
   const { currentUser, logout } = useCRM();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState<'accounts' | 'settings' | 'users'>('accounts');
+  const [activeTab, setActiveTab] = useState<'accounts' | 'settings' | 'users' | 'performance'>('accounts');
   
   const [stats, setStats] = useState({ totalAccounts: 0, activeAccounts: 0, totalUsers: 0, mrr: 0 });
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -33,9 +33,28 @@ export const NexusAdminDashboard = () => {
   const [editingUser, setEditingUser] = useState<any>(null);
   const [editUserFormData, setEditUserFormData] = useState({ name: '', email: '', role: 'NEXUS_ADMIN', status: 'active' });
 
+  // +Performance State
+  const [perfItems, setPerfItems] = useState<any[]>([]);
+  const [perfFilterAccount, setPerfFilterAccount] = useState('');
+  const [perfFilterType, setPerfFilterType] = useState('');
+  const [perfModal, setPerfModal] = useState<'create' | 'edit' | null>(null);
+  const [perfForm, setPerfForm] = useState({ id: '', account_id: '', type: 'mentoria', name: '', description: '', thumb_url: '', status: 'active' });
+  const [perfSaving, setPerfSaving] = useState(false);
+
   useEffect(() => {
     fetchData();
+    fetchPerfItems();
   }, []);
+
+  const fetchPerfItems = async (accountId?: string, type?: string) => {
+    try {
+      let url = '/api/admin/performance-items?';
+      if (accountId) url += `account_id=${accountId}&`;
+      if (type) url += `type=${type}&`;
+      const res = await fetch(url);
+      if (res.ok) setPerfItems(await res.json());
+    } catch (e) { console.error(e); }
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -212,6 +231,45 @@ export const NexusAdminDashboard = () => {
     }
   };
 
+  // --- +Performance Handlers ---
+
+  const openCreatePerf = () => {
+    setPerfForm({ id: '', account_id: accounts.filter(a => a.id !== 'acc_nexus')[0]?.id || '', type: 'mentoria', name: '', description: '', thumb_url: '', status: 'active' });
+    setPerfModal('create');
+  };
+
+  const openEditPerf = (item: any) => {
+    setPerfForm({ id: item.id, account_id: item.account_id, type: item.type, name: item.name, description: item.description || '', thumb_url: item.thumb_url || '', status: item.status });
+    setPerfModal('edit');
+  };
+
+  const handleSavePerf = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPerfSaving(true);
+    try {
+      const isEdit = perfModal === 'edit';
+      const url = isEdit ? `/api/admin/performance-items/${perfForm.id}` : '/api/admin/performance-items';
+      const res = await fetch(url, {
+        method: isEdit ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(perfForm),
+      });
+      if (res.ok) { setPerfModal(null); fetchPerfItems(perfFilterAccount, perfFilterType); }
+      else alert('Erro ao salvar item');
+    } catch (e) { alert('Erro de comunicação'); }
+    setPerfSaving(false);
+  };
+
+  const handleDeletePerf = async (id: string) => {
+    if (!confirm('Excluir este item?')) return;
+    try {
+      await fetch(`/api/admin/performance-items/${id}`, { method: 'DELETE' });
+      fetchPerfItems(perfFilterAccount, perfFilterType);
+    } catch (e) { console.error(e); }
+  };
+
+  const applyPerfFilter = () => fetchPerfItems(perfFilterAccount, perfFilterType);
+
   // --- Settings Handlers ---
 
   const handleSaveSettings = async () => {
@@ -268,7 +326,14 @@ export const NexusAdminDashboard = () => {
             <Users className="mr-3" size={20} />
             Administradores Nexus
           </button>
-          <button 
+          <button
+            onClick={() => setActiveTab('performance')}
+            className={`w-full flex items-center px-6 py-3 transition-colors ${activeTab === 'performance' ? 'bg-gray-800 text-white border-l-4 border-emerald-500' : 'hover:bg-gray-800 hover:text-white'}`}
+          >
+            <Zap className="mr-3" size={20} />
+            +Performance
+          </button>
+          <button
             onClick={() => setActiveTab('settings')}
             className={`w-full flex items-center px-6 py-3 transition-colors ${activeTab === 'settings' ? 'bg-gray-800 text-white border-l-4 border-blue-500' : 'hover:bg-gray-800 hover:text-white'}`}
           >
@@ -516,6 +581,118 @@ export const NexusAdminDashboard = () => {
             </div>
           )}
 
+          {activeTab === 'performance' && (() => {
+            const typeConfig: Record<string, { label: string; icon: any; color: string; bg: string }> = {
+              mentoria:   { label: 'Mentoria',   icon: BookOpen, color: 'text-blue-600',    bg: 'bg-blue-50' },
+              imersao:    { label: 'Imersão',    icon: Flame,    color: 'text-orange-600',  bg: 'bg-orange-50' },
+              networking: { label: 'Networking', icon: Network,  color: 'text-emerald-600', bg: 'bg-emerald-50' },
+            };
+            const filtered = perfItems.filter(i =>
+              (!perfFilterAccount || i.account_id === perfFilterAccount) &&
+              (!perfFilterType || i.type === perfFilterType)
+            );
+            return (
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                      <span className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center"><Zap size={20} className="text-emerald-600" /></span>
+                      +Performance
+                    </h2>
+                    <p className="text-slate-500 font-medium mt-1">Crie e gerencie Mentorias, Imersões e Networkings por conta mãe.</p>
+                  </div>
+                  <button onClick={openCreatePerf}
+                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-lg shadow-emerald-600/20 transition-all active:scale-95">
+                    <Plus size={18} />Novo Item
+                  </button>
+                </div>
+
+                {/* Filters */}
+                <div className="bg-white rounded-2xl border border-gray-200/60 p-4 mb-6 flex flex-wrap items-end gap-4 shadow-sm">
+                  <div className="flex-1 min-w-[200px]">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Conta Mãe</label>
+                    <select value={perfFilterAccount} onChange={e => setPerfFilterAccount(e.target.value)}
+                      className="w-full bg-slate-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500">
+                      <option value="">Todas as contas</option>
+                      {accounts.filter(a => a.id !== 'acc_nexus').map(a => (
+                        <option key={a.id} value={a.id}>{a.company_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1 min-w-[160px]">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Tipo</label>
+                    <select value={perfFilterType} onChange={e => setPerfFilterType(e.target.value)}
+                      className="w-full bg-slate-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500">
+                      <option value="">Todos os tipos</option>
+                      <option value="mentoria">Mentorias</option>
+                      <option value="imersao">Imersões</option>
+                      <option value="networking">Networkings</option>
+                    </select>
+                  </div>
+                  <button onClick={applyPerfFilter}
+                    className="px-5 py-2.5 bg-slate-900 hover:bg-black text-white font-bold rounded-xl text-sm transition-colors">
+                    Filtrar
+                  </button>
+                </div>
+
+                {/* Items grid */}
+                {filtered.length === 0 ? (
+                  <div className="bg-white rounded-2xl border border-gray-200/60 p-16 text-center shadow-sm">
+                    <Zap size={40} className="text-slate-200 mx-auto mb-4" />
+                    <p className="text-slate-400 font-bold text-lg">Nenhum item encontrado</p>
+                    <p className="text-slate-400 text-sm mt-1">Clique em "Novo Item" para criar uma mentoria, imersão ou networking.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                    {filtered.map(item => {
+                      const cfg = typeConfig[item.type] || typeConfig.mentoria;
+                      const Icon = cfg.icon;
+                      return (
+                        <div key={item.id} className="bg-white rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden hover:shadow-md transition-shadow group">
+                          {/* Thumb */}
+                          <div className="h-40 bg-slate-100 relative overflow-hidden">
+                            {item.thumb_url ? (
+                              <img src={item.thumb_url} alt={item.name} className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <ImageIcon size={32} className="text-slate-300" />
+                              </div>
+                            )}
+                            <div className="absolute top-3 left-3">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${cfg.bg} ${cfg.color} border border-white/50 shadow-sm`}>
+                                <Icon size={12} />{cfg.label}
+                              </span>
+                            </div>
+                            {item.status !== 'active' && (
+                              <div className="absolute top-3 right-3 px-2 py-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full">Inativo</div>
+                            )}
+                          </div>
+                          {/* Info */}
+                          <div className="p-4">
+                            <p className="text-xs text-slate-400 font-medium mb-1">{item.company_name || item.account_id}</p>
+                            <h3 className="text-sm font-bold text-slate-900 mb-1 line-clamp-1">{item.name}</h3>
+                            <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{item.description || 'Sem descrição'}</p>
+                          </div>
+                          {/* Actions */}
+                          <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                            <button onClick={() => openEditPerf(item)}
+                              className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors">
+                              <Edit2 size={12} />Editar
+                            </button>
+                            <button onClick={() => handleDeletePerf(item.id)}
+                              className="flex items-center gap-1.5 text-xs font-bold text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors">
+                              <Trash2 size={12} />Excluir
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {activeTab === 'settings' && (
             <div className="max-w-3xl">
               <div className="mb-8">
@@ -619,6 +796,110 @@ export const NexusAdminDashboard = () => {
 
         </main>
       </div>
+
+      {/* +Performance Create/Edit Modal */}
+      {perfModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-2xl font-black text-slate-900">{perfModal === 'create' ? 'Novo Item +Performance' : 'Editar Item'}</h3>
+                <p className="text-slate-500 text-sm mt-0.5">Preencha as informações do card que aparecerá no painel dos usuários.</p>
+              </div>
+              <button onClick={() => setPerfModal(null)} className="text-slate-400 hover:text-slate-600"><X size={22} /></button>
+            </div>
+
+            <form onSubmit={handleSavePerf} className="space-y-5">
+              {/* Conta Mãe */}
+              <div>
+                <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1.5">Conta Mãe</label>
+                <select required value={perfForm.account_id} onChange={e => setPerfForm({ ...perfForm, account_id: e.target.value })}
+                  className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-emerald-500 text-sm">
+                  <option value="">Selecionar conta...</option>
+                  {accounts.filter(a => a.id !== 'acc_nexus').map(a => (
+                    <option key={a.id} value={a.id}>{a.company_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Tipo */}
+              <div>
+                <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1.5">Tipo</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'mentoria',   label: 'Mentoria',   icon: BookOpen, color: 'emerald' },
+                    { value: 'imersao',    label: 'Imersão',    icon: Flame,    color: 'orange' },
+                    { value: 'networking', label: 'Networking', icon: Network,  color: 'blue' },
+                  ].map(t => {
+                    const Icon = t.icon;
+                    const sel = perfForm.type === t.value;
+                    return (
+                      <button key={t.value} type="button" onClick={() => setPerfForm({ ...perfForm, type: t.value })}
+                        className={`flex flex-col items-center gap-2 py-3 px-2 rounded-xl border-2 font-bold text-xs transition-all ${sel ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-slate-500 hover:border-gray-300'}`}>
+                        <Icon size={18} className={sel ? 'text-emerald-600' : 'text-slate-400'} />
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Nome */}
+              <div>
+                <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1.5">Nome do Card</label>
+                <input required value={perfForm.name} onChange={e => setPerfForm({ ...perfForm, name: e.target.value })}
+                  type="text" placeholder="Ex: Mentoria de Vendas B2B"
+                  className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-emerald-500 text-sm" />
+              </div>
+
+              {/* Descrição */}
+              <div>
+                <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1.5">Descrição</label>
+                <textarea value={perfForm.description} onChange={e => setPerfForm({ ...perfForm, description: e.target.value })}
+                  rows={3} placeholder="Descreva brevemente o conteúdo ou objetivo deste item..."
+                  className="w-full bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-emerald-500 text-sm resize-none" />
+              </div>
+
+              {/* Thumbnail URL */}
+              <div>
+                <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1.5">URL da Imagem (Thumbnail)</label>
+                <div className="flex gap-3 items-start">
+                  <input value={perfForm.thumb_url} onChange={e => setPerfForm({ ...perfForm, thumb_url: e.target.value })}
+                    type="text" placeholder="https://..."
+                    className="flex-1 bg-slate-50 border border-gray-200 rounded-xl px-4 py-3 font-medium outline-none focus:ring-2 focus:ring-emerald-500 text-sm" />
+                  {perfForm.thumb_url && (
+                    <div className="w-16 h-12 rounded-xl overflow-hidden border border-gray-200 shrink-0 bg-slate-100">
+                      <img src={perfForm.thumb_url} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-xs font-bold tracking-wider uppercase text-slate-500 mb-1.5">Status</label>
+                <div className="flex gap-2">
+                  {['active', 'inactive'].map(s => (
+                    <button key={s} type="button" onClick={() => setPerfForm({ ...perfForm, status: s })}
+                      className={`flex-1 py-2.5 rounded-xl border-2 font-bold text-sm transition-all ${perfForm.status === s ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-slate-500 hover:border-gray-300'}`}>
+                      {s === 'active' ? '✓ Ativo' : '○ Inativo'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setPerfModal(null)}
+                  className="flex-1 py-3 bg-white border border-gray-200 rounded-xl text-slate-700 font-bold hover:bg-slate-50 transition-colors">Cancelar</button>
+                <button type="submit" disabled={perfSaving}
+                  className="flex-1 py-3 bg-emerald-600 rounded-xl text-white font-bold hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20 active:scale-95 flex justify-center items-center gap-2">
+                  {perfSaving ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <><Save size={16} />{perfModal === 'create' ? 'Criar Item' : 'Salvar Alterações'}</>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Creation Modal */}
       {isAddModalOpen && !createdInfo && (
