@@ -292,7 +292,8 @@ export const KanbanBoard = ({ onNavigate }: any) => {
       value: 0,
       funnel_id: activeFunnelId,
       stage_id: targetStageId,
-      assigned_user_id: currentUser?.id
+      assigned_user_id: currentUser?.id,
+      account_id: currentUser?.account_id
     };
 
     try {
