@@ -123,6 +123,7 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [funnels, setFunnels] = useState<any[]>([]);
+  const [customFields, setCustomFields] = useState<any[]>([]);
 
   // Edit contact modal
   const [showEditContact, setShowEditContact] = useState(false);
@@ -176,6 +177,12 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
       const usersData = await usersRes.json();
       setUsers(Array.isArray(usersData) ? usersData : []);
 
+      const cfRes = await fetch(`/api/custom-fields?account_id=${aid}`);
+      if (cfRes.ok) {
+        const cfData = await cfRes.json();
+        setCustomFields(Array.isArray(cfData) ? cfData : []);
+      }
+
       // Fetch related deals (same contact email or phone)
       if (aid && (leadData.contact_email || leadData.contact_phone)) {
         const allLeadsRes = await fetch(`/api/leads?account_id=${aid}`);
@@ -201,6 +208,22 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
       setIsLoading(false);
     }
   };
+
+  // Parse custom_values JSON safely
+  const getCustomValues = (): Record<string, string> => {
+    try { return JSON.parse(lead?.custom_values || '{}'); } catch { return {}; }
+  };
+
+  const updateCustomValue = (fieldId: string, value: string) => {
+    const updated = { ...getCustomValues(), [fieldId]: value };
+    updateLead({ custom_values: JSON.stringify(updated) });
+  };
+
+  // Fields relevant to this lead (context + funnel filter)
+  const relevantCustomFields = customFields.filter(f =>
+    (f.context === 'Lead' || f.context === 'Negociação' || !f.context) &&
+    (!f.funnel_id || f.funnel_id === lead?.funnel_id)
+  );
 
   const updateLead = async (updates: any) => {
     setLead({ ...lead, ...updates });
@@ -509,6 +532,51 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
               </div>
             </div>
           </div>
+
+          {/* Custom Fields Section */}
+          {relevantCustomFields.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 text-gray-400 mb-3">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <h3 className="text-xs font-bold tracking-wider uppercase">Campos Personalizados</h3>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex flex-col gap-4">
+                {relevantCustomFields.map(field => {
+                  const customVals = getCustomValues();
+                  const currentVal = customVals[field.id] || '';
+
+                  if (field.type === 'Seleção') {
+                    const options = (field.options || '').split(',').map((o: string) => o.trim()).filter(Boolean);
+                    return (
+                      <div key={field.id} className="group relative">
+                        <div className="text-[10px] font-bold text-gray-400 tracking-wider uppercase mb-1">{field.name}</div>
+                        <select
+                          value={currentVal}
+                          onChange={e => updateCustomValue(field.id, e.target.value)}
+                          className="w-full text-sm font-bold text-slate-900 border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="">Selecionar...</option>
+                          {options.map((opt: string) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <EditableField
+                      key={field.id}
+                      label={field.name}
+                      value={currentVal}
+                      type={field.type === 'Número' ? 'number' : field.type === 'Data' ? 'date' : 'text'}
+                      onSave={(val: string) => updateCustomValue(field.id, val)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Contato Section */}
           <div>
