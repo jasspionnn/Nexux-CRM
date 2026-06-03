@@ -2,11 +2,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft, ThumbsDown, ThumbsUp, Briefcase, Phone, MessageSquare, Send, Layers,
   Edit2, Check, X, Calendar, Trash2, CheckCircle2, Circle, Plus, Globe, ChevronUp, ChevronDown,
-  Mail, User, Clock, RotateCcw
+  Mail, User, Clock, RotateCcw, MapPin, Users, Coffee, MessageCircle, CheckSquare
 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 import { format, isPast, isToday, parseISO, addHours, addDays, startOfDay, addWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+
+const TASK_TYPES = [
+  { value: 'ligação', label: 'Ligação', icon: Phone },
+  { value: 'e-mail', label: 'E-mail', icon: Mail },
+  { value: 'visita', label: 'Visita', icon: MapPin },
+  { value: 'reunião', label: 'Reunião', icon: Users },
+  { value: 'tarefa', label: 'Tarefa', icon: CheckSquare },
+  { value: 'almoço', label: 'Almoço', icon: Coffee },
+  { value: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
+];
 
 const EditableField = ({ label, value, onSave, type = "text" }: any) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -118,6 +128,7 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
   const [noteText, setNoteText] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDate, setNewTaskDate] = useState('');
+  const [newTaskType, setNewTaskType] = useState('tarefa');
   const [activeTab, setActiveTab] = useState<'notes' | 'tasks' | 'visits'>('notes');
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingTask, setIsAddingTask] = useState(false);
@@ -292,6 +303,7 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
           lead_id: leadId,
           title: newTaskTitle,
           due_date: newTaskDate ? new Date(newTaskDate).toISOString() : null,
+          type: newTaskType,
           completed: 0
         })
       });
@@ -299,6 +311,7 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
       setTasks([data, ...tasks]);
       setNewTaskTitle('');
       setNewTaskDate('');
+      setNewTaskType('tarefa');
       setIsAddingTask(false);
     } catch (error) {
       console.error('Error adding task:', error);
@@ -791,6 +804,33 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                 {/* Task Quick Input Modal/Inline */}
                 {isAddingTask && (
                   <div className="bg-slate-50 border border-indigo-100 rounded-2xl p-6 mb-8 animate-in zoom-in-95 duration-200">
+                    <div className="mb-4 space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Tipo da Tarefa</label>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {TASK_TYPES.map(({ value, label, icon: Icon }) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setNewTaskType(value)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                              newTaskType === value
+                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:bg-indigo-50'
+                            }`}
+                          >
+                            <Icon size={12} />
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        value={newTaskType}
+                        onChange={e => setNewTaskType(e.target.value)}
+                        placeholder="Ou escreva um tipo personalizado..."
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-600 focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">O que precisa ser feito?</label>
@@ -815,7 +855,7 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                     </div>
                     <div className="flex justify-end gap-3">
                       <button
-                        onClick={() => setIsAddingTask(false)}
+                        onClick={() => { setIsAddingTask(false); setNewTaskType('tarefa'); }}
                         className="px-4 py-2 text-slate-400 hover:text-slate-600 font-bold text-xs uppercase tracking-widest"
                       >
                         Cancelar
@@ -862,9 +902,21 @@ export const LeadDetailPage = ({ leadId, onBack, onNavigate }: any) => {
                               task.completed ? 'bg-green-400' : isOverdue ? 'bg-red-400' : isToday_ ? 'bg-amber-400' : 'bg-slate-300'
                             }`} />
                             <div className="flex-1 min-w-0">
-                              <h4 className={`font-bold text-sm ${task.completed ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
-                                {task.title}
-                              </h4>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className={`font-bold text-sm ${task.completed ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+                                  {task.title}
+                                </h4>
+                                {task.type && (() => {
+                                  const typeInfo = TASK_TYPES.find(t => t.value === task.type);
+                                  const Icon = typeInfo?.icon;
+                                  return (
+                                    <span className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full shrink-0">
+                                      {Icon && <Icon size={9} />}
+                                      {task.type}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
                               {task.due_date && (
                                 <div className={`flex items-center gap-1.5 mt-1 text-xs font-medium ${
                                   task.completed ? 'text-slate-300' : isOverdue ? 'text-red-500' : isToday_ ? 'text-amber-600' : 'text-slate-400'

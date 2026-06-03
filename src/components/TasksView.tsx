@@ -1,8 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CheckSquare, Plus, Search, Calendar, Briefcase, Loader2, Check, X, Phone, Mail, User, Clock, RotateCcw, CheckCircle2 } from 'lucide-react';
+import { CheckSquare, Plus, Search, Calendar, Briefcase, Loader2, Check, X, Phone, Mail, User, Clock, RotateCcw, CheckCircle2, MapPin, Users, Coffee, MessageCircle } from 'lucide-react';
 import { format, isToday, isTomorrow, isThisWeek, isPast, parseISO, addDays, addHours, startOfDay, addWeeks } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useCRM } from '../context/CRMContext';
+
+const TASK_TYPES = [
+  { value: 'ligação', label: 'Ligação', icon: Phone },
+  { value: 'e-mail', label: 'E-mail', icon: Mail },
+  { value: 'visita', label: 'Visita', icon: MapPin },
+  { value: 'reunião', label: 'Reunião', icon: Users },
+  { value: 'tarefa', label: 'Tarefa', icon: CheckSquare },
+  { value: 'almoço', label: 'Almoço', icon: Coffee },
+  { value: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
+];
 
 interface Task {
   id: string;
@@ -21,7 +31,7 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
   const [filter, setFilter] = useState('TUDO');
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newTask, setNewTask] = useState({ title: '', due_date: '', lead_id: '' });
+  const [newTask, setNewTask] = useState({ title: '', due_date: '', lead_id: '', type: 'tarefa' });
   const [leads, setLeads] = useState<any[]>([]);
   // Reschedule state
   const [reschedulingTask, setReschedulingTask] = useState<Task | null>(null);
@@ -140,7 +150,7 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
       
       if (res.ok) {
         setIsModalOpen(false);
-        setNewTask({ title: '', due_date: '', lead_id: '' });
+        setNewTask({ title: '', due_date: '', lead_id: '', type: 'tarefa' });
         setSelectedLead(null);
         setLeadSearch('');
         fetchTasks();
@@ -279,6 +289,16 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
                             <span className="truncate max-w-[120px]">{task.lead_title}</span>
                           </button>
                         )}
+                        {task.type && (() => {
+                          const typeInfo = TASK_TYPES.find(t => t.value === task.type);
+                          const Icon = typeInfo?.icon;
+                          return (
+                            <span className="flex items-center gap-1 text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                              {Icon && <Icon size={10} />}
+                              {task.type}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -408,9 +428,37 @@ export const TasksView = ({ onNavigate }: { onNavigate: (view: string, data?: an
               </div>
               
               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Tipo da Tarefa</label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {TASK_TYPES.map(({ value, label, icon: Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setNewTask({ ...newTask, type: value })}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                        newTask.type === value
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                          : 'border-slate-200 text-slate-600 hover:border-blue-300 hover:bg-blue-50'
+                      }`}
+                    >
+                      <Icon size={12} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={newTask.type}
+                  onChange={e => setNewTask({ ...newTask, type: e.target.value })}
+                  placeholder="Ou escreva um tipo personalizado..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-slate-600"
+                />
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Data e Hora</label>
-                <input 
-                  type="datetime-local" 
+                <input
+                  type="datetime-local"
                   value={newTask.due_date}
                   onChange={e => setNewTask({...newTask, due_date: e.target.value})}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"

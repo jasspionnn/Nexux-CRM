@@ -963,15 +963,43 @@ app.put('/webhooks/:id', async (c) => {
   return c.json({ success: true });
 });
 
+// CORS preflight for inbound webhooks (cross-origin form builders)
+app.options('/webhooks/incoming/:id', async (c) => {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
+  });
+});
+
 // Inbound Webhooks (Capture)
 app.post('/webhooks/incoming/:id', async (c) => {
   const id = c.req.param('id');
+  c.header('Access-Control-Allow-Origin', '*');
   try {
     const webhook: any = await c.env.DB.prepare('SELECT * FROM webhooks WHERE id = ?').bind(id).first();
     if (!webhook) return c.json({ error: 'Webhook not found' }, 404);
     if (webhook.is_active === 0) return c.json({ error: 'Webhook is inactive' }, 403);
 
-    const payload = await c.req.json();
+    // Accept JSON, form-encoded (Elementor, Gravity Forms, etc.) or multipart
+    let payload: any;
+    const contentType = c.req.header('Content-Type') || '';
+    if (contentType.includes('application/json')) {
+      payload = await c.req.json();
+    } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
+      const formData = await c.req.parseBody();
+      payload = { ...formData };
+    } else {
+      try {
+        payload = await c.req.json();
+      } catch {
+        const formData = await c.req.parseBody();
+        payload = { ...formData };
+      }
+    }
     console.log('Incoming webhook payload:', payload);
 
     // Smart Extraction Logic
