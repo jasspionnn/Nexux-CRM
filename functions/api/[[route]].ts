@@ -1050,9 +1050,9 @@ app.post('/webhooks/incoming/:id', async (c) => {
       return null;
     };
 
-    const name = extractField(payload, ['nome', 'name', 'first', 'full_name', 'cliente', 'lead_name']) || 'Lead Webhook';
-    const email = extractField(payload, ['email', 'mail', 'e-mail', 'contato_email']);
-    const phone = extractField(payload, ['phone', 'tel', 'whatsapp', 'mobile', 'celular', 'cel']);
+    const name = extractField(payload, ['nome', 'name', 'first', 'full_name', 'cliente', 'lead_name', 'seu_nome', 'primeiro_nome', 'contato']) || 'Lead Webhook';
+    const email = extractField(payload, ['email', 'mail', 'e-mail', 'contato_email', 'seu_email', 'email_address', 'emailaddress']);
+    const phone = extractField(payload, ['phone', 'tel', 'whatsapp', 'mobile', 'celular', 'cel', 'telefone', 'fone', 'contato_telefone', 'numero', 'phonenumber']);
 
     // Create Lead — resolve valid funnel/stage (prevent FK constraint failure)
     const leadId = crypto.randomUUID();
@@ -1093,14 +1093,17 @@ app.post('/webhooks/incoming/:id', async (c) => {
     });
 
     await c.env.DB.prepare(`
-      INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, assigned_user_id, custom_values, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      INSERT INTO leads (id, account_id, funnel_id, stage_id, title, contact_name, contact_email, contact_phone, company, value, assigned_user_id, custom_values, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `).bind(
       leadId,
       webhook.account_id,
       funnel_id,
       stage_id,
       name,
+      name,
+      email || null,
+      phone || null,
       'Captado via Webhook',
       0,
       null,
