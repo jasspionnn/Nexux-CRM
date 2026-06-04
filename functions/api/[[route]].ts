@@ -1025,34 +1025,44 @@ app.post('/webhooks/incoming/:id', async (c) => {
     }
     console.log('Incoming webhook payload:', payload);
 
-    // Smart Extraction Logic
-    const extractField = (data: any, keywords: string[]): string | null => {
+    // Field extraction: exact key match first, then substring fallback, then recurse into nested objects
+    const extractField = (data: any, exactKeys: string[], fallbackKeywords: string[]): string | null => {
       if (!data || typeof data !== 'object') return null;
-      
-      // Check first level keys
+
+      // 1. Exact key match (case-insensitive) — highest priority
       for (const key of Object.keys(data)) {
-        const lowerKey = key.toLowerCase();
-        if (keywords.some(kw => lowerKey.includes(kw))) {
+        if (exactKeys.includes(key.toLowerCase())) {
           if (typeof data[key] === 'string' || typeof data[key] === 'number') {
             return String(data[key]);
           }
         }
       }
-      
-      // Recursive search for nested objects
+
+      // 2. Substring keyword match on remaining keys
       for (const key of Object.keys(data)) {
-        if (typeof data[key] === 'object' && data[key] !== null) {
-          const found = extractField(data[key], keywords);
+        const lowerKey = key.toLowerCase();
+        if (!exactKeys.includes(lowerKey) && fallbackKeywords.some(kw => lowerKey.includes(kw))) {
+          if (typeof data[key] === 'string' || typeof data[key] === 'number') {
+            return String(data[key]);
+          }
+        }
+      }
+
+      // 3. Recurse into nested objects
+      for (const key of Object.keys(data)) {
+        if (typeof data[key] === 'object' && data[key] !== null && !Array.isArray(data[key])) {
+          const found = extractField(data[key], exactKeys, fallbackKeywords);
           if (found) return found;
         }
       }
-      
+
       return null;
     };
 
-    const name = extractField(payload, ['nome', 'name', 'first', 'full_name', 'cliente', 'lead_name', 'seu_nome', 'primeiro_nome', 'contato']) || 'Lead Webhook';
-    const email = extractField(payload, ['email', 'mail', 'e-mail', 'contato_email', 'seu_email', 'email_address', 'emailaddress']);
-    const phone = extractField(payload, ['phone', 'tel', 'whatsapp', 'mobile', 'celular', 'cel', 'telefone', 'fone', 'contato_telefone', 'numero', 'phonenumber']);
+    // Standard field IDs: name, email, telefone — fallbacks cover other common conventions
+    const name  = extractField(payload, ['name'],     ['nome', 'first', 'full_name', 'cliente', 'lead_name', 'seu_nome', 'primeiro_nome', 'contato']) || 'Lead Webhook';
+    const email = extractField(payload, ['email'],    ['mail', 'e-mail', 'contato_email', 'seu_email', 'email_address']);
+    const phone = extractField(payload, ['telefone'], ['phone', 'tel', 'whatsapp', 'mobile', 'celular', 'cel', 'fone', 'contato_telefone', 'numero']);
 
     // Create Lead — resolve valid funnel/stage (prevent FK constraint failure)
     const leadId = crypto.randomUUID();
