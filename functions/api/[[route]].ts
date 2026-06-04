@@ -1107,20 +1107,25 @@ app.post('/webhooks/incoming/:id', async (c) => {
       custom_values
     ).run();
 
-    // Create notification for new inbound lead
+    // Respond immediately so the form doesn't timeout waiting for automations/scoring
+    // Background work runs via waitUntil to avoid killing pending promises after response
+    const bgWork = async () => {
+      try {
+        const notifId = crypto.randomUUID();
+        await c.env.DB.prepare(`
+          INSERT INTO notifications (id, account_id, type, title, message, related_id, read, created_at)
+          VALUES (?, ?, 'new_lead_webhook', ?, ?, ?, 0, datetime('now'))
+        `).bind(notifId, webhook.account_id, `Novo lead: ${name}`, `Captado via ${webhook.name}`, leadId).run();
+      } catch (_) { /* non-critical */ }
+      await triggerAutomations(webhook.account_id, 'new_lead', leadId, c.env.DB);
+      await calculateLeadScore(c.env.DB, webhook.account_id, leadId);
+    };
+
     try {
-      const notifId = crypto.randomUUID();
-      await c.env.DB.prepare(`
-        INSERT INTO notifications (id, account_id, type, title, message, related_id, read, created_at)
-        VALUES (?, ?, 'new_lead_webhook', ?, ?, ?, 0, datetime('now'))
-      `).bind(notifId, webhook.account_id, `Novo lead: ${name}`, `Captado via ${webhook.name}`, leadId).run();
-    } catch (_) { /* non-critical */ }
-
-    // Trigger automations for the new lead
-    await triggerAutomations(webhook.account_id, 'new_lead', leadId, c.env.DB);
-
-    // Calculate initial score
-    await calculateLeadScore(c.env.DB, webhook.account_id, leadId);
+      c.executionCtx.waitUntil(bgWork());
+    } catch {
+      bgWork().catch(console.error);
+    }
 
     return c.json({ success: true, lead_id: leadId });
   } catch (error: any) {
