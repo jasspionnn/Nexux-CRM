@@ -1004,20 +1004,24 @@ app.post('/webhooks/incoming/:id', async (c) => {
     if (webhook.is_active === 0) return c.json({ error: 'Webhook is inactive' }, 403);
 
     // Accept JSON, form-encoded (Elementor, Gravity Forms, etc.) or multipart
-    let payload: any;
-    const contentType = c.req.header('Content-Type') || '';
-    if (contentType.includes('application/json')) {
-      payload = await c.req.json();
-    } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
-      const formData = await c.req.parseBody();
-      payload = { ...formData };
-    } else {
-      try {
+    let payload: any = {};
+    try {
+      const contentType = c.req.header('Content-Type') || '';
+      if (contentType.includes('application/json')) {
         payload = await c.req.json();
-      } catch {
+      } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
         const formData = await c.req.parseBody();
         payload = { ...formData };
+      } else {
+        try {
+          payload = await c.req.json();
+        } catch {
+          const formData = await c.req.parseBody();
+          payload = { ...formData };
+        }
       }
+    } catch {
+      // If all parsing fails, proceed with empty payload (lead will be created with defaults)
     }
     console.log('Incoming webhook payload:', payload);
 
@@ -1050,10 +1054,34 @@ app.post('/webhooks/incoming/:id', async (c) => {
     const email = extractField(payload, ['email', 'mail', 'e-mail', 'contato_email']);
     const phone = extractField(payload, ['phone', 'tel', 'whatsapp', 'mobile', 'celular', 'cel']);
 
-    // Create Lead
+    // Create Lead — resolve valid funnel/stage (prevent FK constraint failure)
     const leadId = crypto.randomUUID();
-    const funnel_id = webhook.funnel_id || 'f_vendas';
-    const stage_id = webhook.stage_id || 's_contato';
+    let funnel_id = webhook.funnel_id;
+    let stage_id = webhook.stage_id;
+
+    // Validate stored funnel still exists; fall back to any funnel of the account
+    try {
+      if (funnel_id) {
+        const funnelExists = await c.env.DB.prepare('SELECT id FROM funnels WHERE id = ? AND account_id = ?').bind(funnel_id, webhook.account_id).first();
+        if (!funnelExists) funnel_id = null;
+      }
+      if (!funnel_id) {
+        const anyFunnel: any = await c.env.DB.prepare('SELECT id FROM funnels WHERE account_id = ? LIMIT 1').bind(webhook.account_id).first();
+        funnel_id = anyFunnel?.id || null;
+      }
+      if (stage_id && funnel_id) {
+        const stageExists = await c.env.DB.prepare('SELECT id FROM stages WHERE id = ? AND funnel_id = ?').bind(stage_id, funnel_id).first();
+        if (!stageExists) stage_id = null;
+      }
+      if (!stage_id && funnel_id) {
+        const anyStage: any = await c.env.DB.prepare('SELECT id FROM stages WHERE funnel_id = ? ORDER BY "order" ASC LIMIT 1').bind(funnel_id).first();
+        stage_id = anyStage?.id || null;
+      }
+    } catch (_) { /* use whatever we have */ }
+
+    if (!funnel_id || !stage_id) {
+      return c.json({ error: 'No valid funnel/stage found for this account' }, 500);
+    }
     
     // Store original payload in custom_values
     const custom_values = JSON.stringify({ 
