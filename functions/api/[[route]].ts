@@ -2197,6 +2197,15 @@ app.post('/tracking/events', async (c) => {
                     ).bind(vlId, settings.account_id, visitor_id, mLeadId, mappedData.contact_email || null, 'form_submit').run();
                   } catch (vlErr) { /* visitor_leads table may not exist yet */ }
                 }
+
+                // Trigger form_submit automations using marketing lead ID
+                // Automations can include the "send_to_crm" action to forward the lead to a CRM funnel
+                try {
+                  const formId = formData.fid || formName;
+                  await triggerAutomations(settings.account_id, 'form_submit', mLeadId, c.env.DB, { form_id: formId });
+                } catch (autoErr: any) {
+                  console.error('[TRACKING] Error triggering automations:', autoErr.message);
+                }
               }
             } catch (leadErr: any) {
               console.error('[TRACKING] Error creating marketing lead:', leadErr.message);
@@ -3525,6 +3534,35 @@ async function executeActionNode(node: any, leadId: string, db: any) {
         } catch (e) { console.error('Webhook send error:', e); }
       }
       break;
+    case 'send_to_crm': {
+      const { funnel_id, stage_id } = config;
+      if (!funnel_id || !stage_id) break;
+      // Check if leadId refers to a marketing lead
+      const mLead: any = await db.prepare('SELECT * FROM marketing_leads WHERE id = ?').bind(leadId).first();
+      if (mLead) {
+        if (mLead.synced_to_crm) break; // already sent
+        const crmId = crypto.randomUUID();
+        await db.prepare(`
+          INSERT INTO leads (id, account_id, funnel_id, stage_id, title, contact_name, contact_email, contact_phone, company, value, tags, custom_values, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        `).bind(
+          crmId, mLead.account_id, funnel_id, stage_id,
+          mLead.title || mLead.contact_name || 'Lead Marketing',
+          mLead.contact_name || null,
+          mLead.contact_email || null,
+          mLead.contact_phone || null,
+          mLead.company || null,
+          mLead.value || 0,
+          mLead.tags || null,
+          JSON.stringify({ source: 'marketing_automation', marketing_lead_id: leadId })
+        ).run();
+        await db.prepare('UPDATE marketing_leads SET synced_to_crm = 1 WHERE id = ?').bind(leadId).run();
+      } else {
+        // Already a CRM lead — move it to the specified funnel/stage
+        await db.prepare('UPDATE leads SET funnel_id = ?, stage_id = ? WHERE id = ?').bind(funnel_id, stage_id, leadId).run();
+      }
+      break;
+    }
     // send_email would require an email service integration
     default:
       console.log(`Unknown action type: ${nodeType}`);

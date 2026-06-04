@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   GitBranch, Plus, Play, Pause, Trash2, Edit2, Zap, Clock,
   Mail, Tag, ArrowRight, ChevronRight, Eye, X, Save, Loader2,
-  MoveUp, UserPlus, FileText, Globe, AlertCircle, GripVertical
+  MoveUp, UserPlus, FileText, Globe, AlertCircle, GripVertical, ArrowUpRight
 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
 type NodeType = 'trigger' | 'condition' | 'action' | 'delay';
 type TriggerType = 'new_lead' | 'stage_change' | 'form_submit' | 'page_visit' | 'conversion' | 'webhook';
-type ActionType = 'move_stage' | 'create_task' | 'add_tag' | 'remove_tag' | 'send_email' | 'send_webhook' | 'create_note' | 'assign_user';
+type ActionType = 'move_stage' | 'create_task' | 'add_tag' | 'remove_tag' | 'send_email' | 'send_webhook' | 'create_note' | 'assign_user' | 'send_to_crm';
 type ConditionType = 'value_gt' | 'value_lt' | 'has_tag' | 'not_has_tag' | 'stage_is' | 'email_contains' | 'probability_gt';
 
 interface FlowNode {
@@ -53,6 +53,7 @@ const ACTIONS = [
   { type: 'send_webhook' as ActionType, label: 'Enviar Webhook', icon: Globe, color: 'bg-indigo-500', desc: 'Envia payload via webhook' },
   { type: 'create_note' as ActionType, label: 'Criar Nota', icon: FileText, color: 'bg-gray-500', desc: 'Adiciona nota ao lead' },
   { type: 'assign_user' as ActionType, label: 'Atribuir Usuário', icon: UserPlus, color: 'bg-blue-500', desc: 'Atribui lead a usuário' },
+  { type: 'send_to_crm' as ActionType, label: 'Enviar para CRM', icon: ArrowUpRight, color: 'bg-green-600', desc: 'Envia lead do marketing para um funil de vendas' },
 ];
 const DELAY_NODE = { type: 'delay' as const, label: 'Esperar', icon: Clock, color: 'bg-slate-500', desc: 'Espera X minutos/horas/dias' };
 
@@ -130,7 +131,7 @@ const FieldLabel: React.FC<{ label: string; hint?: string; children: React.React
   <div className="space-y-1"><label className="text-[11px] font-bold text-slate-600">{label}</label>{children}{hint && <p className="text-[10px] text-slate-400">{hint}</p>}</div>
 );
 
-const ConfigPanel: React.FC<{ node: FlowNode; onConfigChange: (nodeId: string, c: Record<string, any>) => void; stages: any[]; users: any[]; forms: any[] }> = React.memo(({ node, onConfigChange, stages, users, forms }) => {
+const ConfigPanel: React.FC<{ node: FlowNode; onConfigChange: (nodeId: string, c: Record<string, any>) => void; stages: any[]; funnels: any[]; users: any[]; forms: any[] }> = React.memo(({ node, onConfigChange, stages, funnels, users, forms }) => {
   const ic = "w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 bg-white";
   const set = (key: string, val: any) => onConfigChange(node.id, { [key]: val });
   const t = node.nodeType;
@@ -170,6 +171,21 @@ const ConfigPanel: React.FC<{ node: FlowNode; onConfigChange: (nodeId: string, c
       </>)}
       {t === 'create_note' && <FieldLabel label="Nota"><textarea value={node.config.content || ''} onChange={e => set('content', e.target.value)} placeholder="Lead qualificado..." rows={2} className={`${ic} resize-none`} /></FieldLabel>}
       {t === 'assign_user' && <FieldLabel label="Usuário"><select value={node.config.user_id || ''} onChange={e => set('user_id', e.target.value)} className={ic}><option value="">Selecione</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></FieldLabel>}
+      {t === 'send_to_crm' && (<>
+        <FieldLabel label="Funil de destino">
+          <select value={node.config.funnel_id || ''} onChange={e => { set('funnel_id', e.target.value); set('stage_id', ''); }} className={ic}>
+            <option value="">Selecione o funil</option>
+            {funnels.map((f: any) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+        </FieldLabel>
+        <FieldLabel label="Etapa de entrada">
+          <select value={node.config.stage_id || ''} onChange={e => set('stage_id', e.target.value)} className={ic} disabled={!node.config.funnel_id}>
+            <option value="">Selecione a etapa</option>
+            {(funnels.find((f: any) => f.id === node.config.funnel_id)?.stages || []).map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </FieldLabel>
+        <p className="text-[10px] text-slate-400">O lead do marketing será enviado como negociação no funil selecionado.</p>
+      </>)}
       {t === 'delay' && (
         <div className="flex items-end gap-2">
           <div className="flex-1"><FieldLabel label="Duração"><input type="number" value={node.config.duration || ''} onChange={e => set('duration', +e.target.value || 0)} placeholder="30" min={1} className={ic} /></FieldLabel></div>
@@ -190,6 +206,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
   const [addMenuIdx, setAddMenuIdx] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [stages, setStages] = useState<any[]>([]);
+  const [funnels, setFunnels] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [autos, setAutos] = useState<Automation[]>([]);
   const [forms, setForms] = useState<any[]>([]);
@@ -201,7 +218,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
     (async () => {
       try {
         const [f, u, a, fm] = await Promise.all([fetch('/api/funnels'), fetch(`/api/users?account_id=${accountId}`), fetch(`/api/automations?account_id=${accountId}`), fetch(`/api/tracking-forms?account_id=${accountId}`)]);
-        if (f.ok) { const d = await f.json(); setStages(d.flatMap((x: any) => x.stages || [])); }
+        if (f.ok) { const d = await f.json(); setFunnels(d); setStages(d.flatMap((x: any) => x.stages || [])); }
         if (u.ok) setUsers(await u.json());
         if (a.ok) setAutos(await a.json());
         if (fm.ok) setForms(await fm.json());
@@ -381,7 +398,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
                       <div className="flex-1 min-w-0"><p className="text-sm font-bold text-slate-900 truncate">{node.label}</p><p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">{node.type}</p></div>
                       <button onClick={e => { e.stopPropagation(); removeNode(idx); }} className="p-1 text-slate-300 hover:text-red-500 rounded shrink-0"><X size={14} /></button>
                     </div>
-                    {isSel && <ConfigPanel node={node} onConfigChange={onConfigChange} stages={stages} users={users} forms={forms} />}
+                    {isSel && <ConfigPanel node={node} onConfigChange={onConfigChange} stages={stages} funnels={funnels} users={users} forms={forms} />}
                     <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between" style={{ height: 38 }}>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{idx === 0 ? '🚀 Gatilho' : node.type === 'condition' ? '🔍 Condição' : node.type === 'delay' ? '⏱ Tempo' : '⚡ Ação'}</span>
                     </div>
