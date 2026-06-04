@@ -217,7 +217,7 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
   useEffect(() => {
     (async () => {
       try {
-        const [f, u, a, fm] = await Promise.all([fetch('/api/funnels'), fetch(`/api/users?account_id=${accountId}`), fetch(`/api/automations?account_id=${accountId}`), fetch(`/api/tracking-forms?account_id=${accountId}`)]);
+        const [f, u, a, fm] = await Promise.all([fetch(`/api/funnels?account_id=${accountId}`), fetch(`/api/users?account_id=${accountId}`), fetch(`/api/automations?account_id=${accountId}`), fetch(`/api/tracking-forms?account_id=${accountId}`)]);
         if (f.ok) { const d = await f.json(); setFunnels(d); setStages(d.flatMap((x: any) => x.stages || [])); }
         if (u.ok) setUsers(await u.json());
         if (a.ok) setAutos(await a.json());
