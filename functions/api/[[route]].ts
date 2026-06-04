@@ -2171,61 +2171,31 @@ app.post('/tracking/events', async (c) => {
                   console.log('[TRACKING] Created new marketing lead (contact):', mLeadId);
                 }
 
+                // Record form submission for segmentation (linked to marketing lead, not CRM)
                 try {
-                  // FOR CRM: ALWAYS CREATE A NEW NEGOTIATION (DEAL)
-                  // Even if the contact exists, we create a new entry in the funnel
-                  const crmLeadId = crypto.randomUUID();
+                  const fsId = crypto.randomUUID();
+                  const canonicalFormId = existing ? existing.id : (formData.fid || formName);
                   await c.env.DB.prepare(
-                    'INSERT INTO leads (id, account_id, funnel_id, stage_id, title, company, value, contact_name, contact_email, contact_phone, tags, custom_values, created_at) VALUES (?, ?, (SELECT id FROM funnels WHERE account_id = ? LIMIT 1), (SELECT id FROM stages WHERE funnel_id = (SELECT id FROM funnels WHERE account_id = ? LIMIT 1) LIMIT 1), ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
+                    'INSERT INTO form_submissions (id, account_id, form_id, lead_id, visitor_id, email, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
                   ).bind(
-                    crmLeadId, settings.account_id, settings.account_id, settings.account_id,
-                    mappedData.title || mappedData.contact_name || `Nova Negociação: ${formName}`,
-                    mappedData.company || null,
-                    mappedData.value ? parseFloat(mappedData.value) : 0,
-                    mappedData.contact_name || null,
+                    fsId, settings.account_id,
+                    canonicalFormId,
+                    mLeadId, visitor_id || null,
                     mappedData.contact_email || null,
-                    mappedData.contact_phone || null,
-                    mappedData.tags || null,
-                    JSON.stringify({ source: 'tracking_form', form_name: formName, raw: fields })
+                    JSON.stringify(fields)
                   ).run();
-                  console.log('[TRACKING] Created new CRM negotiation for:', mappedData.contact_email);
+                } catch (fsErr) {
+                  console.error('[TRACKING] Error recording form submission:', fsErr.message);
+                }
 
-                  // Always record form submission for segmentation
+                // Map visitor_id → marketing lead for future pageview tracking
+                if (visitor_id) {
                   try {
-                    const fsId = crypto.randomUUID();
-                    const canonicalFormId = existing ? existing.id : (formData.fid || formName);
+                    const vlId = crypto.randomUUID();
                     await c.env.DB.prepare(
-                      'INSERT INTO form_submissions (id, account_id, form_id, lead_id, visitor_id, email, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))'
-                    ).bind(
-                      fsId, settings.account_id,
-                      canonicalFormId,
-                      crmLeadId, visitor_id || null,
-                      mappedData.contact_email || null,
-                      JSON.stringify(fields)
-                    ).run();
-                    console.log('[TRACKING] Recorded form submission:', fsId, '(lead:', crmLeadId, ')');
-                  } catch (fsErr) {
-                    console.error('[TRACKING] Error recording form submission:', fsErr.message);
-                  }
-
-                  // Trigger new_lead automation
-                  await triggerAutomations(settings.account_id, 'new_lead', crmLeadId, c.env.DB);
-                  
-                  // Trigger form_submit automation with form_id
-                  const formId = formData.fid || formName;
-                  await triggerAutomations(settings.account_id, 'form_submit', crmLeadId, c.env.DB, { form_id: formId });
-
-                  // Map visitor_id to lead for future pageview tracking
-                  if (visitor_id) {
-                    try {
-                      const vlId = crypto.randomUUID();
-                      await c.env.DB.prepare(
-                        'INSERT OR IGNORE INTO visitor_leads (id, account_id, visitor_id, lead_id, email, source) VALUES (?, ?, ?, ?, ?, ?)'
-                      ).bind(vlId, settings.account_id, visitor_id, crmLeadId, mappedData.contact_email || null, 'form_submit').run();
-                    } catch (vlErr) { /* visitor_leads table may not exist yet */ }
-                  }
-                } catch (autoErr: any) {
-                  console.error('[TRACKING] Error auto-syncing / running automations:', autoErr.message);
+                      'INSERT OR IGNORE INTO visitor_leads (id, account_id, visitor_id, lead_id, email, source) VALUES (?, ?, ?, ?, ?, ?)'
+                    ).bind(vlId, settings.account_id, visitor_id, mLeadId, mappedData.contact_email || null, 'form_submit').run();
+                  } catch (vlErr) { /* visitor_leads table may not exist yet */ }
                 }
               }
             } catch (leadErr: any) {
