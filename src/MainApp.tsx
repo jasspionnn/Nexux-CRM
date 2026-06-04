@@ -139,7 +139,7 @@ const AppContent = () => {
           <span className="ml-1 opacity-75">→</span>
         </button>
       )}
-      {currentUser.role !== UserRole.NEXUS_ADMIN && <Navbar currentView={currentView} onChangeView={handleNavigate} appMode={appMode} setAppMode={setAppMode} />}
+      {currentUser.role !== UserRole.NEXUS_ADMIN && <Navbar currentView={currentView} onChangeView={handleNavigate} appMode={appMode} setAppMode={setAppMode} onNavigate={handleNavigate} />}
       <main className="flex-1 overflow-y-auto relative">
         {renderView()}
       </main>

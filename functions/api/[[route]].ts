@@ -696,6 +696,25 @@ app.get('/migrate-db', async (c) => {
       await c.env.DB.prepare(`ALTER TABLE performance_items ADD COLUMN cta_url TEXT`).run();
     } catch (_) { /* column already exists */ }
 
+    // Notifications table
+    await c.env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS notifications (
+          id TEXT PRIMARY KEY,
+          account_id TEXT NOT NULL,
+          type TEXT NOT NULL,
+          title TEXT NOT NULL,
+          message TEXT,
+          related_id TEXT,
+          read INTEGER DEFAULT 0,
+          created_at TEXT DEFAULT (datetime('now'))
+      );
+    `).run();
+
+    // Add source column to leads (idempotent)
+    try {
+      await c.env.DB.prepare(`ALTER TABLE leads ADD COLUMN source TEXT DEFAULT 'manual'`).run();
+    } catch (_) { /* column already exists */ }
+
     // Add permissions column to teams (idempotent)
     try {
       await c.env.DB.prepare(`ALTER TABLE teams ADD COLUMN permissions TEXT DEFAULT '{}'`).run();
@@ -1060,6 +1079,15 @@ app.post('/webhooks/incoming/:id', async (c) => {
       custom_values
     ).run();
 
+    // Create notification for new inbound lead
+    try {
+      const notifId = crypto.randomUUID();
+      await c.env.DB.prepare(`
+        INSERT INTO notifications (id, account_id, type, title, message, related_id, read, created_at)
+        VALUES (?, ?, 'new_lead_webhook', ?, ?, ?, 0, datetime('now'))
+      `).bind(notifId, webhook.account_id, `Novo lead: ${name}`, `Captado via ${webhook.name}`, leadId).run();
+    } catch (_) { /* non-critical */ }
+
     // Trigger automations for the new lead
     await triggerAutomations(webhook.account_id, 'new_lead', leadId, c.env.DB);
 
@@ -1076,6 +1104,43 @@ app.post('/webhooks/incoming/:id', async (c) => {
 app.delete('/webhooks/:id', async (c) => {
   const id = c.req.param('id');
   await c.env.DB.prepare('DELETE FROM webhooks WHERE id = ?').bind(id).run();
+  return c.json({ success: true });
+});
+
+// Notifications
+app.get('/notifications', async (c) => {
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json({ notifications: [], tasks_today: [] });
+
+  const { results: notifs } = await c.env.DB.prepare(
+    'SELECT * FROM notifications WHERE account_id = ? ORDER BY created_at DESC LIMIT 40'
+  ).bind(account_id).all();
+
+  // Today's pending tasks (joined with leads for account scoping)
+  const { results: tasks } = await c.env.DB.prepare(`
+    SELECT t.id, t.title, t.due_date, t.type, l.title as lead_title, l.id as lead_id
+    FROM tasks t
+    INNER JOIN leads l ON t.lead_id = l.id
+    WHERE l.account_id = ?
+      AND t.completed = 0
+      AND t.due_date IS NOT NULL
+      AND date(t.due_date) = date('now')
+    ORDER BY t.due_date ASC
+  `).bind(account_id).all();
+
+  return c.json({ notifications: notifs, tasks_today: tasks });
+});
+
+app.put('/notifications/read-all', async (c) => {
+  const account_id = c.req.query('account_id');
+  if (!account_id) return c.json({ error: 'account_id required' }, 400);
+  await c.env.DB.prepare('UPDATE notifications SET read = 1 WHERE account_id = ?').bind(account_id).run();
+  return c.json({ success: true });
+});
+
+app.put('/notifications/:id/read', async (c) => {
+  const id = c.req.param('id');
+  await c.env.DB.prepare('UPDATE notifications SET read = 1 WHERE id = ?').bind(id).run();
   return c.json({ success: true });
 });
 

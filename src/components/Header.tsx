@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LayoutGrid, BarChart2, Inbox, CheckSquare, Sparkles, Search, Bell, Settings as SettingsIcon, LogOut, Megaphone, Users, Target, Bot, Eye, Link, Mail, BarChart3, ChevronRight, ChevronDown, Award, SlidersHorizontal, TrendingUp, BookOpen, Flame, Network } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
+import { NotificationPanel } from './NotificationPanel';
 
 const MKT_CATEGORIES: Record<string, { sub: string; label: string; icon: React.ElementType }[]> = {
   atracao: [
@@ -25,7 +26,7 @@ const PERFORMANCE_ITEMS = [
   { id: 'networking', label: 'Networking', icon: Network },
 ];
 
-export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) => {
+export const Header = ({ currentView, onChangeView, appMode, setAppMode, onNavigate }: any) => {
   const { currentUser, logout } = useCRM();
   const [activeSub, setActiveSub] = useState('');
   const [mktCategory, setMktCategory] = useState<string | null>(null);
@@ -208,7 +209,7 @@ export const Header = ({ currentView, onChangeView, appMode, setAppMode }: any) 
 
       <div className="flex items-center gap-5">
         <button className="text-slate-400 hover:text-slate-600"><Search size={20} /></button>
-        <button className="text-slate-400 hover:text-slate-600"><Bell size={20} /></button>
+        <NotificationPanel onNavigate={onNavigate || onChangeView} />
         <button 
           onClick={() => {
             if (appMode === 'marketing') {
