@@ -3352,62 +3352,135 @@ app.delete('/automations/:id', async (c) => {
   }
 });
 
-// Execute automation manually (for testing)
+// Execute automation manually / test mode
 app.post('/automations/:id/execute', async (c) => {
   try {
     const id = c.req.param('id');
-    const body = await c.req.json();
-    const { lead_id } = body;
+    const body = await c.req.json().catch(() => ({}));
+    const { lead_id, test_mode } = body as any;
 
     const automation: any = await c.env.DB.prepare(
       'SELECT * FROM automations WHERE id = ?'
     ).bind(id).first();
 
-    if (!automation) return c.json({ error: 'Automation not found' }, 404);
-    if (automation.is_active === 0) return c.json({ error: 'Automation is paused' }, 400);
+    if (!automation) return c.json({ error: 'Automação não encontrada' }, 404);
 
     const nodes = automation.nodes ? JSON.parse(automation.nodes) : [];
     const connections = automation.connections ? JSON.parse(automation.connections) : [];
-
-    // Simple linear execution
     const triggerNode = nodes.find((n: any) => n.type === 'trigger');
-    if (!triggerNode) return c.json({ error: 'No trigger node found' }, 400);
+    if (!triggerNode) return c.json({ error: 'Nenhum gatilho no fluxo' }, 400);
+
+    let targetLeadId = lead_id;
+    let testLeadName: string | null = null;
+    let testLeadIsMarketing = false;
+
+    // ── Test mode: create a disposable test lead ──────────────────────────
+    if (test_mode) {
+      const ts = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      testLeadName = `Lead Teste — ${ts}`;
+
+      // For form_submit triggers, create a marketing lead (mirrors real flow)
+      if (triggerNode.nodeType === 'form_submit') {
+        testLeadIsMarketing = true;
+        targetLeadId = crypto.randomUUID();
+        await c.env.DB.prepare(`
+          INSERT INTO marketing_leads (id, account_id, form_name, contact_name, contact_email, contact_phone, company, title, tags, raw_data)
+          VALUES (?, ?, 'Teste', ?, 'teste@automacao.com', '(11) 99999-9999', 'Empresa Teste', ?, 'teste', '{}')
+        `).bind(targetLeadId, automation.account_id, testLeadName, testLeadName).run();
+      } else {
+        // CRM lead for all other triggers
+        const funnel: any = await c.env.DB.prepare(
+          'SELECT id FROM funnels WHERE account_id = ? LIMIT 1'
+        ).bind(automation.account_id).first();
+        if (!funnel) return c.json({ error: 'Nenhum funil encontrado na conta' }, 400);
+        const stage: any = await c.env.DB.prepare(
+          'SELECT id FROM stages WHERE funnel_id = ? ORDER BY "order" ASC LIMIT 1'
+        ).bind(funnel.id).first();
+        if (!stage) return c.json({ error: 'Nenhuma etapa encontrada' }, 400);
+        targetLeadId = crypto.randomUUID();
+        await c.env.DB.prepare(`
+          INSERT INTO leads (id, account_id, funnel_id, stage_id, title, contact_name, contact_email, contact_phone, company, tags, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'teste@automacao.com', '(11) 99999-9999', 'Empresa Teste', 'teste', datetime('now'))
+        `).bind(targetLeadId, automation.account_id, funnel.id, stage.id, testLeadName, testLeadName).run();
+      }
+    }
+
+    if (!targetLeadId) return c.json({ error: 'lead_id obrigatório' }, 400);
 
     const executionId = crypto.randomUUID();
     await c.env.DB.prepare(
-      'INSERT INTO automation_executions (id, automation_id, lead_id, status) VALUES (?, ?, ?, \'running\')'
-    ).bind(executionId, id, lead_id || null).run();
+      "INSERT INTO automation_executions (id, automation_id, lead_id, status) VALUES (?, ?, ?, 'running')"
+    ).bind(executionId, id, targetLeadId).run();
 
-    // Follow connections and execute actions
+    // ── Walk connections and execute nodes ────────────────────────────────
     let currentId = triggerNode.id;
     const executed: string[] = [];
+    const nodeResults: any[] = [{
+      id: triggerNode.id,
+      type: 'trigger',
+      nodeType: triggerNode.nodeType,
+      label: triggerNode.label,
+      status: 'ok',
+      detail: test_mode ? `Lead de teste criado${testLeadIsMarketing ? ' (marketing)' : ''}` : 'Gatilho disparado',
+    }];
 
     while (currentId) {
-      const conn = connections.find((c: any) => c.from === currentId);
+      const conn = connections.find((conn: any) => conn.from === currentId);
       if (!conn) break;
-
       const nextNode = nodes.find((n: any) => n.id === conn.to);
       if (!nextNode || executed.includes(nextNode.id)) break;
-
       executed.push(nextNode.id);
 
-      // Execute action
-      if (nextNode.type === 'action' && lead_id) {
-        await executeActionNode(nextNode, lead_id, c.env.DB);
+      const nr: any = { id: nextNode.id, type: nextNode.type, nodeType: nextNode.nodeType, label: nextNode.label, status: 'ok', detail: '' };
+      try {
+        if (nextNode.type === 'action') {
+          await executeActionNode(nextNode, targetLeadId, c.env.DB);
+          nr.detail = describeActionNode(nextNode);
+        } else if (nextNode.type === 'condition') {
+          nr.detail = 'Condição verificada';
+        } else if (nextNode.type === 'delay') {
+          nr.detail = `Aguardaria ${nextNode.config?.duration || 0} ${nextNode.config?.unit || 'minutos'} (pulado no teste)`;
+        }
+      } catch (err: any) {
+        nr.status = 'error';
+        nr.detail = err.message;
       }
-
+      nodeResults.push(nr);
       currentId = nextNode.id;
     }
 
     await c.env.DB.prepare(
-      'UPDATE automation_executions SET status = \'completed\' WHERE id = ?'
+      "UPDATE automation_executions SET status = 'completed' WHERE id = ?"
     ).bind(executionId).run();
 
-    return c.json({ success: true, executed_nodes: executed.length });
+    return c.json({
+      success: true,
+      test_lead_id: test_mode ? targetLeadId : undefined,
+      test_lead_name: test_mode ? testLeadName : undefined,
+      test_lead_is_marketing: test_mode ? testLeadIsMarketing : undefined,
+      node_results: nodeResults,
+      execution_id: executionId,
+    });
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
   }
 });
+
+function describeActionNode(node: any): string {
+  const { nodeType, config } = node;
+  switch (nodeType) {
+    case 'move_stage':    return `Moveu para etapa`;
+    case 'create_task':   return `Criou tarefa: "${config?.title || '?'}"`;
+    case 'add_tag':       return `Adicionou tag: "${config?.tag || '?'}"`;
+    case 'remove_tag':    return `Removeu tag: "${config?.tag || '?'}"`;
+    case 'create_note':   return `Criou nota`;
+    case 'assign_user':   return `Atribuiu lead a usuário`;
+    case 'send_webhook':  return `Enviou webhook para ${config?.url || '?'}`;
+    case 'send_to_crm':   return `Enviou para CRM`;
+    case 'send_email':    return `Enviaria email: "${config?.subject || '?'}"`;
+    default:              return 'Ação executada';
+  }
+}
 
 // Helper to trigger automations
 async function triggerAutomations(accountId: string, triggerType: string, leadId: string, db: any, extraConfig?: { form_id?: string }) {

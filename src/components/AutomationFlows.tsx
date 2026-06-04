@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   GitBranch, Plus, Play, Pause, Trash2, Edit2, Zap, Clock,
   Mail, Tag, ArrowRight, ChevronRight, Eye, X, Save, Loader2,
-  MoveUp, UserPlus, FileText, Globe, AlertCircle, GripVertical, ArrowUpRight
+  MoveUp, UserPlus, FileText, Globe, AlertCircle, GripVertical, ArrowUpRight,
+  FlaskConical, CheckCircle2, XCircle, ExternalLink
 } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 
@@ -205,6 +206,8 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
   const [selId, setSelId] = useState<number | null>(null);
   const [addMenuIdx, setAddMenuIdx] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<any>(null);
   const [stages, setStages] = useState<any[]>([]);
   const [funnels, setFunnels] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -303,6 +306,35 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
     setSaving(false);
   };
 
+  const doTest = async () => {
+    if (!nodes.length) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      // Save first so the DB has the latest flow
+      const exists = autos.find(a => a.id === automation.id);
+      const saveRes = await fetch(exists ? `/api/automations/${automation.id}` : '/api/automations', {
+        method: exists ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: automation.id, name: name || 'Fluxo Teste', description, is_active: 1, trigger_type: nodes.find(n => n.type === 'trigger')?.nodeType || '', trigger_config: nodes.find(n => n.type === 'trigger')?.config || {}, nodes, connections: nodes.map((n, i) => i > 0 ? { from: nodes[i-1].id, to: n.id } : null).filter(Boolean), created_at: automation.created_at || '', account_id: accountId })
+      });
+      if (!saveRes.ok) { alert('Salve o fluxo antes de testar'); setTesting(false); return; }
+      if (!exists) await saveRes.json(); // ensure saved
+
+      const execRes = await fetch(`/api/automations/${automation.id}/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test_mode: true }),
+      });
+      const data = await execRes.json();
+      setTestResult(data);
+      if (!exists) onRefresh(); // refresh list so new automation appears
+    } catch (e: any) {
+      setTestResult({ error: e.message });
+    }
+    setTesting(false);
+  };
+
   return (
     <div className="h-full flex flex-col bg-slate-50">
       {/* Header */}
@@ -332,9 +364,68 @@ const Builder: React.FC<{ automation: Automation; onClose: () => void; onRefresh
               </div>
             )}
           </div>
+          <button onClick={doTest} disabled={testing || saving || !nodes.length} className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg font-bold text-sm transition-colors">
+            {testing ? <Loader2 size={15} className="animate-spin" /> : <FlaskConical size={15} />}Testar
+          </button>
           <button onClick={doSave} disabled={saving || !nodes.length} className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold text-sm disabled:opacity-50">{saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}Salvar</button>
         </div>
       </div>
+
+      {/* Test result panel */}
+      {testResult && (
+        <div className="absolute right-4 top-20 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
+          {/* Header */}
+          <div className={`px-4 py-3 flex items-center justify-between ${testResult.error || testResult.node_results?.some((n: any) => n.status === 'error') ? 'bg-red-50 border-b border-red-100' : 'bg-emerald-50 border-b border-emerald-100'}`}>
+            <div className="flex items-center gap-2">
+              <FlaskConical size={15} className={testResult.error ? 'text-red-600' : 'text-emerald-600'} />
+              <span className="font-bold text-sm text-slate-900">Resultado do Teste</span>
+            </div>
+            <button onClick={() => setTestResult(null)} className="text-slate-400 hover:text-slate-600"><X size={15} /></button>
+          </div>
+
+          <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto">
+            {testResult.error ? (
+              <div className="flex items-start gap-2 text-red-600">
+                <XCircle size={16} className="shrink-0 mt-0.5" />
+                <p className="text-sm">{testResult.error}</p>
+              </div>
+            ) : (<>
+              {/* Test lead */}
+              {testResult.test_lead_name && (
+                <div className="bg-slate-50 rounded-xl p-3">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">Lead de teste criado</p>
+                  <p className="text-sm font-bold text-slate-900">{testResult.test_lead_name}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{testResult.test_lead_is_marketing ? 'Base de Leads (Marketing)' : 'Negociações (CRM)'}</p>
+                </div>
+              )}
+
+              {/* Node results */}
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2">Nós executados</p>
+                <div className="space-y-1.5">
+                  {(testResult.node_results || []).map((nr: any, i: number) => (
+                    <div key={nr.id || i} className={`flex items-start gap-2.5 px-3 py-2 rounded-xl ${nr.status === 'error' ? 'bg-red-50' : 'bg-slate-50'}`}>
+                      {nr.status === 'error'
+                        ? <XCircle size={14} className="text-red-500 shrink-0 mt-0.5" />
+                        : <CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
+                      }
+                      <div className="min-w-0">
+                        <p className={`text-xs font-bold truncate ${nr.status === 'error' ? 'text-red-700' : 'text-slate-800'}`}>{nr.label}</p>
+                        {nr.detail && <p className="text-[11px] text-slate-400 mt-0.5 leading-tight">{nr.detail}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div className={`text-xs font-semibold text-center py-1.5 rounded-lg ${testResult.node_results?.some((n: any) => n.status === 'error') ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>
+                {testResult.node_results?.some((n: any) => n.status === 'error') ? '⚠️ Fluxo com erros' : `✅ ${(testResult.node_results || []).length} nós executados com sucesso`}
+              </div>
+            </>)}
+          </div>
+        </div>
+      )}
 
       {/* Canvas */}
       <div ref={canvasRef} className="flex-1 overflow-auto relative" onMouseDown={onCanvasDown}>
