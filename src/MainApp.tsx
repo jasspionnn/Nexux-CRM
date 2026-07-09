@@ -9,8 +9,6 @@ import { LeadDetailPage } from './components/LeadDetailPage';
 import { TasksView } from './components/TasksView';
 import { LoginPage } from './components/LoginPage';
 import { NexusAdminDashboard } from './components/NexusAdminDashboard';
-import { StrategicInsights } from './components/StrategicInsights';
-import { AIBotSettings } from './components/AIBotSettings';
 import { Marketing } from './components/Marketing';
 import { Performance } from './components/Performance';
 import { UserRole } from './types';
@@ -96,7 +94,6 @@ const AppContent = () => {
         case 'tasks': return <TasksView onNavigate={handleNavigate} />;
         case 'marketing': return <Marketing subView={viewData} />;
         case 'performance': return <Performance subView={viewData} />;
-        case 'ai-bot': return <AIBotSettings />;
         case 'settings': return <Settings />;
         case 'lead-detail':
           return <LeadDetailPage

@@ -2,19 +2,17 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# Nexus CRM
 
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/dda4d2cb-b20a-4601-b6c0-0e86c6865b04
+A CRM with multiple pipelines, Kanban boards, and team management, built on Cloudflare Pages, Pages Functions, and D1.
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
+**Prerequisites:** Node.js
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Set up the local database:
+   `npm run db:setup`
 3. Run the app:
    `npm run dev`

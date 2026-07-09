@@ -131,45 +131,6 @@ CREATE TABLE IF NOT EXISTS webhooks (
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS knowledge_sources (
-    id TEXT PRIMARY KEY,
-    account_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    type TEXT NOT NULL,
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
-);
-
--- Histórico de conversas do Bot para manter contexto (Short-term memory)
-CREATE TABLE IF NOT EXISTS bot_chat_history (
-    id TEXT PRIMARY KEY,
-    account_id TEXT NOT NULL,
-    lead_phone TEXT NOT NULL,
-    role TEXT NOT NULL, -- 'user' ou 'model'
-    content TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now')),
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
-);
-
--- Configurações específicas de comportamento da IA por Tenant
-CREATE TABLE IF NOT EXISTS bot_settings (
-    account_id TEXT PRIMARY KEY,
-    system_prompt TEXT DEFAULT 'Você é um assistente de vendas gentil. Use as informações fornecidas para tirar dúvidas.',
-    temperature REAL DEFAULT 0.7,
-    auto_reply INTEGER DEFAULT 1,
-    whatsapp_webhook_token TEXT, -- Token para validar requisições do Meta/Z-API
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
-);
-
--- Fragmentos da Base de Conhecimento (para rastreio no D1 além do Vectorize)
-CREATE TABLE IF NOT EXISTS knowledge_chunks (
-    id TEXT PRIMARY KEY,
-    account_id TEXT NOT NULL,
-    source_id TEXT NOT NULL,
-    content TEXT NOT NULL,
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-    FOREIGN KEY (source_id) REFERENCES knowledge_sources(id) ON DELETE CASCADE
-);
-
 -- Configurações Globais (White-label do Sistema)
 CREATE TABLE IF NOT EXISTS global_settings (
     id TEXT PRIMARY KEY DEFAULT 'nexus',
@@ -565,8 +526,6 @@ CREATE INDEX IF NOT EXISTS idx_email_events_campaign_id ON email_events(campaign
 CREATE INDEX IF NOT EXISTS idx_visitor_leads_lead_id ON visitor_leads(lead_id);
 CREATE INDEX IF NOT EXISTS idx_lead_visits_lead_id ON lead_visits(lead_id);
 CREATE INDEX IF NOT EXISTS idx_lead_score_history_lead_id ON lead_score_history(lead_id);
-CREATE INDEX IF NOT EXISTS idx_bot_chat_history_account_phone ON bot_chat_history(account_id, lead_phone);
-CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_source_id ON knowledge_chunks(source_id);
 CREATE INDEX IF NOT EXISTS idx_form_submissions_account_id ON form_submissions(account_id);
 CREATE INDEX IF NOT EXISTS idx_page_views_account_id ON page_views(account_id);
 CREATE INDEX IF NOT EXISTS idx_marketing_leads_account_id ON marketing_leads(account_id);
