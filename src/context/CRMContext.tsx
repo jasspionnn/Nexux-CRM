@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, UserRole } from '../types';
+import { api } from '../lib/api';
 
 export interface CRMNotification {
   id: string;
@@ -58,8 +59,8 @@ export const CRMProvider: React.FC<{children: React.ReactNode}> = ({ children })
 
     const initializeDB = async () => {
       try {
-        await fetch('/api/migrate-db');
-        await fetch('/api/seed-db');
+        await api.get('/migrate-db');
+        await api.get('/seed-db');
         localStorage.setItem(`nexus_db_initialized_${db_version}`, 'true');
       } catch (err) {
         console.error('Database initialization error:', err);
@@ -72,9 +73,7 @@ export const CRMProvider: React.FC<{children: React.ReactNode}> = ({ children })
   const fetchNotifications = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/notifications?account_id=${currentUser.account_id}`);
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await api.get<{ notifications: CRMNotification[]; tasks_today: TaskToday[] }>('/notifications');
       setNotifications(data.notifications || []);
       setTasksToday(data.tasks_today || []);
     } catch (e) {
@@ -95,13 +94,13 @@ export const CRMProvider: React.FC<{children: React.ReactNode}> = ({ children })
 
   const markAsRead = async (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: 1 } : n));
-    await fetch(`/api/notifications/${id}/read`, { method: 'PUT' });
+    await api.put(`/notifications/${id}/read`);
   };
 
   const markAllAsRead = async () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: 1 })));
     if (currentUser) {
-      await fetch(`/api/notifications/read-all?account_id=${currentUser.account_id}`, { method: 'PUT' });
+      await api.put('/notifications/read-all');
     }
   };
 
@@ -113,7 +112,7 @@ export const CRMProvider: React.FC<{children: React.ReactNode}> = ({ children })
   const logout = () => {
     localStorage.removeItem('nexus_user');
     setCurrentUser(null);
-    fetch('/api/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+    api.post('/logout').catch(() => {});
   };
 
   return (

@@ -403,4 +403,45 @@ CREATE TABLE IF NOT EXISTS lead_score_history (
     FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
+
+-- Contador de tentativas para rate limiting (login, cadastro público, etc.), lido
+-- por functions/api/[[route]].ts. `scope` distingue o tipo de limite (ex.: "login_ip"),
+-- `key` é o valor limitado (IP ou e-mail).
+CREATE TABLE IF NOT EXISTS security_rate_limits (
+    id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL,
+    key TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_security_rate_limits_lookup ON security_rate_limits(scope, key, created_at);
+
+-- ==================== ÍNDICES ====================
+-- Quase toda query do sistema filtra por account_id (isolamento multi-tenant) ou
+-- por uma chave estrangeira (lead_id, funnel_id, etc). Sem índice, D1 faz table
+-- scan nessas colunas conforme a base cresce.
+CREATE INDEX IF NOT EXISTS idx_users_account_id ON users(account_id);
+CREATE INDEX IF NOT EXISTS idx_leads_account_id ON leads(account_id);
+CREATE INDEX IF NOT EXISTS idx_leads_funnel_id ON leads(funnel_id);
+CREATE INDEX IF NOT EXISTS idx_leads_stage_id ON leads(stage_id);
+CREATE INDEX IF NOT EXISTS idx_leads_assigned_user_id ON leads(assigned_user_id);
+CREATE INDEX IF NOT EXISTS idx_stages_funnel_id ON stages(funnel_id);
+CREATE INDEX IF NOT EXISTS idx_notes_lead_id ON notes(lead_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_lead_id ON tasks(lead_id);
+CREATE INDEX IF NOT EXISTS idx_custom_fields_account_id ON custom_fields(account_id);
+CREATE INDEX IF NOT EXISTS idx_webhooks_account_id ON webhooks(account_id);
+CREATE INDEX IF NOT EXISTS idx_tracking_events_account_id ON tracking_events(account_id);
+CREATE INDEX IF NOT EXISTS idx_tracking_events_tracking_id ON tracking_events(tracking_id);
+CREATE INDEX IF NOT EXISTS idx_segments_account_id ON segments(account_id);
+CREATE INDEX IF NOT EXISTS idx_automations_account_id ON automations(account_id);
+CREATE INDEX IF NOT EXISTS idx_automation_executions_automation_id ON automation_executions(automation_id);
+CREATE INDEX IF NOT EXISTS idx_automation_executions_lead_id ON automation_executions(lead_id);
+CREATE INDEX IF NOT EXISTS idx_bio_links_account_id ON bio_links(account_id);
+CREATE INDEX IF NOT EXISTS idx_email_templates_account_id ON email_templates(account_id);
+CREATE INDEX IF NOT EXISTS idx_email_campaigns_account_id ON email_campaigns(account_id);
+CREATE INDEX IF NOT EXISTS idx_email_events_campaign_id ON email_events(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_visitor_leads_lead_id ON visitor_leads(lead_id);
+CREATE INDEX IF NOT EXISTS idx_lead_visits_lead_id ON lead_visits(lead_id);
+CREATE INDEX IF NOT EXISTS idx_lead_score_history_lead_id ON lead_score_history(lead_id);
+CREATE INDEX IF NOT EXISTS idx_bot_chat_history_account_phone ON bot_chat_history(account_id, lead_phone);
+CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_source_id ON knowledge_chunks(source_id);
  

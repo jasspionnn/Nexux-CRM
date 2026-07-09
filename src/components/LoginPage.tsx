@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useCRM } from '../context/CRMContext';
 import { UserRole } from '../types';
 import { Hexagon, ArrowRight, Lock, Mail } from 'lucide-react';
+import { api, ApiError } from '../lib/api';
 
 export const LoginPage = () => {
   const { login } = useCRM();
@@ -11,8 +12,7 @@ export const LoginPage = () => {
   const [settings, setSettings] = useState<any>(null);
 
   useEffect(() => {
-    fetch('/api/global-settings')
-      .then(r => r.ok ? r.json() : null)
+    api.get('/global-settings')
       .then(data => {
         if (data && !data.error) setSettings(data);
       })
@@ -33,24 +33,10 @@ export const LoginPage = () => {
     setIsLoading(true);
     
     try {
-      const response = await fetch('/api/login', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erro ao realizar login');
-      }
-
+      const data = await api.post('/login', { email, password });
       login(data);
-    } catch (err: any) {
-      alert(err.message);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Erro ao realizar login');
     } finally {
       setIsLoading(false);
     }

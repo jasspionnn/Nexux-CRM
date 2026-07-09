@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Building2, Activity, DollarSign, Settings, LogOut, Search, Bell, Menu, X, Plus, ShieldCheck, Play, Pause, Key, Save, Trash2, Users, Edit2, Zap, BookOpen, Flame, Network, Image as ImageIcon, Upload, ExternalLink, Link } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
+import { api, ApiError } from '../lib/api';
 
 export const NexusAdminDashboard = () => {
   const { currentUser, logout } = useCRM();
@@ -48,26 +49,24 @@ export const NexusAdminDashboard = () => {
 
   const fetchPerfItems = async (type?: string) => {
     try {
-      const url = `/api/admin/performance-items${type ? `?type=${type}` : ''}`;
-      const res = await fetch(url, { credentials: 'include' });
-      if (res.ok) setPerfItems(await res.json());
+      const items = await api.get(`/admin/performance-items${type ? `?type=${type}` : ''}`);
+      setPerfItems(items);
     } catch (e) { console.error(e); }
   };
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [statsRes, accountsRes, settingsRes, usersRes] = await Promise.all([
-        fetch('/api/admin/stats', { credentials: 'include' }),
-        fetch('/api/admin/accounts', { credentials: 'include' }),
-        fetch('/api/global-settings'),
-        fetch('/api/users?account_id=acc_nexus', { credentials: 'include' })
+      const [stats, accounts, settings, users] = await Promise.all([
+        api.get('/admin/stats'),
+        api.get('/admin/accounts'),
+        api.get('/global-settings'),
+        api.get('/users?account_id=acc_nexus'),
       ]);
-      
-      if (statsRes.ok) setStats(await statsRes.json());
-      if (accountsRes.ok) setAccounts(await accountsRes.json());
-      if (settingsRes.ok) setGlobalSettings(await settingsRes.json());
-      if (usersRes.ok) setNexusUsers(await usersRes.json());
+      setStats(stats);
+      setAccounts(accounts);
+      setGlobalSettings(settings);
+      setNexusUsers(users);
     } catch (e) {
       console.error('Failed to fetch admin data', e);
     } finally {
@@ -80,12 +79,7 @@ export const NexusAdminDashboard = () => {
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'active' ? 'disabled' : 'active';
     try {
-      await fetch(`/api/admin/accounts/${id}/status`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
+      await api.put(`/admin/accounts/${id}/status`, { status: newStatus });
       fetchData();
     } catch(e) {
       console.error(e);
@@ -97,25 +91,14 @@ export const NexusAdminDashboard = () => {
     e.preventDefault();
     setCreating(true);
     try {
-      const res = await fetch('/api/admin/accounts', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setCreatedInfo({ ...data, email: formData.email });
-        fetchData();
-        setFormData({ company_name: '', owner_name: '', email: '', plan: 'pro' });
-        setIsAddModalOpen(false);
-      } else {
-        const errData = await res.json();
-        alert(`Falha ao criar conta: ${errData.error || 'Erro interno no servidor'}`);
-      }
+      const data = await api.post('/admin/accounts', formData);
+      setCreatedInfo({ ...data, email: formData.email });
+      fetchData();
+      setFormData({ company_name: '', owner_name: '', email: '', plan: 'pro' });
+      setIsAddModalOpen(false);
     } catch (e) {
       console.error(e);
-      alert('Erro.');
+      alert(e instanceof ApiError ? `Falha ao criar conta: ${e.message}` : 'Erro.');
     } finally {
       setCreating(false);
     }
@@ -136,38 +119,23 @@ export const NexusAdminDashboard = () => {
   const handleUpdateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch(`/api/admin/accounts/${editingAccount.id}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editAccFormData)
-      });
-      if (res.ok) {
-        setEditingAccount(null);
-        fetchData();
-      } else {
-        alert('Erro ao atualizar conta');
-      }
+      await api.put(`/admin/accounts/${editingAccount.id}`, editAccFormData);
+      setEditingAccount(null);
+      fetchData();
     } catch (e) {
       console.error(e);
+      alert('Erro ao atualizar conta');
     }
   };
 
   const handleResetPassword = async () => {
     if (!confirm('Deseja gerar uma nova senha temporária para o proprietário desta conta?')) return;
     try {
-      const res = await fetch(`/api/admin/accounts/${editingAccount.id}/reset-password`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setNewPassword(data.newPassword);
-      } else {
-        alert('Erro ao resetar senha');
-      }
+      const data = await api.post(`/admin/accounts/${editingAccount.id}/reset-password`);
+      setNewPassword(data.newPassword);
     } catch (e) {
       console.error(e);
+      alert('Erro ao resetar senha');
     }
   };
 
@@ -175,19 +143,15 @@ export const NexusAdminDashboard = () => {
 
   const handleCreateNexusUser = async () => {
     try {
-      const res = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: 'Novo Admin Nexus', 
-          email: `admin_${Date.now()}@nexus.com`, 
-          role: 'NEXUS_ADMIN', 
-          status: 'active',
-          account_id: 'acc_nexus',
-          password: '123'
-        })
+      await api.post('/users', {
+        name: 'Novo Admin Nexus',
+        email: `admin_${Date.now()}@nexus.com`,
+        role: 'NEXUS_ADMIN',
+        status: 'active',
+        account_id: 'acc_nexus',
+        password: '123',
       });
-      if (res.ok) fetchData();
+      fetchData();
     } catch (e) {
       console.error(e);
     }
@@ -206,19 +170,12 @@ export const NexusAdminDashboard = () => {
   const handleUpdateNexusUser = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch(`/api/users/${editingUser.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editUserFormData)
-      });
-      if (res.ok) {
-        setEditingUser(null);
-        fetchData();
-      } else {
-        alert('Erro ao atualizar usuário');
-      }
+      await api.put(`/users/${editingUser.id}`, editUserFormData);
+      setEditingUser(null);
+      fetchData();
     } catch (e) {
       console.error(e);
+      alert('Erro ao atualizar usuário');
     }
   };
 
@@ -226,7 +183,7 @@ export const NexusAdminDashboard = () => {
     if (id === currentUser?.id) return alert('Você não pode excluir a si mesmo.');
     if (!confirm('Tem certeza que deseja remover este administrador?')) return;
     try {
-      await fetch(`/api/users/${id}`, { method: 'DELETE' });
+      await api.delete(`/users/${id}`);
       fetchData();
     } catch (e) {
       console.error(e);
@@ -276,23 +233,18 @@ export const NexusAdminDashboard = () => {
     setPerfSaving(true);
     try {
       const isEdit = perfModal === 'edit';
-      const url = isEdit ? `/api/admin/performance-items/${perfForm.id}` : '/api/admin/performance-items';
-      const res = await fetch(url, {
-        method: isEdit ? 'PUT' : 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(perfForm),
-      });
-      if (res.ok) { setPerfModal(null); fetchPerfItems(perfFilterType); }
-      else alert('Erro ao salvar item');
-    } catch (e) { alert('Erro de comunicação'); }
+      const url = isEdit ? `/admin/performance-items/${perfForm.id}` : '/admin/performance-items';
+      if (isEdit) await api.put(url, perfForm); else await api.post(url, perfForm);
+      setPerfModal(null);
+      fetchPerfItems(perfFilterType);
+    } catch (e) { alert('Erro ao salvar item'); }
     setPerfSaving(false);
   };
 
   const handleDeletePerf = async (id: string) => {
     if (!confirm('Excluir este item?')) return;
     try {
-      await fetch(`/api/admin/performance-items/${id}`, { method: 'DELETE', credentials: 'include' });
+      await api.delete(`/admin/performance-items/${id}`);
       fetchPerfItems(perfFilterType);
     } catch (e) { console.error(e); }
   };
@@ -304,20 +256,11 @@ export const NexusAdminDashboard = () => {
   const handleSaveSettings = async () => {
     setSavingSettings(true);
     try {
-      const res = await fetch('/api/admin/global-settings', {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(globalSettings)
-      });
-      if (res.ok) {
-        alert('Configurações Globais atualizadas com sucesso!');
-      } else {
-        alert('Erro ao salvar as configurações.');
-      }
+      await api.put('/admin/global-settings', globalSettings);
+      alert('Configurações Globais atualizadas com sucesso!');
     } catch(e) {
       console.error(e);
-      alert('Erro de comunicação.');
+      alert('Erro ao salvar as configurações.');
     } finally {
       setSavingSettings(false);
     }

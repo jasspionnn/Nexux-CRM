@@ -146,7 +146,88 @@ async function requireNexusAdmin(c: any, next: any) {
   await next();
 }
 
+// ==================== RATE LIMITING (D1-backed) ====================
+// Cloudflare Workers isolates are ephemeral/distributed, so an in-memory counter
+// isn't reliable — attempts are tracked in D1 instead. Table is created lazily
+// (see /migrate-db and schema.sql) with an index on (scope, key, created_at).
+function getClientIp(c: any): string {
+  return c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
+}
+
+async function isRateLimited(db: any, scope: string, key: string, maxAttempts: number, windowMinutes: number): Promise<boolean> {
+  try {
+    const row: any = await db.prepare(
+      `SELECT COUNT(*) as cnt FROM security_rate_limits WHERE scope = ? AND key = ? AND created_at > datetime('now', ?)`
+    ).bind(scope, key, `-${windowMinutes} minutes`).first();
+    return (row?.cnt || 0) >= maxAttempts;
+  } catch {
+    return false; // table not migrated yet — fail open rather than lock everyone out
+  }
+}
+
+async function recordRateLimitHit(db: any, scope: string, key: string) {
+  try {
+    await db.prepare('INSERT INTO security_rate_limits (id, scope, key) VALUES (?, ?, ?)').bind(crypto.randomUUID(), scope, key).run();
+    if (Math.random() < 0.02) {
+      db.prepare(`DELETE FROM security_rate_limits WHERE created_at < datetime('now', '-1 day')`).run().catch(() => {});
+    }
+  } catch {
+    // table not migrated yet — nothing to do
+  }
+}
+
+// ==================== GENERAL SESSION REQUIREMENT ====================
+// Historically almost every route here trusted a client-supplied `account_id`
+// (query param or request body) with no session check at all — any caller could
+// read or write another tenant's data by guessing/changing that value (IDOR).
+// This middleware requires a valid session on everything except the routes below,
+// which are genuinely meant to be reachable without a logged-in user (login itself,
+// public signup, public bio pages, inbound webhooks, tracking/email-open pixels).
+// Once a session exists, routes should read the account via sessionAccountId(c)
+// instead of trusting the client — see that helper below.
+function isPublicRoute(method: string, path: string): boolean {
+  const exactByMethod: Record<string, string[]> = {
+    GET: ['/api/global-settings', '/api/seed-db', '/api/migrate-db', '/api/migrate-tracking-forms', '/api/tracking/test'],
+    POST: ['/api/login', '/api/logout', '/api/public/register', '/api/tracking/events', '/api/email-events/track'],
+  };
+  if (exactByMethod[method]?.includes(path)) return true;
+  if (method === 'GET' && path.startsWith('/api/bio-links/public/')) return true;
+  if (method === 'POST' && /^\/api\/bio-links\/[^/]+\/click$/.test(path)) return true;
+  if (method === 'POST' && path.startsWith('/api/webhooks/incoming/')) return true;
+  // CORS preflight for the public endpoints above — browsers send OPTIONS with no
+  // cookie/credentials at all, so these must stay outside the session requirement.
+  if (method === 'OPTIONS' && (path.startsWith('/api/webhooks/incoming/') || path === '/api/tracking/events')) return true;
+  return false;
+}
+
+function sessionAccountId(c: any): string | null {
+  return c.get('authUser')?.accountId ?? null;
+}
+
+app.use('*', async (c: any, next: any) => {
+  if (isPublicRoute(c.req.method, c.req.path)) return next();
+  const secret = c.env.SESSION_SECRET;
+  if (!secret) return c.json({ error: 'Autenticação não configurada no servidor.' }, 500);
+  const token = getCookie(c, SESSION_COOKIE);
+  if (!token) return c.json({ error: 'Não autenticado.' }, 401);
+  const payload = await verifySessionToken(token, secret);
+  if (!payload) {
+    deleteCookie(c, SESSION_COOKIE, { path: '/' });
+    return c.json({ error: 'Sessão inválida ou expirada.' }, 401);
+  }
+  c.set('authUser', payload);
+  await next();
+});
+
 app.use('/admin/*', requireNexusAdmin);
+
+// Safety net for the handful of routes with no try/catch of their own (an uncaught
+// exception used to fall through to Hono's default error page). Never leaks
+// error.message/stack to the client — only logs it server-side.
+app.onError((err, c) => {
+  console.error('Unhandled error:', err);
+  return c.json({ error: 'Erro interno no servidor.' }, 500);
+});
 
 // Funnels
 // NOTE: /debug-schema and /debug-db were removed — they dumped full table contents
@@ -184,7 +265,7 @@ app.get('/seed-db', async (c) => {
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Seed error:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -852,15 +933,67 @@ app.get('/migrate-db', async (c) => {
       console.log('performance_items migration note:', migrationErr.message);
     }
 
+    // Rate limiting table (login/register brute-force protection)
+    try {
+      await c.env.DB.prepare(`
+        CREATE TABLE IF NOT EXISTS security_rate_limits (
+          id TEXT PRIMARY KEY,
+          scope TEXT NOT NULL,
+          key TEXT NOT NULL,
+          created_at TEXT DEFAULT (datetime('now'))
+        );
+      `).run();
+    } catch (e: any) { console.log('security_rate_limits note:', e.message); }
+
+    // Indexes — almost every query in this app filters by account_id (multi-tenant
+    // isolation) or a foreign key. schema.sql only covers a fresh install; this list
+    // also backfills indexes on databases that were bootstrapped by this endpoint.
+    const indexStatements = [
+      'CREATE INDEX IF NOT EXISTS idx_users_account_id ON users(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_leads_account_id ON leads(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_leads_funnel_id ON leads(funnel_id)',
+      'CREATE INDEX IF NOT EXISTS idx_leads_stage_id ON leads(stage_id)',
+      'CREATE INDEX IF NOT EXISTS idx_leads_assigned_user_id ON leads(assigned_user_id)',
+      'CREATE INDEX IF NOT EXISTS idx_stages_funnel_id ON stages(funnel_id)',
+      'CREATE INDEX IF NOT EXISTS idx_notes_lead_id ON notes(lead_id)',
+      'CREATE INDEX IF NOT EXISTS idx_tasks_lead_id ON tasks(lead_id)',
+      'CREATE INDEX IF NOT EXISTS idx_custom_fields_account_id ON custom_fields(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_webhooks_account_id ON webhooks(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_tracking_events_account_id ON tracking_events(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_tracking_events_tracking_id ON tracking_events(tracking_id)',
+      'CREATE INDEX IF NOT EXISTS idx_segments_account_id ON segments(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_automations_account_id ON automations(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_automation_executions_automation_id ON automation_executions(automation_id)',
+      'CREATE INDEX IF NOT EXISTS idx_automation_executions_lead_id ON automation_executions(lead_id)',
+      'CREATE INDEX IF NOT EXISTS idx_bio_links_account_id ON bio_links(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_bio_link_clicks_bio_link_id ON bio_link_clicks(bio_link_id)',
+      'CREATE INDEX IF NOT EXISTS idx_email_templates_account_id ON email_templates(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_email_campaigns_account_id ON email_campaigns(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_email_events_campaign_id ON email_events(campaign_id)',
+      'CREATE INDEX IF NOT EXISTS idx_visitor_leads_lead_id ON visitor_leads(lead_id)',
+      'CREATE INDEX IF NOT EXISTS idx_lead_visits_lead_id ON lead_visits(lead_id)',
+      'CREATE INDEX IF NOT EXISTS idx_lead_score_history_lead_id ON lead_score_history(lead_id)',
+      'CREATE INDEX IF NOT EXISTS idx_bot_chat_history_account_phone ON bot_chat_history(account_id, lead_phone)',
+      'CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_source_id ON knowledge_chunks(source_id)',
+      'CREATE INDEX IF NOT EXISTS idx_form_submissions_account_id ON form_submissions(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_page_views_account_id ON page_views(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_marketing_leads_account_id ON marketing_leads(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_notifications_account_id ON notifications(account_id)',
+      'CREATE INDEX IF NOT EXISTS idx_security_rate_limits_lookup ON security_rate_limits(scope, key, created_at)',
+    ];
+    for (const stmt of indexStatements) {
+      try { await c.env.DB.prepare(stmt).run(); } catch (e: any) { console.log('Index note:', stmt, e.message); }
+    }
+
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Migration error:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
 app.get('/funnels', async (c) => {
-  const account_id = c.req.query('account_id');
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json([]);
   // Auto-add colorOpacity column if missing
   try { await c.env.DB.prepare("ALTER TABLE stages ADD COLUMN colorOpacity TEXT DEFAULT '1a'").run(); } catch (e) { /* column already exists */ }
@@ -887,7 +1020,7 @@ app.get('/funnels', async (c) => {
 app.post('/funnels', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
-  const account_id = c.req.query('account_id') || body.account_id;
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json({ error: 'account_id is required' }, 400);
 
   await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)')
@@ -900,29 +1033,21 @@ app.post('/funnels', async (c) => {
 app.put('/funnels/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  const account_id = c.req.query('account_id') || body.account_id;
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
 
-  if (account_id) {
-    await c.env.DB.prepare('UPDATE funnels SET name = ?, default_won_stage_id = ?, default_lost_stage_id = ? WHERE id = ? AND account_id = ?')
-      .bind(body.name, body.default_won_stage_id || null, body.default_lost_stage_id || null, id, account_id)
-      .run();
-  } else {
-    await c.env.DB.prepare('UPDATE funnels SET name = ?, default_won_stage_id = ?, default_lost_stage_id = ? WHERE id = ?')
-      .bind(body.name, body.default_won_stage_id || null, body.default_lost_stage_id || null, id)
-      .run();
-  }
+  await c.env.DB.prepare('UPDATE funnels SET name = ?, default_won_stage_id = ?, default_lost_stage_id = ? WHERE id = ? AND account_id = ?')
+    .bind(body.name, body.default_won_stage_id || null, body.default_lost_stage_id || null, id, account_id)
+    .run();
 
   return c.json({ success: true });
 });
 
 app.delete('/funnels/:id', async (c) => {
   const id = c.req.param('id');
-  const account_id = c.req.query('account_id');
-  if (account_id) {
-    await c.env.DB.prepare('DELETE FROM funnels WHERE id = ? AND account_id = ?').bind(id, account_id).run();
-  } else {
-    await c.env.DB.prepare('DELETE FROM funnels WHERE id = ?').bind(id).run();
-  }
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  await c.env.DB.prepare('DELETE FROM funnels WHERE id = ? AND account_id = ?').bind(id, account_id).run();
   return c.json({ success: true });
 });
 
@@ -931,46 +1056,42 @@ app.post('/funnels/:funnelId/stages', async (c) => {
   const funnelId = c.req.param('funnelId');
   const body = await c.req.json();
   const id = crypto.randomUUID();
-  
+  const stageAccountId = sessionAccountId(c);
+  if (!stageAccountId) return c.json({ error: 'Não autorizado.' }, 403);
+  const ownedFunnel = await c.env.DB.prepare('SELECT id FROM funnels WHERE id = ? AND account_id = ?').bind(funnelId, stageAccountId).first();
+  if (!ownedFunnel) return c.json({ error: 'Funil não encontrado.' }, 404);
+
   await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, colorOpacity, borderOpacity, "order") VALUES (?, ?, ?, ?, ?, ?, ?)')
     .bind(id, funnelId, body.name, body.color, body.colorOpacity || '1a', body.borderOpacity || '4d', body.order || 0)
     .run();
-    
+
   return c.json({ id, funnel_id: funnelId, name: body.name, color: body.color, order: body.order || 0 });
 });
 
 app.put('/stages/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  const account_id = c.req.query('account_id') || body.account_id;
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
 
-  if (account_id) {
-    await c.env.DB.prepare('UPDATE stages SET name = ?, color = ?, colorOpacity = ?, borderOpacity = ? WHERE id = ? AND funnel_id IN (SELECT id FROM funnels WHERE account_id = ?)')
-      .bind(body.name, body.color, body.colorOpacity || '1a', body.borderOpacity || '4d', id, account_id)
-      .run();
-  } else {
-    await c.env.DB.prepare('UPDATE stages SET name = ?, color = ?, colorOpacity = ?, borderOpacity = ? WHERE id = ?')
-      .bind(body.name, body.color, body.colorOpacity || '1a', body.borderOpacity || '4d', id)
-      .run();
-  }
+  await c.env.DB.prepare('UPDATE stages SET name = ?, color = ?, colorOpacity = ?, borderOpacity = ? WHERE id = ? AND funnel_id IN (SELECT id FROM funnels WHERE account_id = ?)')
+    .bind(body.name, body.color, body.colorOpacity || '1a', body.borderOpacity || '4d', id, account_id)
+    .run();
 
   return c.json({ success: true });
 });
 
 app.delete('/stages/:id', async (c) => {
   const id = c.req.param('id');
-  const account_id = c.req.query('account_id');
-  if (account_id) {
-    await c.env.DB.prepare('DELETE FROM stages WHERE id = ? AND funnel_id IN (SELECT id FROM funnels WHERE account_id = ?)').bind(id, account_id).run();
-  } else {
-    await c.env.DB.prepare('DELETE FROM stages WHERE id = ?').bind(id).run();
-  }
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  await c.env.DB.prepare('DELETE FROM stages WHERE id = ? AND funnel_id IN (SELECT id FROM funnels WHERE account_id = ?)').bind(id, account_id).run();
   return c.json({ success: true });
 });
 
 // Custom Fields
 app.get('/custom-fields', async (c) => {
-  const account_id = c.req.query('account_id');
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json([]);
   const { results } = await c.env.DB.prepare('SELECT * FROM custom_fields WHERE account_id = ?').bind(account_id).all();
   return c.json(results);
@@ -980,7 +1101,7 @@ app.post('/custom-fields', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const account_id = c.req.query('account_id') || body.account_id;
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json({ error: 'account_id is required' }, 400);
 
     // Provide a valid funnel_id to satisfy NOT NULL and FOREIGN KEY constraints on older schemas
@@ -997,42 +1118,34 @@ app.post('/custom-fields', async (c) => {
     return c.json({ id, account_id, name: body.name, type: body.type, context: body.context, funnel_id, options: body.options, visible_stage_ids: body.visible_stage_ids });
   } catch (error: any) {
     console.error('Error creating custom field:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
 app.put('/custom-fields/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  const account_id = c.req.query('account_id') || body.account_id;
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
 
-  if (account_id) {
-    await c.env.DB.prepare('UPDATE custom_fields SET name = ?, type = ?, context = ?, options = ?, visible_stage_ids = ?, funnel_id = ? WHERE id = ? AND account_id = ?')
-      .bind(body.name, body.type, body.context, body.options || null, body.visible_stage_ids || null, body.funnel_id || null, id, account_id)
-      .run();
-  } else {
-    await c.env.DB.prepare('UPDATE custom_fields SET name = ?, type = ?, context = ?, options = ?, visible_stage_ids = ?, funnel_id = ? WHERE id = ?')
-      .bind(body.name, body.type, body.context, body.options || null, body.visible_stage_ids || null, body.funnel_id || null, id)
-      .run();
-  }
+  await c.env.DB.prepare('UPDATE custom_fields SET name = ?, type = ?, context = ?, options = ?, visible_stage_ids = ?, funnel_id = ? WHERE id = ? AND account_id = ?')
+    .bind(body.name, body.type, body.context, body.options || null, body.visible_stage_ids || null, body.funnel_id || null, id, account_id)
+    .run();
 
   return c.json({ success: true });
 });
 
 app.delete('/custom-fields/:id', async (c) => {
   const id = c.req.param('id');
-  const account_id = c.req.query('account_id');
-  if (account_id) {
-    await c.env.DB.prepare('DELETE FROM custom_fields WHERE id = ? AND account_id = ?').bind(id, account_id).run();
-  } else {
-    await c.env.DB.prepare('DELETE FROM custom_fields WHERE id = ?').bind(id).run();
-  }
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  await c.env.DB.prepare('DELETE FROM custom_fields WHERE id = ? AND account_id = ?').bind(id, account_id).run();
   return c.json({ success: true });
 });
 
 // Webhooks
 app.get('/webhooks', async (c) => {
-  const account_id = c.req.query('account_id');
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json([]);
   const { results } = await c.env.DB.prepare('SELECT * FROM webhooks WHERE account_id = ?').bind(account_id).all();
   return c.json(results.map((w: any) => ({ ...w, active: w.is_active === 1 })));
@@ -1042,7 +1155,7 @@ app.post('/webhooks', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const account_id = c.req.query('account_id') || body.account_id;
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json({ error: 'account_id is required' }, 400);
     
     // Provide valid funnel_id and stage_id to satisfy NOT NULL and FOREIGN KEY constraints on older schemas
@@ -1065,18 +1178,20 @@ app.post('/webhooks', async (c) => {
     return c.json({ id, account_id, name: body.name, url: body.url, active: body.active, funnel_id, stage_id });
   } catch (error: any) {
     console.error('Error creating webhook:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
 app.put('/webhooks/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  
-  await c.env.DB.prepare('UPDATE webhooks SET name = ?, url = ?, is_active = ?, funnel_id = ?, stage_id = ? WHERE id = ?')
-    .bind(body.name || 'Webhook', body.url || '', body.active ? 1 : 0, body.funnel_id || null, body.stage_id || null, id)
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+
+  await c.env.DB.prepare('UPDATE webhooks SET name = ?, url = ?, is_active = ?, funnel_id = ?, stage_id = ? WHERE id = ? AND account_id = ?')
+    .bind(body.name || 'Webhook', body.url || '', body.active ? 1 : 0, body.funnel_id || null, body.stage_id || null, id, account_id)
     .run();
-    
+
   return c.json({ success: true });
 });
 
@@ -1241,19 +1356,21 @@ app.post('/webhooks/incoming/:id', async (c) => {
     return c.json({ success: true, lead_id: leadId });
   } catch (error: any) {
     console.error('Webhook processing error:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
 app.delete('/webhooks/:id', async (c) => {
   const id = c.req.param('id');
-  await c.env.DB.prepare('DELETE FROM webhooks WHERE id = ?').bind(id).run();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  await c.env.DB.prepare('DELETE FROM webhooks WHERE id = ? AND account_id = ?').bind(id, account_id).run();
   return c.json({ success: true });
 });
 
 // Notifications
 app.get('/notifications', async (c) => {
-  const account_id = c.req.query('account_id');
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json({ notifications: [], tasks_today: [] });
 
   const { results: notifs } = await c.env.DB.prepare(
@@ -1276,7 +1393,7 @@ app.get('/notifications', async (c) => {
 });
 
 app.put('/notifications/read-all', async (c) => {
-  const account_id = c.req.query('account_id');
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json({ error: 'account_id required' }, 400);
   await c.env.DB.prepare('UPDATE notifications SET read = 1 WHERE account_id = ?').bind(account_id).run();
   return c.json({ success: true });
@@ -1284,13 +1401,15 @@ app.put('/notifications/read-all', async (c) => {
 
 app.put('/notifications/:id/read', async (c) => {
   const id = c.req.param('id');
-  await c.env.DB.prepare('UPDATE notifications SET read = 1 WHERE id = ?').bind(id).run();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  await c.env.DB.prepare('UPDATE notifications SET read = 1 WHERE id = ? AND account_id = ?').bind(id, account_id).run();
   return c.json({ success: true });
 });
 
 // Users (Team)
 app.get('/users', async (c) => {
-  const account_id = c.req.query('account_id');
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json([]);
   const { results } = await c.env.DB.prepare('SELECT id, name, email, role, status, account_id FROM users WHERE account_id = ?').bind(account_id).all();
   return c.json(results);
@@ -1300,7 +1419,7 @@ app.post('/users', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const account_id = c.req.query('account_id') || body.account_id;
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json({ error: 'account_id is required' }, 400);
 
     const team_id = body.team_id || null;
@@ -1314,21 +1433,23 @@ app.post('/users', async (c) => {
     return c.json({ id, account_id, name: body.name, email: body.email, role: body.role, status: body.status, team_id, avatar });
   } catch (error: any) {
     console.error('Error creating user:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 app.put('/users/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
 
   if (body.password) {
     const hashed = await hashPassword(body.password);
-    await c.env.DB.prepare('UPDATE users SET name = ?, email = ?, role = ?, status = ?, team_id = ?, password = ? WHERE id = ?')
-      .bind(body.name, body.email, body.role, body.status, body.team_id || null, hashed, id)
+    await c.env.DB.prepare('UPDATE users SET name = ?, email = ?, role = ?, status = ?, team_id = ?, password = ? WHERE id = ? AND account_id = ?')
+      .bind(body.name, body.email, body.role, body.status, body.team_id || null, hashed, id, account_id)
       .run();
   } else {
-    await c.env.DB.prepare('UPDATE users SET name = ?, email = ?, role = ?, status = ?, team_id = ? WHERE id = ?')
-      .bind(body.name, body.email, body.role, body.status, body.team_id || null, id)
+    await c.env.DB.prepare('UPDATE users SET name = ?, email = ?, role = ?, status = ?, team_id = ? WHERE id = ? AND account_id = ?')
+      .bind(body.name, body.email, body.role, body.status, body.team_id || null, id, account_id)
       .run();
   }
 
@@ -1339,24 +1460,28 @@ app.put('/users/:id/password', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
     if (!body.password) return c.json({ error: 'password required' }, 400);
     const hashed = await hashPassword(body.password);
-    await c.env.DB.prepare('UPDATE users SET password = ? WHERE id = ?').bind(hashed, id).run();
+    await c.env.DB.prepare('UPDATE users SET password = ? WHERE id = ? AND account_id = ?').bind(hashed, id, account_id).run();
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
 app.delete('/users/:id', async (c) => {
   const id = c.req.param('id');
-  await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(id).run();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  await c.env.DB.prepare('DELETE FROM users WHERE id = ? AND account_id = ?').bind(id, account_id).run();
   return c.json({ success: true });
 });
 
 // Leads
 app.get('/leads', async (c) => {
-  const account_id = c.req.query('account_id');
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json({ error: 'account_id required' }, 400);
   const { results } = await c.env.DB.prepare('SELECT * FROM leads WHERE account_id = ?').bind(account_id).all();
   return c.json(results);
@@ -1369,7 +1494,7 @@ app.post('/leads', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const account_id = c.req.query('account_id') || body.account_id;
+    const account_id = sessionAccountId(c);
     if (!account_id) {
       return c.json({ error: 'account_id is required' }, 400);
     }
@@ -1394,19 +1519,15 @@ app.post('/leads', async (c) => {
     return c.json(newLead);
   } catch (error: any) {
     console.error('Error creating lead:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
 app.get('/leads/:id', async (c) => {
   const id = c.req.param('id');
-  const account_id = c.req.query('account_id');
-  let lead: any;
-  if (account_id) {
-    lead = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ? AND account_id = ?').bind(id, account_id).first();
-  } else {
-    lead = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ?').bind(id).first();
-  }
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  const lead = await c.env.DB.prepare('SELECT * FROM leads WHERE id = ? AND account_id = ?').bind(id, account_id).first();
   if (!lead) return c.json({ error: 'Lead not found' }, 404);
   return c.json(lead);
 });
@@ -1414,39 +1535,45 @@ app.get('/leads/:id', async (c) => {
 app.put('/leads/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+
   // Build dynamic update query
   const fields = [];
   const values = [];
-  
+
   const allowedFields = ['title', 'company', 'value', 'contact_name', 'contact_email', 'contact_phone', 'funnel_id', 'stage_id', 'assigned_user_id', 'probability', 'tags', 'custom_values', 'closed_at', 'closing_forecast_at'];
-  
+
   for (const key of Object.keys(body)) {
     if (allowedFields.includes(key)) {
       fields.push(`${key} = ?`);
       values.push(body[key]);
     }
   }
-  
+
   if (fields.length === 0) return c.json({ success: true });
-  
-  values.push(id);
-  
-  const query = `UPDATE leads SET ${fields.join(', ')} WHERE id = ?`;
+
+  values.push(id, account_id);
+
+  const query = `UPDATE leads SET ${fields.join(', ')} WHERE id = ? AND account_id = ?`;
   await c.env.DB.prepare(query).bind(...values).run();
-  
+
   // Recalculate scoring if custom_values were updated
   if (body.custom_values) {
-    const lead: any = await c.env.DB.prepare('SELECT account_id FROM leads WHERE id = ?').bind(id).first();
+    const lead: any = await c.env.DB.prepare('SELECT account_id FROM leads WHERE id = ? AND account_id = ?').bind(id, account_id).first();
     if (lead) await calculateLeadScore(c.env.DB, lead.account_id, id);
   }
-  
+
   return c.json({ success: true });
 });
 
 // Notes
 app.get('/leads/:id/notes', async (c) => {
   const leadId = c.req.param('id');
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  const lead = await c.env.DB.prepare('SELECT id FROM leads WHERE id = ? AND account_id = ?').bind(leadId, account_id).first();
+  if (!lead) return c.json({ error: 'Lead não encontrado.' }, 404);
   const { results } = await c.env.DB.prepare('SELECT * FROM notes WHERE lead_id = ? ORDER BY created_at DESC').bind(leadId).all();
   return c.json(results);
 });
@@ -1454,24 +1581,32 @@ app.get('/leads/:id/notes', async (c) => {
 app.post('/leads/:id/notes', async (c) => {
   const leadId = c.req.param('id');
   const body = await c.req.json();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  const lead = await c.env.DB.prepare('SELECT id FROM leads WHERE id = ? AND account_id = ?').bind(leadId, account_id).first();
+  if (!lead) return c.json({ error: 'Lead não encontrado.' }, 404);
   const id = crypto.randomUUID();
-  
+
   await c.env.DB.prepare('INSERT INTO notes (id, lead_id, content, author_name, created_at) VALUES (?, ?, ?, ?, datetime(\'now\'))')
     .bind(id, leadId, body.content, body.author_name || 'Usuário')
     .run();
-    
+
   // Sync last_contact_at to leads table
   await c.env.DB.prepare('UPDATE leads SET last_contact_at = datetime(\'now\') WHERE id = ?').bind(leadId).run();
-    
+
   const newNote = await c.env.DB.prepare('SELECT * FROM notes WHERE id = ?').bind(id).first();
   return c.json(newNote);
 });
 
 app.get('/leads/:id/tasks', async (c) => {
   const leadId = c.req.param('id');
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  const lead = await c.env.DB.prepare('SELECT id FROM leads WHERE id = ? AND account_id = ?').bind(leadId, account_id).first();
+  if (!lead) return c.json({ error: 'Lead não encontrado.' }, 404);
   const { results } = await c.env.DB.prepare(`
-    SELECT * FROM tasks 
-    WHERE lead_id = ? 
+    SELECT * FROM tasks
+    WHERE lead_id = ?
     ORDER BY completed ASC, due_date ASC
   `).bind(leadId).all();
   return c.json(results || []);
@@ -1479,7 +1614,7 @@ app.get('/leads/:id/tasks', async (c) => {
 
 // Tasks
 app.get('/tasks', async (c) => {
-  const account_id = c.req.query('account_id');
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json({ error: 'account_id required' }, 400);
   const { results } = await c.env.DB.prepare(`
     SELECT t.*, l.title as lead_title
@@ -1493,17 +1628,21 @@ app.get('/tasks', async (c) => {
 
 app.post('/tasks', async (c) => {
   const body = await c.req.json();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  const lead = await c.env.DB.prepare('SELECT id FROM leads WHERE id = ? AND account_id = ?').bind(body.lead_id, account_id).first();
+  if (!lead) return c.json({ error: 'Lead não encontrado.' }, 404);
   const id = crypto.randomUUID();
-  
+
   await c.env.DB.prepare('INSERT INTO tasks (id, lead_id, title, due_date, completed, type) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(id, body.lead_id, body.title, body.due_date, body.completed ? 1 : 0, body.type || 'task')
     .run();
-    
+
   // Sync next_task_at to leads table
   if (body.lead_id && !body.completed && body.due_date) {
     await c.env.DB.prepare('UPDATE leads SET next_task_at = ? WHERE id = ? AND (next_task_at IS NULL OR next_task_at > ?)').bind(body.due_date, body.lead_id, body.due_date).run();
   }
-    
+
   const newTask = await c.env.DB.prepare('SELECT * FROM tasks WHERE id = ?').bind(id).first();
   return c.json(newTask);
 });
@@ -1511,38 +1650,44 @@ app.post('/tasks', async (c) => {
 app.put('/tasks/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+
   const fields = [];
   const values = [];
-  
+
   const allowedFields = ['title', 'due_date', 'completed', 'type', 'lead_id'];
-  
+
   for (const key of Object.keys(body)) {
     if (allowedFields.includes(key)) {
       fields.push(`${key} = ?`);
       values.push(key === 'completed' ? (body[key] ? 1 : 0) : body[key]);
     }
   }
-  
+
   if (fields.length === 0) return c.json({ success: true });
-  
-  values.push(id);
-  
-  const query = `UPDATE tasks SET ${fields.join(', ')} WHERE id = ?`;
+
+  values.push(id, account_id);
+
+  const query = `UPDATE tasks SET ${fields.join(', ')} WHERE id = ? AND lead_id IN (SELECT id FROM leads WHERE account_id = ?)`;
   await c.env.DB.prepare(query).bind(...values).run();
-  
+
   return c.json({ success: true });
 });
 
 app.delete('/tasks/:id', async (c) => {
   const id = c.req.param('id');
-  await c.env.DB.prepare('DELETE FROM tasks WHERE id = ?').bind(id).run();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  await c.env.DB.prepare('DELETE FROM tasks WHERE id = ? AND lead_id IN (SELECT id FROM leads WHERE account_id = ?)').bind(id, account_id).run();
   return c.json({ success: true });
 });
 
 app.delete('/leads/:id', async (c) => {
   const id = c.req.param('id');
-  await c.env.DB.prepare('DELETE FROM leads WHERE id = ?').bind(id).run();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  await c.env.DB.prepare('DELETE FROM leads WHERE id = ? AND account_id = ?').bind(id, account_id).run();
   return c.json({ success: true });
 });
 
@@ -1550,24 +1695,28 @@ app.delete('/leads/:id', async (c) => {
 app.put('/notes/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
   const fields = [];
   const values = [];
   if (body.content !== undefined) { fields.push('content = ?'); values.push(body.content); }
   if (fields.length === 0) return c.json({ success: true });
-  values.push(id);
-  await c.env.DB.prepare(`UPDATE notes SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run();
+  values.push(id, account_id);
+  await c.env.DB.prepare(`UPDATE notes SET ${fields.join(', ')} WHERE id = ? AND lead_id IN (SELECT id FROM leads WHERE account_id = ?)`).bind(...values).run();
   return c.json({ success: true });
 });
 
 app.delete('/notes/:id', async (c) => {
   const id = c.req.param('id');
-  await c.env.DB.prepare('DELETE FROM notes WHERE id = ?').bind(id).run();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  await c.env.DB.prepare('DELETE FROM notes WHERE id = ? AND lead_id IN (SELECT id FROM leads WHERE account_id = ?)').bind(id, account_id).run();
   return c.json({ success: true });
 });
 
 // Teams
 app.get('/teams', async (c) => {
-  const account_id = c.req.query('account_id');
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json([]);
   const { results } = await c.env.DB.prepare('SELECT * FROM teams WHERE account_id = ?').bind(account_id).all();
   return c.json(results);
@@ -1576,7 +1725,7 @@ app.get('/teams', async (c) => {
 app.post('/teams', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
-  const account_id = c.req.query('account_id') || body.account_id;
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json({ error: 'account_id is required' }, 400);
   await c.env.DB.prepare('INSERT INTO teams (id, account_id, name, goal) VALUES (?, ?, ?, ?)')
     .bind(id, account_id, body.name, body.goal || 0)
@@ -1587,27 +1736,31 @@ app.post('/teams', async (c) => {
 app.put('/teams/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json();
-  await c.env.DB.prepare('UPDATE teams SET name = ?, goal = ?, permissions = ? WHERE id = ?')
-    .bind(body.name, body.goal || 0, body.permissions ? JSON.stringify(body.permissions) : '{}', id).run();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  await c.env.DB.prepare('UPDATE teams SET name = ?, goal = ?, permissions = ? WHERE id = ? AND account_id = ?')
+    .bind(body.name, body.goal || 0, body.permissions ? JSON.stringify(body.permissions) : '{}', id, account_id).run();
   return c.json({ success: true });
 });
 
 app.delete('/teams/:id', async (c) => {
   const id = c.req.param('id');
-  await c.env.DB.prepare('DELETE FROM teams WHERE id = ?').bind(id).run();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  await c.env.DB.prepare('DELETE FROM teams WHERE id = ? AND account_id = ?').bind(id, account_id).run();
   return c.json({ success: true });
 });
 
 // Bot Settings
 app.get('/bot-settings', async (c) => {
-  const account_id = c.req.query('account_id');
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json({});
   const settings = await c.env.DB.prepare('SELECT * FROM bot_settings WHERE account_id = ?').bind(account_id).first();
   return c.json(settings || {});
 });
 
 app.put('/bot-settings', async (c) => {
-  const account_id = c.req.query('account_id');
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json({ error: 'account_id is required' }, 400);
   const body = await c.req.json();
   
@@ -1624,7 +1777,7 @@ app.put('/bot-settings', async (c) => {
 
 // Knowledge Sources
 app.get('/knowledge-sources', async (c) => {
-  const account_id = c.req.query('account_id');
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json([]);
   const { results } = await c.env.DB.prepare('SELECT * FROM knowledge_sources WHERE account_id = ?').bind(account_id).all();
   return c.json(results);
@@ -1633,7 +1786,7 @@ app.get('/knowledge-sources', async (c) => {
 app.post('/knowledge-sources', async (c) => {
   const body = await c.req.json();
   const id = crypto.randomUUID();
-  const account_id = c.req.query('account_id') || body.account_id;
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json({ error: 'account_id is required' }, 400);
   await c.env.DB.prepare('INSERT INTO knowledge_sources (id, account_id, name, type) VALUES (?, ?, ?, ?)')
     .bind(id, account_id, body.name, body.type).run();
@@ -1642,14 +1795,18 @@ app.post('/knowledge-sources', async (c) => {
 
 app.delete('/knowledge-sources/:id', async (c) => {
   const id = c.req.param('id');
-  await c.env.DB.prepare('DELETE FROM knowledge_sources WHERE id = ?').bind(id).run();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  await c.env.DB.prepare('DELETE FROM knowledge_sources WHERE id = ? AND account_id = ?').bind(id, account_id).run();
   return c.json({ success: true });
 });
 
 // Knowledge Chunks
 app.get('/knowledge-sources/:sourceId/chunks', async (c) => {
   const sourceId = c.req.param('sourceId');
-  const { results } = await c.env.DB.prepare('SELECT * FROM knowledge_chunks WHERE source_id = ?').bind(sourceId).all();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  const { results } = await c.env.DB.prepare('SELECT * FROM knowledge_chunks WHERE source_id = ? AND account_id = ?').bind(sourceId, account_id).all();
   return c.json(results);
 });
 
@@ -1657,7 +1814,7 @@ app.post('/knowledge-sources/:sourceId/chunks', async (c) => {
   const sourceId = c.req.param('sourceId');
   const body = await c.req.json();
   const id = crypto.randomUUID();
-  const account_id = c.req.query('account_id') || body.account_id;
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json({ error: 'account_id is required' }, 400);
   await c.env.DB.prepare('INSERT INTO knowledge_chunks (id, account_id, source_id, content) VALUES (?, ?, ?, ?)')
     .bind(id, account_id, sourceId, body.content).run();
@@ -1666,14 +1823,16 @@ app.post('/knowledge-sources/:sourceId/chunks', async (c) => {
 
 app.delete('/knowledge-chunks/:id', async (c) => {
   const id = c.req.param('id');
-  await c.env.DB.prepare('DELETE FROM knowledge_chunks WHERE id = ?').bind(id).run();
+  const account_id = sessionAccountId(c);
+  if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+  await c.env.DB.prepare('DELETE FROM knowledge_chunks WHERE id = ? AND account_id = ?').bind(id, account_id).run();
   return c.json({ success: true });
 });
 
 // Bot Chat History
 app.get('/bot-chat-history/:phone', async (c) => {
   const phone = c.req.param('phone');
-  const account_id = c.req.query('account_id');
+  const account_id = sessionAccountId(c);
   if (!account_id) return c.json([]);
   const { results } = await c.env.DB.prepare('SELECT * FROM bot_chat_history WHERE account_id = ? AND lead_phone = ? ORDER BY created_at ASC')
     .bind(account_id, phone).all();
@@ -1700,7 +1859,8 @@ app.get('/admin/stats', async (c) => {
       mrr: mrr
     });
   } catch(e: any) {
-    return c.json({ error: e.message }, 500);
+    console.error(e);
+    return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -1736,7 +1896,7 @@ app.post('/admin/accounts', async (c) => {
 
     return c.json({ id, company_name: body.company_name, status: 'active', owner: body.owner_name, defaultPassword: initialPassword });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -1768,7 +1928,7 @@ app.put('/admin/accounts/:id', async (c) => {
 
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -1804,7 +1964,7 @@ app.post('/admin/accounts/:id/reset-password', async (c) => {
     return c.json({ success: true, newPassword });
   } catch (error: any) {
     console.error('[RESET] Error:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -1826,7 +1986,7 @@ app.post('/admin/users/:id/reset-password', async (c) => {
 
     return c.json({ success: true, newPassword });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -1859,20 +2019,28 @@ app.put('/admin/global-settings', async (c) => {
     `).bind(body.login_title, body.login_subtitle, body.login_badge_text, body.login_quote_text, body.login_quote_author, body.login_quote_role).run();
     return c.json({ success: true });
   } catch(error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 app.post('/public/register', async (c) => {
   try {
     const body = await c.req.json();
+
+    const ip = getClientIp(c);
+    if (await isRateLimited(c.env.DB, 'register_ip', ip, 5, 60)) {
+      return c.json({ error: 'Muitas tentativas de cadastro. Tente novamente mais tarde.' }, 429);
+    }
+    await recordRateLimitHit(c.env.DB, 'register_ip', ip);
+
+    if (!body.password) return c.json({ error: 'password is required' }, 400);
+
     const id = `acc_${crypto.randomUUID().slice(0, 8)}`;
-    
+
     await c.env.DB.prepare(`
       INSERT INTO accounts (id, company_name, owner_name, email, status, plan, expires_at, created_at)
       VALUES (?, ?, ?, ?, 'active', 'trial', datetime('now', '+14 days'), datetime('now'))
     `).bind(id, body.company_name, body.owner_name, body.email).run();
-    
-    if (!body.password) return c.json({ error: 'password is required' }, 400);
+
     const userId = `u_${crypto.randomUUID().slice(0, 8)}`;
     await c.env.DB.prepare(`
       INSERT INTO users (id, account_id, name, email, password, role, status, joined_at)
@@ -1891,7 +2059,7 @@ app.post('/public/register', async (c) => {
       role: 'ACCOUNT_ADMIN'
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -1905,12 +2073,18 @@ app.post('/login', async (c) => {
       return c.json({ error: 'E-mail e senha são obrigatórios' }, 400);
     }
 
+    const ip = getClientIp(c);
+    if ((await isRateLimited(c.env.DB, 'login_ip', ip, 15, 15)) || (await isRateLimited(c.env.DB, 'login_email', email, 8, 15))) {
+      return c.json({ error: 'Muitas tentativas de login. Tente novamente em alguns minutos.' }, 429);
+    }
+
     const user: any = await c.env.DB.prepare(
       'SELECT id, account_id, name, email, password, role, status FROM users WHERE LOWER(email) = ?'
     ).bind(email).first();
 
     if (!user) {
       console.log(`[LOGIN] User not found for email: ${email}`);
+      await recordRateLimitHit(c.env.DB, 'login_ip', ip);
       return c.json({ error: 'E-mail não cadastrado ou incorreto.' }, 401);
     }
 
@@ -1921,6 +2095,8 @@ app.post('/login', async (c) => {
     const { valid, upgradedHash } = await verifyAndUpgradePassword(password, user.password);
     if (!valid) {
       console.log(`[LOGIN] Password mismatch for email: ${email}`);
+      await recordRateLimitHit(c.env.DB, 'login_ip', ip);
+      await recordRateLimitHit(c.env.DB, 'login_email', email);
       return c.json({ error: 'Senha incorreta.' }, 401);
     }
     if (upgradedHash) {
@@ -1977,7 +2153,7 @@ app.get('/tracking/test', async (c) => {
 // Get tracking settings for current account
 app.get('/tracking', async (c) => {
   try {
-    const accountId = c.req.query('account_id');
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json({});
 
     let settings = await c.env.DB.prepare(
@@ -1995,7 +2171,7 @@ app.get('/tracking', async (c) => {
 
     return c.json(settings);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -2003,7 +2179,7 @@ app.get('/tracking', async (c) => {
 app.post('/tracking/regenerate', async (c) => {
   try {
     const body = await c.req.json();
-    const accountId = c.req.query('account_id') || body.account_id;
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json({ error: 'account_id is required' }, 400);
 
     const newTrackingId = 'trk_' + crypto.randomUUID().substring(0, 12);
@@ -2014,14 +2190,14 @@ app.post('/tracking/regenerate', async (c) => {
 
     return c.json({ tracking_id: newTrackingId });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
 // Get tracking events
 app.get('/tracking/events', async (c) => {
   try {
-    const accountId = c.req.query('account_id');
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json([]);
     const eventType = c.req.query('event_type');
     const limit = parseInt(c.req.query('limit') || '100');
@@ -2040,7 +2216,7 @@ app.get('/tracking/events', async (c) => {
     const result = await c.env.DB.prepare(query).bind(...params).all();
     return c.json(result.results);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -2335,7 +2511,7 @@ app.post('/tracking/events', async (c) => {
     });
   } catch (error: any) {
     console.error('[TRACKING] Error:', error.message);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: 'Erro interno no servidor.' }), {
       status: 500,
       headers: {
         'Content-Type': 'application/json',
@@ -2348,7 +2524,7 @@ app.post('/tracking/events', async (c) => {
 // Get tracking stats (counts by event type)
 app.get('/tracking/stats', async (c) => {
   try {
-    const accountId = c.req.query('account_id');
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json({});
 
     const pageviews = await c.env.DB.prepare(
@@ -2369,7 +2545,7 @@ app.get('/tracking/stats', async (c) => {
       conversions: conversions?.count || 0
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -2377,17 +2553,17 @@ app.get('/tracking/stats', async (c) => {
 
 app.get('/tracking-forms', async (c) => {
   try {
-    const accountId = c.req.query('account_id');
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare('SELECT * FROM tracking_forms WHERE account_id = ? ORDER BY created_at DESC').bind(accountId).all();
     return c.json(results.map((f: any) => ({ ...f, fields: f.fields ? JSON.parse(f.fields) : [], field_mapping: f.field_mapping ? JSON.parse(f.field_mapping) : {} })));
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.post('/tracking-forms', async (c) => {
   try {
     const body = await c.req.json();
-    const account_id = c.req.query('account_id') || body.account_id;
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json({ error: 'account_id is required' }, 400);
     const { name, url_pattern, form_selector, fields, field_mapping, is_active } = body;
     if (!name) return c.json({ error: 'name is required' }, 400);
@@ -2395,84 +2571,92 @@ app.post('/tracking-forms', async (c) => {
     await c.env.DB.prepare('INSERT INTO tracking_forms (id, account_id, name, url_pattern, form_selector, fields, field_mapping, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(id, account_id, name, url_pattern || null, form_selector || null, JSON.stringify(fields || []), JSON.stringify(field_mapping || {}), is_active ?? 1).run();
     return c.json({ id, name, url_pattern, form_selector, fields: fields || [], field_mapping: field_mapping || {}, is_active: is_active ?? 1 });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.put('/tracking-forms/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
     const { name, url_pattern, form_selector, fields, field_mapping, is_active } = body;
-    await c.env.DB.prepare('UPDATE tracking_forms SET name = ?, url_pattern = ?, form_selector = ?, fields = ?, field_mapping = ?, is_active = ? WHERE id = ?')
-      .bind(name, url_pattern || null, form_selector || null, JSON.stringify(fields || []), JSON.stringify(field_mapping || {}), is_active ?? 1, id).run();
+    await c.env.DB.prepare('UPDATE tracking_forms SET name = ?, url_pattern = ?, form_selector = ?, fields = ?, field_mapping = ?, is_active = ? WHERE id = ? AND account_id = ?')
+      .bind(name, url_pattern || null, form_selector || null, JSON.stringify(fields || []), JSON.stringify(field_mapping || {}), is_active ?? 1, id, account_id).run();
     return c.json({ success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.delete('/tracking-forms/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM tracking_forms WHERE id = ?').bind(id).run();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    await c.env.DB.prepare('DELETE FROM tracking_forms WHERE id = ? AND account_id = ?').bind(id, account_id).run();
     return c.json({ success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // ==================== MARKETING CUSTOM FIELDS & MAPPING ====================
 
 app.get('/marketing/custom-fields', async (c) => {
   try {
-    const accountId = c.req.query('account_id');
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare('SELECT * FROM marketing_custom_fields WHERE account_id = ? ORDER BY created_at DESC').bind(accountId).all();
     return c.json(results);
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.post('/marketing/custom-fields', async (c) => {
   try {
     const body = await c.req.json();
-    const account_id = c.req.query('account_id') || body.account_id;
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json({ error: 'account_id is required' }, 400);
     const { name, type, options } = body;
     const id = crypto.randomUUID();
     await c.env.DB.prepare('INSERT INTO marketing_custom_fields (id, account_id, name, type, options) VALUES (?, ?, ?, ?, ?)')
       .bind(id, account_id, name, type, options || null).run();
     return c.json({ id, name, type, options });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.put('/marketing/custom-fields/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
     const { name, type, options } = body;
-    await c.env.DB.prepare('UPDATE marketing_custom_fields SET name = ?, type = ?, options = ? WHERE id = ?')
-      .bind(name, type, options || null, id).run();
+    await c.env.DB.prepare('UPDATE marketing_custom_fields SET name = ?, type = ?, options = ? WHERE id = ? AND account_id = ?')
+      .bind(name, type, options || null, id, account_id).run();
     return c.json({ success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.delete('/marketing/custom-fields/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM marketing_custom_fields WHERE id = ?').bind(id).run();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    await c.env.DB.prepare('DELETE FROM marketing_custom_fields WHERE id = ? AND account_id = ?').bind(id, account_id).run();
     return c.json({ success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.get('/marketing/field-mappings', async (c) => {
   try {
-    const accountId = c.req.query('account_id');
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare('SELECT * FROM marketing_crm_mappings WHERE account_id = ?').bind(accountId).all();
     return c.json(results);
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.post('/marketing/field-mappings', async (c) => {
   try {
     const body = await c.req.json();
-    const account_id = c.req.query('account_id') || body.account_id;
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json({ error: 'account_id is required' }, 400);
     const { mappings } = body;
     
@@ -2487,7 +2671,7 @@ app.post('/marketing/field-mappings', async (c) => {
     }
     
     return c.json({ success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // Add field_mapping column to tracking_forms
@@ -2533,7 +2717,7 @@ app.get('/migrate-tracking-forms', async (c) => {
       `).run();
     } catch (e) { /* */ }
     return c.json({ success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // ==================== MARKETING LEADS ENDPOINTS ====================
@@ -2544,18 +2728,27 @@ app.get('/lead-visits', async (c) => {
   try {
     const leadId = c.req.query('lead_id');
     if (!leadId) return c.json({ error: 'lead_id is required' }, 400);
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    const owned = await c.env.DB.prepare('SELECT id FROM leads WHERE id = ? AND account_id = ?').bind(leadId, account_id).first();
+    if (!owned) return c.json({ error: 'Lead não encontrado.' }, 404);
 
     const { results } = await c.env.DB.prepare(
       'SELECT * FROM lead_visits WHERE lead_id = ? ORDER BY visited_at DESC LIMIT 500'
     ).bind(leadId).all();
     return c.json(results);
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.get('/lead-timeline', async (c) => {
   try {
     const leadId = c.req.query('lead_id');
     if (!leadId) return c.json({ error: 'lead_id is required' }, 400);
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    const ownedLead = await c.env.DB.prepare('SELECT id FROM leads WHERE id = ? AND account_id = ?').bind(leadId, account_id).first();
+    const ownedMarketingLead = ownedLead ? null : await c.env.DB.prepare('SELECT id FROM marketing_leads WHERE id = ? AND account_id = ?').bind(leadId, account_id).first();
+    if (!ownedLead && !ownedMarketingLead) return c.json({ error: 'Lead não encontrado.' }, 404);
 
     // 1. Get visitor_ids associated with this lead (either CRM or Marketing lead)
     // First, try visitor_leads (CRM leads)
@@ -2656,25 +2849,25 @@ app.get('/lead-timeline', async (c) => {
     return c.json(parsedEvents);
   } catch (error: any) { 
     console.error('Lead timeline error:', error);
-    return c.json({ error: error.message }, 500); 
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); 
   }
 });
 
 app.get('/marketing-leads', async (c) => {
   try {
-    const accountId = c.req.query('account_id');
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare(
       'SELECT * FROM marketing_leads WHERE account_id = ? ORDER BY created_at DESC LIMIT 500'
     ).bind(accountId).all();
     return c.json(results);
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.post('/marketing-leads/sync-to-crm', async (c) => {
   try {
     const body = await c.req.json();
-    const account_id = c.req.query('account_id') || body.account_id;
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json({ error: 'account_id is required' }, 400);
     const { lead_ids } = body;
 
@@ -2717,15 +2910,17 @@ app.post('/marketing-leads/sync-to-crm', async (c) => {
       synced++;
     }
     return c.json({ success: true, synced, skipped });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.delete('/marketing-leads/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM marketing_leads WHERE id = ?').bind(id).run();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    await c.env.DB.prepare('DELETE FROM marketing_leads WHERE id = ? AND account_id = ?').bind(id, account_id).run();
     return c.json({ success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // ==================== BIO LINKS ENDPOINTS ====================
@@ -2733,7 +2928,7 @@ app.delete('/marketing-leads/:id', async (c) => {
 // Get all bio link pages for an account
 app.get('/bio-links', async (c) => {
   try {
-    const accountId = c.req.query('account_id');
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json([]);
     console.log('Fetching bio links for:', accountId);
     const { results } = await c.env.DB.prepare(
@@ -2743,7 +2938,7 @@ app.get('/bio-links', async (c) => {
     return c.json(results.map((r: any) => ({ ...r, links: r.links ? JSON.parse(r.links) : [] })));
   } catch (error: any) {
     console.error('Bio fetch error:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -2761,14 +2956,17 @@ app.get('/bio-links/public/:slug', async (c) => {
       'UPDATE bio_links SET click_count = click_count + 1 WHERE id = ?'
     ).bind(page.id).run();
     return c.json(page);
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // ==================== ADMINISTRATIVE / CLEANUP ====================
 
 app.get('/admin/deduplicate-marketing-leads', async (c) => {
   try {
-    const accountId = c.req.query('account_id');
+    // Intentionally reads account_id from the query, not the session: this route is
+    // already gated by requireNexusAdmin above and exists specifically so a platform
+    // admin can target a DIFFERENT tenant's data (their own session account is acc_nexus).
+    const accountId = c.req.query("account_id");
     const allAccounts = c.req.query('all') === 'true';
     
     // 1. Find emails with duplicates (trimming and lowercasing)
@@ -2812,7 +3010,7 @@ app.get('/admin/deduplicate-marketing-leads', async (c) => {
 
     return c.json({ success: true, message: `Removidos ${totalRemoved} leads duplicados.`, totalRemoved, details });
   } catch (error: any) { 
-    return c.json({ error: error.message }, 500); 
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); 
   }
 });
 
@@ -2821,7 +3019,7 @@ app.post('/bio-links', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const accountId = c.req.query('account_id') || body.account_id;
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json({ error: 'account_id is required' }, 400);
     const slug = body.slug || id.slice(0, 8);
     const links = JSON.stringify(body.links || []);
@@ -2840,7 +3038,7 @@ app.post('/bio-links', async (c) => {
     return c.json({ id, account_id: accountId, slug, title: body.title, links: body.links || [], bg_color: body.bg_color, text_color: body.text_color, button_color: body.button_color, button_text_color: body.button_text_color, button_radius: body.button_radius ?? 12 });
   } catch (error: any) {
     console.error('Bio create error:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -2849,6 +3047,8 @@ app.put('/bio-links/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
     const links = body.links ? JSON.stringify(body.links) : null;
 
     await c.env.DB.prepare(
@@ -2857,27 +3057,29 @@ app.put('/bio-links/:id', async (c) => {
        button_color = COALESCE(?, button_color), button_text_color = COALESCE(?, button_text_color),
        button_radius = COALESCE(?, button_radius), links = COALESCE(?, links),
        is_active = COALESCE(?, is_active), updated_at = datetime('now')
-       WHERE id = ?`
+       WHERE id = ? AND account_id = ?`
     ).bind(
       body.slug, body.title, body.description, body.avatar_url,
       body.bg_color, body.text_color, body.button_color, body.button_text_color,
-      body.button_radius, links, body.is_active, id
+      body.button_radius, links, body.is_active, id, account_id
     ).run();
 
     // Fetch updated
-    const updated: any = await c.env.DB.prepare('SELECT * FROM bio_links WHERE id = ?').bind(id).first();
+    const updated: any = await c.env.DB.prepare('SELECT * FROM bio_links WHERE id = ? AND account_id = ?').bind(id, account_id).first();
     if (updated) updated.links = updated.links ? JSON.parse(updated.links) : [];
     return c.json(updated || { success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // Delete a bio link page
 app.delete('/bio-links/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM bio_links WHERE id = ?').bind(id).run();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    await c.env.DB.prepare('DELETE FROM bio_links WHERE id = ? AND account_id = ?').bind(id, account_id).run();
     return c.json({ success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // Track link click
@@ -2900,13 +3102,17 @@ app.post('/bio-links/:id/click', async (c) => {
     ).bind(id).run();
 
     return c.json({ success: true, click_id: clickId });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // Get analytics for a bio link page
 app.get('/bio-links/:id/analytics', async (c) => {
   try {
     const id = c.req.param('id');
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    const owned = await c.env.DB.prepare('SELECT id FROM bio_links WHERE id = ? AND account_id = ?').bind(id, account_id).first();
+    if (!owned) return c.json({ error: 'Não encontrado.' }, 404);
     const startDate = c.req.query('start_date');
     const endDate = c.req.query('end_date');
 
@@ -2959,7 +3165,7 @@ app.get('/bio-links/:id/analytics', async (c) => {
       daily_clicks: dailyClicks.results || [],
       total_stats: totalStats || { total_clicks: 0, total_unique_clicks: 0, total_links_clicked: 0 }
     });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // ==================== EMAIL MARKETING ENDPOINTS ====================
@@ -2967,64 +3173,70 @@ app.get('/bio-links/:id/analytics', async (c) => {
 // --- Email Templates ---
 app.get('/email-templates', async (c) => {
   try {
-    const accountId = c.req.query('account_id');
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json([]);
     const type = c.req.query('type');
     const query = type ? 'SELECT * FROM email_templates WHERE account_id = ? AND type = ? ORDER BY created_at DESC' : 'SELECT * FROM email_templates WHERE account_id = ? ORDER BY created_at DESC';
     const { results } = await c.env.DB.prepare(query).bind(type ? [accountId, type] : [accountId]).all();
     return c.json(results);
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.post('/email-templates', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const accountId = c.req.query('account_id') || body.account_id;
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json({ error: 'account_id is required' }, 400);
     await c.env.DB.prepare(
       'INSERT INTO email_templates (id, account_id, name, subject, body, type) VALUES (?, ?, ?, ?, ?, ?)'
     ).bind(id, accountId, body.name, body.subject, body.body, body.type || 'campaign').run();
     return c.json({ id, name: body.name, subject: body.subject, body: body.body, type: body.type || 'campaign' });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.put('/email-templates/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
     await c.env.DB.prepare(
-      'UPDATE email_templates SET name = COALESCE(?, name), subject = COALESCE(?, subject), body = COALESCE(?, body), type = COALESCE(?, type), updated_at = datetime(\'now\') WHERE id = ?'
-    ).bind(body.name, body.subject, body.body, body.type, id).run();
-    const updated: any = await c.env.DB.prepare('SELECT * FROM email_templates WHERE id = ?').bind(id).first();
+      'UPDATE email_templates SET name = COALESCE(?, name), subject = COALESCE(?, subject), body = COALESCE(?, body), type = COALESCE(?, type), updated_at = datetime(\'now\') WHERE id = ? AND account_id = ?'
+    ).bind(body.name, body.subject, body.body, body.type, id, account_id).run();
+    const updated: any = await c.env.DB.prepare('SELECT * FROM email_templates WHERE id = ? AND account_id = ?').bind(id, account_id).first();
     return c.json(updated || { success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.delete('/email-templates/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM email_templates WHERE id = ?').bind(id).run();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    await c.env.DB.prepare('DELETE FROM email_templates WHERE id = ? AND account_id = ?').bind(id, account_id).run();
     return c.json({ success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // --- Email Campaigns ---
 app.get('/email-campaigns', async (c) => {
   try {
-    const accountId = c.req.query('account_id');
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare(
       'SELECT * FROM email_campaigns WHERE account_id = ? ORDER BY created_at DESC'
     ).bind(accountId).all();
     return c.json(results.map((r: any) => ({ ...r, engaged_lead_ids: r.engaged_lead_ids ? JSON.parse(r.engaged_lead_ids) : [] })));
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.get('/email-campaigns/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    const campaign: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ?').bind(id).first();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    const campaign: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ? AND account_id = ?').bind(id, account_id).first();
     if (!campaign) return c.json({ error: 'Not found' }, 404);
     campaign.engaged_lead_ids = campaign.engaged_lead_ids ? JSON.parse(campaign.engaged_lead_ids) : [];
     // Get event breakdown
@@ -3033,49 +3245,55 @@ app.get('/email-campaigns/:id', async (c) => {
     ).bind(id).all();
     campaign.event_breakdown = events.results;
     return c.json(campaign);
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.post('/email-campaigns', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const accountId = c.req.query('account_id') || body.account_id;
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json({ error: 'account_id is required' }, 400);
     await c.env.DB.prepare(
       'INSERT INTO email_campaigns (id, account_id, name, segment_id, template_id, subject, body, status, scheduled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(id, accountId, body.name, body.segment_id || null, body.template_id || null, body.subject, body.body, body.status || 'draft', body.scheduled_at || null).run();
     const campaign: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ?').bind(id).first();
     return c.json(campaign);
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.put('/email-campaigns/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
     await c.env.DB.prepare(
-      'UPDATE email_campaigns SET name = COALESCE(?, name), segment_id = COALESCE(?, segment_id), template_id = COALESCE(?, template_id), subject = COALESCE(?, subject), body = COALESCE(?, body), status = COALESCE(?, status), scheduled_at = COALESCE(?, scheduled_at), updated_at = datetime(\'now\') WHERE id = ?'
-    ).bind(body.name, body.segment_id, body.template_id, body.subject, body.body, body.status, body.scheduled_at, id).run();
-    const updated: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ?').bind(id).first();
+      'UPDATE email_campaigns SET name = COALESCE(?, name), segment_id = COALESCE(?, segment_id), template_id = COALESCE(?, template_id), subject = COALESCE(?, subject), body = COALESCE(?, body), status = COALESCE(?, status), scheduled_at = COALESCE(?, scheduled_at), updated_at = datetime(\'now\') WHERE id = ? AND account_id = ?'
+    ).bind(body.name, body.segment_id, body.template_id, body.subject, body.body, body.status, body.scheduled_at, id, account_id).run();
+    const updated: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ? AND account_id = ?').bind(id, account_id).first();
     return c.json(updated || { success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 app.delete('/email-campaigns/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM email_campaigns WHERE id = ?').bind(id).run();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    await c.env.DB.prepare('DELETE FROM email_campaigns WHERE id = ? AND account_id = ?').bind(id, account_id).run();
     await c.env.DB.prepare('DELETE FROM email_events WHERE campaign_id = ?').bind(id).run();
     return c.json({ success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // --- Send Campaign (simulate dispatch) ---
 app.post('/email-campaigns/:id/send', async (c) => {
   try {
     const id = c.req.param('id');
-    const campaign: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ?').bind(id).first();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    const campaign: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ? AND account_id = ?').bind(id, account_id).first();
     if (!campaign) return c.json({ error: 'Campaign not found' }, 404);
 
     // Get leads from segment
@@ -3110,7 +3328,7 @@ app.post('/email-campaigns/:id/send', async (c) => {
     }
 
     return c.json({ success: true, total_sent: totalSent });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // --- Track Email Events (open, click, bounce) ---
@@ -3151,14 +3369,16 @@ app.post('/email-events/track', async (c) => {
     }
 
     return c.json({ success: true });
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // --- Get Campaign Metrics ---
 app.get('/email-campaigns/:id/metrics', async (c) => {
   try {
     const id = c.req.param('id');
-    const campaign: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ?').bind(id).first();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    const campaign: any = await c.env.DB.prepare('SELECT * FROM email_campaigns WHERE id = ? AND account_id = ?').bind(id, account_id).first();
     if (!campaign) return c.json({ error: 'Not found' }, 404);
 
     const total = campaign.total_sent || 0;
@@ -3176,7 +3396,7 @@ app.get('/email-campaigns/:id/metrics', async (c) => {
     };
 
     return c.json(metrics);
-  } catch (error: any) { return c.json({ error: error.message }, 500); }
+  } catch (error: any) { console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500); }
 });
 
 // ==================== SEGMENT HELPER ====================
@@ -3266,7 +3486,7 @@ async function buildSegmentQuery(db: any, accountId: string, rules: any[]) {
 // Get all segments
 app.get('/segments', async (c) => {
   try {
-    const accountId = c.req.query('account_id');
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare(
       'SELECT * FROM segments WHERE account_id = ? ORDER BY created_at DESC'
@@ -3298,7 +3518,7 @@ app.get('/segments', async (c) => {
     return c.json(segments);
   } catch (error: any) {
     console.error('Get segments error:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -3306,7 +3526,7 @@ app.get('/segments', async (c) => {
 app.post('/segments', async (c) => {
   try {
     const body = await c.req.json();
-    const account_id = c.req.query('account_id') || body.account_id;
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json({ error: 'account_id is required' }, 400);
     const { name, description, rules } = body;
 
@@ -3328,7 +3548,7 @@ app.post('/segments', async (c) => {
     return c.json({ id, name, description, rules, lead_count: 0 });
   } catch (error: any) {
     console.error('[SEGMENTS] Create segment error:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -3337,15 +3557,17 @@ app.put('/segments/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
     const { name, description, rules } = body;
 
     await c.env.DB.prepare(
-      'UPDATE segments SET name = ?, description = ?, rules = ?, updated_at = datetime(\'now\') WHERE id = ?'
-    ).bind(name, description || null, JSON.stringify(rules), id).run();
+      'UPDATE segments SET name = ?, description = ?, rules = ?, updated_at = datetime(\'now\') WHERE id = ? AND account_id = ?'
+    ).bind(name, description || null, JSON.stringify(rules), id, account_id).run();
 
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -3353,10 +3575,12 @@ app.put('/segments/:id', async (c) => {
 app.delete('/segments/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM segments WHERE id = ?').bind(id).run();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    await c.env.DB.prepare('DELETE FROM segments WHERE id = ? AND account_id = ?').bind(id, account_id).run();
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -3364,7 +3588,7 @@ app.delete('/segments/:id', async (c) => {
 app.post('/segments/preview', async (c) => {
   try {
     const body = await c.req.json();
-    const account_id = c.req.query('account_id') || body.account_id;
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json({ error: 'account_id is required' }, 400);
     const { rules } = body;
 
@@ -3390,7 +3614,7 @@ app.post('/segments/preview', async (c) => {
     });
   } catch (error: any) {
     console.error('Segment preview error:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -3399,7 +3623,7 @@ app.post('/segments/preview', async (c) => {
 // Get all automations
 app.get('/automations', async (c) => {
   try {
-    const accountId = c.req.query('account_id');
+    const accountId = sessionAccountId(c);
     if (!accountId) return c.json([]);
     const { results } = await c.env.DB.prepare(
       'SELECT * FROM automations WHERE account_id = ? ORDER BY created_at DESC'
@@ -3414,7 +3638,7 @@ app.get('/automations', async (c) => {
 
     return c.json(automations);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -3422,7 +3646,7 @@ app.get('/automations', async (c) => {
 app.post('/automations', async (c) => {
   try {
     const body = await c.req.json();
-    const account_id = c.req.query('account_id') || body.account_id;
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json({ error: 'account_id is required' }, 400);
     const { name, description, is_active, trigger_type, trigger_config, nodes, connections } = body;
 
@@ -3442,7 +3666,7 @@ app.post('/automations', async (c) => {
     return c.json({ id, name, description, is_active: is_active ?? 1, trigger_type: trigger_type || '', trigger_config: trigger_config || {}, nodes: nodes || [], connections: connections || [] });
   } catch (error: any) {
     console.error('Create automation error:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -3451,22 +3675,24 @@ app.put('/automations/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
     const { name, description, is_active, trigger_type, trigger_config, nodes, connections } = body;
 
     await c.env.DB.prepare(
-      'UPDATE automations SET name = ?, description = ?, is_active = ?, trigger_type = ?, trigger_config = ?, nodes = ?, connections = ?, updated_at = datetime(\'now\') WHERE id = ?'
+      'UPDATE automations SET name = ?, description = ?, is_active = ?, trigger_type = ?, trigger_config = ?, nodes = ?, connections = ?, updated_at = datetime(\'now\') WHERE id = ? AND account_id = ?'
     ).bind(
       name, description || null, is_active ?? 1, trigger_type || '',
       JSON.stringify(trigger_config || {}),
       JSON.stringify(nodes || []),
       JSON.stringify(connections || []),
-      id
+      id, account_id
     ).run();
 
     return c.json({ success: true, id });
   } catch (error: any) {
     console.error('Update automation error:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -3474,10 +3700,12 @@ app.put('/automations/:id', async (c) => {
 app.delete('/automations/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM automations WHERE id = ?').bind(id).run();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    await c.env.DB.prepare('DELETE FROM automations WHERE id = ? AND account_id = ?').bind(id, account_id).run();
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -3591,7 +3819,7 @@ app.post('/automations/:id/execute', async (c) => {
       execution_id: executionId,
     });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -3928,7 +4156,7 @@ async function calculateLeadScore(db: any, account_id: string, leadId?: string) 
 // Profile Rules CRUD
 app.get('/scoring/profile-rules', async (c) => {
   try {
-    const account_id = c.req.query('account_id');
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json([]);
     const { results: rules } = await c.env.DB.prepare(
       'SELECT * FROM scoring_profile_rules WHERE account_id = ? ORDER BY created_at DESC'
@@ -3960,7 +4188,7 @@ app.get('/scoring/profile-rules', async (c) => {
     return c.json(rulesWithFields);
   } catch (error: any) {
     console.error('Error loading profile rules:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -3968,7 +4196,7 @@ app.post('/scoring/profile-rules', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const account_id = c.req.query('account_id') || body.account_id;
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json({ error: 'account_id is required' }, 400);
 
     await c.env.DB.prepare(
@@ -3978,7 +4206,7 @@ app.post('/scoring/profile-rules', async (c) => {
     return c.json({ id, name: body.name, is_active: true, fields: [] });
   } catch (error: any) {
     console.error('Error creating profile rule:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -3986,26 +4214,30 @@ app.put('/scoring/profile-rules/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
 
     await c.env.DB.prepare(
-      'UPDATE scoring_profile_rules SET name = ?, description = ?, is_active = ?, updated_at = datetime(\'now\') WHERE id = ?'
-    ).bind(body.name, body.description || null, body.is_active !== false ? 1 : 0, id).run();
+      'UPDATE scoring_profile_rules SET name = ?, description = ?, is_active = ?, updated_at = datetime(\'now\') WHERE id = ? AND account_id = ?'
+    ).bind(body.name, body.description || null, body.is_active !== false ? 1 : 0, id, account_id).run();
 
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Error updating profile rule:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
 app.delete('/scoring/profile-rules/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM scoring_profile_rules WHERE id = ?').bind(id).run();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    await c.env.DB.prepare('DELETE FROM scoring_profile_rules WHERE id = ? AND account_id = ?').bind(id, account_id).run();
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Error deleting profile rule:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -4014,6 +4246,10 @@ app.post('/scoring/profile-rules/:id/fields', async (c) => {
     const ruleId = c.req.param('id');
     const body = await c.req.json();
     const fields = body.fields || [];
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    const owned = await c.env.DB.prepare('SELECT id FROM scoring_profile_rules WHERE id = ? AND account_id = ?').bind(ruleId, account_id).first();
+    if (!owned) return c.json({ error: 'Regra não encontrada.' }, 404);
 
     // Delete existing fields for this rule
     await c.env.DB.prepare('DELETE FROM scoring_profile_fields WHERE rule_id = ?').bind(ruleId).run();
@@ -4040,14 +4276,14 @@ app.post('/scoring/profile-rules/:id/fields', async (c) => {
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Error saving profile rule fields:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
 // Interest Rules CRUD
 app.get('/scoring/interest-rules', async (c) => {
   try {
-    const account_id = c.req.query('account_id');
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json([]);
     const { results: rules } = await c.env.DB.prepare(
       'SELECT * FROM scoring_interest_rules WHERE account_id = ? ORDER BY created_at DESC'
@@ -4067,7 +4303,7 @@ app.get('/scoring/interest-rules', async (c) => {
     return c.json(rulesWithConversions);
   } catch (error: any) {
     console.error('Error loading interest rules:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -4075,7 +4311,7 @@ app.post('/scoring/interest-rules', async (c) => {
   try {
     const body = await c.req.json();
     const id = crypto.randomUUID();
-    const account_id = c.req.query('account_id') || body.account_id;
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json({ error: 'account_id is required' }, 400);
 
     await c.env.DB.prepare(
@@ -4085,7 +4321,7 @@ app.post('/scoring/interest-rules', async (c) => {
     return c.json({ id, name: body.name, is_active: true, conversions: [] });
   } catch (error: any) {
     console.error('Error creating interest rule:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -4093,26 +4329,30 @@ app.put('/scoring/interest-rules/:id', async (c) => {
   try {
     const id = c.req.param('id');
     const body = await c.req.json();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
 
     await c.env.DB.prepare(
-      'UPDATE scoring_interest_rules SET name = ?, description = ?, is_active = ?, updated_at = datetime(\'now\') WHERE id = ?'
-    ).bind(body.name, body.description || null, body.is_active !== false ? 1 : 0, id).run();
+      'UPDATE scoring_interest_rules SET name = ?, description = ?, is_active = ?, updated_at = datetime(\'now\') WHERE id = ? AND account_id = ?'
+    ).bind(body.name, body.description || null, body.is_active !== false ? 1 : 0, id, account_id).run();
 
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Error updating interest rule:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
 app.delete('/scoring/interest-rules/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM scoring_interest_rules WHERE id = ?').bind(id).run();
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    await c.env.DB.prepare('DELETE FROM scoring_interest_rules WHERE id = ? AND account_id = ?').bind(id, account_id).run();
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Error deleting interest rule:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -4121,6 +4361,10 @@ app.post('/scoring/interest-rules/:id/conversions', async (c) => {
     const ruleId = c.req.param('id');
     const body = await c.req.json();
     const conversions = body.conversions || [];
+    const account_id = sessionAccountId(c);
+    if (!account_id) return c.json({ error: 'Não autorizado.' }, 403);
+    const owned = await c.env.DB.prepare('SELECT id FROM scoring_interest_rules WHERE id = ? AND account_id = ?').bind(ruleId, account_id).first();
+    if (!owned) return c.json({ error: 'Regra não encontrada.' }, 404);
 
     // Delete existing conversions for this rule
     await c.env.DB.prepare('DELETE FROM scoring_interest_conversions WHERE rule_id = ?').bind(ruleId).run();
@@ -4145,14 +4389,14 @@ app.post('/scoring/interest-rules/:id/conversions', async (c) => {
     return c.json({ success: true });
   } catch (error: any) {
     console.error('Error saving interest rule conversions:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
 // Get leads with scores
 app.get('/scoring/leads', async (c) => {
   try {
-    const account_id = c.req.query('account_id');
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json([]);
     const { results: leads } = await c.env.DB.prepare(
       'SELECT id, title, contact_email, score_profile, score_interest, score_grade FROM leads WHERE account_id = ? ORDER BY (score_profile + score_interest) DESC'
@@ -4161,27 +4405,27 @@ app.get('/scoring/leads', async (c) => {
     return c.json(leads || []);
   } catch (error: any) {
     console.error('Error loading leads with scores:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
 // Recalculate scores for all leads
 app.post('/scoring/recalculate', async (c) => {
   try {
-    const account_id = c.req.query('account_id');
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json({ error: 'account_id is required' }, 400);
     const result = await calculateLeadScore(c.env.DB, account_id);
     return c.json(result);
   } catch (error: any) {
     console.error('Error recalculating scores:', error);
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
 // Scoring Stats Dashboard
 app.get('/scoring/stats', async (c) => {
   try {
-    const account_id = c.req.query('account_id');
+    const account_id = sessionAccountId(c);
     if (!account_id) return c.json([]);
     const { results } = await c.env.DB.prepare(
       'SELECT score_grade, COUNT(id) as total, AVG(score_interest) as avg_interest FROM leads WHERE account_id = ? GROUP BY score_grade'
@@ -4209,7 +4453,7 @@ app.get('/admin/performance-items', async (c) => {
     const { results } = await c.env.DB.prepare(query).bind(...params).all();
     return c.json(results || []);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -4224,7 +4468,7 @@ app.post('/admin/performance-items', async (c) => {
     ).bind(id, body.type, body.name, body.description || null, body.thumb_url || null, body.cta_url || null, body.status || 'active').run();
     return c.json({ id, ...body });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -4238,7 +4482,7 @@ app.put('/admin/performance-items/:id', async (c) => {
     ).bind(body.type, body.name, body.description || null, body.thumb_url || null, body.cta_url || null, body.status || 'active', id).run();
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -4249,7 +4493,7 @@ app.delete('/admin/performance-items/:id', async (c) => {
     await c.env.DB.prepare('DELETE FROM performance_items WHERE id = ?').bind(id).run();
     return c.json({ success: true });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
@@ -4265,7 +4509,7 @@ app.get('/performance-items', async (c) => {
     const { results } = await c.env.DB.prepare(query).bind(...params).all();
     return c.json(results || []);
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error(error); return c.json({ error: 'Erro interno no servidor.' }, 500);
   }
 });
 
