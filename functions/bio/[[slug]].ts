@@ -29,14 +29,26 @@ export async function onRequest(context: any) {
 
     const links = page.links ? JSON.parse(page.links) : [];
 
-    const avatarHTML = page.avatar_url
-      ? `<div class="avatar" style="border-color: ${page.button_color}"><img src="${page.avatar_url}" alt="" /></div>`
-      : `<div class="avatar" style="background-color: ${page.button_color}; color: ${page.button_text_color}; border-color: ${page.button_color}">${page.title.charAt(0).toUpperCase()}</div>`;
+    // These fields are set via an unauthenticated-by-ownership PUT endpoint, so they
+    // are treated as untrusted: colors are validated as CSS color tokens, the radius
+    // as a plain number, and every other value is HTML-escaped before interpolation.
+    const safeColor = (v: any, fallback: string) =>
+      typeof v === 'string' && /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+)$/.test(v.trim()) ? v.trim() : fallback;
+    const bgColor = safeColor(page.bg_color, '#0f172a');
+    const textColor = safeColor(page.text_color, '#f8fafc');
+    const buttonColor = safeColor(page.button_color, '#0d9488');
+    const buttonTextColor = safeColor(page.button_text_color, '#ffffff');
+    const buttonRadius = Number.isFinite(Number(page.button_radius)) ? Number(page.button_radius) : 12;
+    const avatarUrl = typeof page.avatar_url === 'string' ? escapeHtml(page.avatar_url) : '';
+
+    const avatarHTML = avatarUrl
+      ? `<div class="avatar" style="border-color: ${buttonColor}"><img src="${avatarUrl}" alt="" /></div>`
+      : `<div class="avatar" style="background-color: ${buttonColor}; color: ${buttonTextColor}; border-color: ${buttonColor}">${escapeHtml(page.title).charAt(0).toUpperCase()}</div>`;
 
     const linksHTML = links
       .filter((l: any) => l.label && l.url)
       .map((link: any) => `
-        <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" class="link-btn" data-link-id="${page.id}" data-link-label="${escapeHtml(link.label)}" data-link-url="${escapeHtml(link.url)}" style="background-color: ${page.button_color}; color: ${page.button_text_color}; border-radius: ${page.button_radius}px;">
+        <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" class="link-btn" data-link-id="${page.id}" data-link-label="${escapeHtml(link.label)}" data-link-url="${escapeHtml(link.url)}" style="background-color: ${buttonColor}; color: ${buttonTextColor}; border-radius: ${buttonRadius}px;">
           ${link.icon ? `<span class="link-icon">${escapeHtml(link.icon)}</span>` : ''}
           <span class="link-label">${escapeHtml(link.label)}</span>
         </a>
@@ -68,16 +80,16 @@ export async function onRequest(context: any) {
   </head>
   <body>
     <div id="app">
-      <div style="background-color: ${page.bg_color}; color: ${page.text_color}; min-height: 100vh;">
+      <div style="background-color: ${bgColor}; color: ${textColor}; min-height: 100vh;">
         <div class="profile-section">
           ${avatarHTML}
-          <h1 class="profile-title" style="color: ${page.text_color}">${escapeHtml(page.title)}</h1>
-          ${page.description ? `<p class="profile-desc" style="color: ${page.text_color}">${escapeHtml(page.description)}</p>` : ''}
+          <h1 class="profile-title" style="color: ${textColor}">${escapeHtml(page.title)}</h1>
+          ${page.description ? `<p class="profile-desc" style="color: ${textColor}">${escapeHtml(page.description)}</p>` : ''}
         </div>
         <div class="links-section">
           ${linksHTML}
         </div>
-        <div class="footer" style="color: ${page.text_color}">Feito com Nexux CRM</div>
+        <div class="footer" style="color: ${textColor}">Feito com Nexux CRM</div>
       </div>
     </div>
     <script>

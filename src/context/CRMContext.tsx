@@ -113,6 +113,7 @@ export const CRMProvider: React.FC<{children: React.ReactNode}> = ({ children })
   const logout = () => {
     localStorage.removeItem('nexus_user');
     setCurrentUser(null);
+    fetch('/api/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
   };
 
   return (

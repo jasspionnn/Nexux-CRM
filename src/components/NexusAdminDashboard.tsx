@@ -49,7 +49,7 @@ export const NexusAdminDashboard = () => {
   const fetchPerfItems = async (type?: string) => {
     try {
       const url = `/api/admin/performance-items${type ? `?type=${type}` : ''}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { credentials: 'include' });
       if (res.ok) setPerfItems(await res.json());
     } catch (e) { console.error(e); }
   };
@@ -58,10 +58,10 @@ export const NexusAdminDashboard = () => {
     setIsLoading(true);
     try {
       const [statsRes, accountsRes, settingsRes, usersRes] = await Promise.all([
-        fetch('/api/admin/stats'),
-        fetch('/api/admin/accounts'),
+        fetch('/api/admin/stats', { credentials: 'include' }),
+        fetch('/api/admin/accounts', { credentials: 'include' }),
         fetch('/api/global-settings'),
-        fetch('/api/users?account_id=acc_nexus')
+        fetch('/api/users?account_id=acc_nexus', { credentials: 'include' })
       ]);
       
       if (statsRes.ok) setStats(await statsRes.json());
@@ -82,6 +82,7 @@ export const NexusAdminDashboard = () => {
     try {
       await fetch(`/api/admin/accounts/${id}/status`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
@@ -98,6 +99,7 @@ export const NexusAdminDashboard = () => {
     try {
       const res = await fetch('/api/admin/accounts', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
@@ -136,6 +138,7 @@ export const NexusAdminDashboard = () => {
     try {
       const res = await fetch(`/api/admin/accounts/${editingAccount.id}`, {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editAccFormData)
       });
@@ -154,7 +157,8 @@ export const NexusAdminDashboard = () => {
     if (!confirm('Deseja gerar uma nova senha temporária para o proprietário desta conta?')) return;
     try {
       const res = await fetch(`/api/admin/accounts/${editingAccount.id}/reset-password`, {
-        method: 'POST'
+        method: 'POST',
+        credentials: 'include',
       });
       if (res.ok) {
         const data = await res.json();
@@ -275,6 +279,7 @@ export const NexusAdminDashboard = () => {
       const url = isEdit ? `/api/admin/performance-items/${perfForm.id}` : '/api/admin/performance-items';
       const res = await fetch(url, {
         method: isEdit ? 'PUT' : 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(perfForm),
       });
@@ -287,7 +292,7 @@ export const NexusAdminDashboard = () => {
   const handleDeletePerf = async (id: string) => {
     if (!confirm('Excluir este item?')) return;
     try {
-      await fetch(`/api/admin/performance-items/${id}`, { method: 'DELETE' });
+      await fetch(`/api/admin/performance-items/${id}`, { method: 'DELETE', credentials: 'include' });
       fetchPerfItems(perfFilterType);
     } catch (e) { console.error(e); }
   };
@@ -301,6 +306,7 @@ export const NexusAdminDashboard = () => {
     try {
       const res = await fetch('/api/admin/global-settings', {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(globalSettings)
       });

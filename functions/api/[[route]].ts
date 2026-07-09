@@ -1,37 +1,156 @@
 import { Hono } from 'hono';
 import { handle } from 'hono/cloudflare-pages';
+import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 
 type Bindings = {
   DB: any; // Using any for D1Database to avoid type errors if @cloudflare/workers-types is not fully configured
+  SESSION_SECRET?: string;
 };
 
 const app = new Hono<{ Bindings: Bindings }>().basePath('/api');
 
-// Funnels
-app.get('/debug-schema', async (c) => {
-  try {
-    const table = c.req.query('table') || 'custom_fields';
-    let query = 'PRAGMA table_info(custom_fields)';
-    if (table === 'stages') query = 'PRAGMA table_info(stages)';
-    if (table === 'funnels') query = 'PRAGMA table_info(funnels)';
-    if (table === 'leads') query = 'PRAGMA table_info(leads)';
-    
-    const tableInfo = await c.env.DB.prepare(query).all();
-    return c.json(tableInfo.results);
-  } catch (error: any) {
-    return c.json({ error: error.message }, 500);
-  }
-});
+// ==================== PASSWORD HASHING (Web Crypto — works in the Workers runtime) ====================
+// Passwords used to be stored and compared in plaintext. New/changed passwords are now
+// hashed with PBKDF2-SHA256. Existing plaintext passwords are transparently upgraded to a
+// hash the next time their owner logs in successfully (see verifyAndUpgradePassword).
+const PBKDF2_ITERATIONS = 100000;
 
-app.get('/debug-db', async (c) => {
-  try {
-    const accounts = await c.env.DB.prepare('SELECT * FROM accounts').all();
-    const users = await c.env.DB.prepare('SELECT * FROM users').all();
-    return c.json({ accounts: accounts.results, users: users.results });
-  } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+function bytesToHex(bytes: ArrayBuffer | Uint8Array): string {
+  return Array.from(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  return bytes;
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function derivePbkdf2Hex(password: string, salt: Uint8Array, iterations: number): Promise<string> {
+  const keyMaterial = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: salt as BufferSource, iterations, hash: 'SHA-256' }, keyMaterial, 256);
+  return bytesToHex(bits);
+}
+
+async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hashHex = await derivePbkdf2Hex(password, salt, PBKDF2_ITERATIONS);
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${bytesToHex(salt)}$${hashHex}`;
+}
+
+function isHashedPassword(stored: string): boolean {
+  return typeof stored === 'string' && stored.startsWith('pbkdf2$');
+}
+
+// Verifies a password against a stored value that may be a legacy plaintext string
+// or a `pbkdf2$iterations$salt$hash` string. Returns whether it matched, and — for
+// legacy matches — a freshly hashed value the caller should persist immediately.
+async function verifyAndUpgradePassword(password: string, stored: string): Promise<{ valid: boolean; upgradedHash?: string }> {
+  if (!stored) return { valid: false };
+  if (!isHashedPassword(stored)) {
+    const valid = timingSafeEqual(stored, password);
+    return valid ? { valid: true, upgradedHash: await hashPassword(password) } : { valid: false };
   }
-});
+  const [, iterStr, saltHex, hashHex] = stored.split('$');
+  const iterations = parseInt(iterStr, 10);
+  const candidateHex = await derivePbkdf2Hex(password, hexToBytes(saltHex), iterations);
+  return { valid: timingSafeEqual(candidateHex, hashHex) };
+}
+
+// ==================== SESSION (signed httpOnly cookie) ====================
+// There used to be no session at all — the client's claimed role/account_id was
+// trusted as-is. This issues a signed, expiring token on login and a middleware
+// below verifies it before allowing access to the Nexus platform-admin routes.
+const SESSION_COOKIE = 'nexus_session';
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = '';
+  bytes.forEach((b) => (binary += String.fromCharCode(b)));
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function base64UrlDecode(str: string): Uint8Array {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  const binary = atob(str);
+  return new Uint8Array([...binary].map((c) => c.charCodeAt(0)));
+}
+
+async function getSessionSigningKey(secret: string) {
+  return crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
+}
+
+type SessionPayload = { sub: string; accountId: string | null; role: string; exp: number };
+
+async function createSessionToken(payload: SessionPayload, secret: string): Promise<string> {
+  const body = base64UrlEncode(new TextEncoder().encode(JSON.stringify(payload)));
+  const key = await getSessionSigningKey(secret);
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body));
+  return `${body}.${base64UrlEncode(new Uint8Array(signature))}`;
+}
+
+async function verifySessionToken(token: string, secret: string): Promise<SessionPayload | null> {
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [body, sigB64] = parts;
+  const key = await getSessionSigningKey(secret);
+  const valid = await crypto.subtle.verify('HMAC', key, base64UrlDecode(sigB64) as BufferSource, new TextEncoder().encode(body));
+  if (!valid) return null;
+  try {
+    const payload: SessionPayload = JSON.parse(new TextDecoder().decode(base64UrlDecode(body)));
+    if (!payload.exp || Date.now() > payload.exp) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+async function issueSession(c: any, user: { id: string; account_id: string | null; role: string }) {
+  const secret = c.env.SESSION_SECRET;
+  if (!secret) {
+    console.error('[SESSION] SESSION_SECRET is not configured — no session cookie was issued.');
+    return;
+  }
+  const token = await createSessionToken(
+    { sub: user.id, accountId: user.account_id, role: user.role, exp: Date.now() + SESSION_TTL_MS },
+    secret
+  );
+  setCookie(c, SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: SESSION_TTL_MS / 1000,
+  });
+}
+
+// Guards every /admin/* route (the Nexus platform-admin surface). Fails closed:
+// if SESSION_SECRET isn't configured, admin routes stay inaccessible rather than open.
+async function requireNexusAdmin(c: any, next: any) {
+  const secret = c.env.SESSION_SECRET;
+  if (!secret) return c.json({ error: 'Autenticação de administrador não configurada no servidor.' }, 500);
+  const token = getCookie(c, SESSION_COOKIE);
+  if (!token) return c.json({ error: 'Não autenticado.' }, 401);
+  const payload = await verifySessionToken(token, secret);
+  if (!payload || payload.role !== 'NEXUS_ADMIN') return c.json({ error: 'Acesso negado.' }, 403);
+  c.set('authUser', payload);
+  await next();
+}
+
+app.use('/admin/*', requireNexusAdmin);
+
+// Funnels
+// NOTE: /debug-schema and /debug-db were removed — they dumped full table contents
+// (including plaintext passwords from `users`) to any unauthenticated caller.
 
 app.get('/seed-db', async (c) => {
   try {
@@ -69,31 +188,10 @@ app.get('/seed-db', async (c) => {
   }
 });
 
-app.get('/seed-nexus-admin', async (c) => {
-  try {
-    // Criar conta Nexus se não existir
-    await c.env.DB.prepare(`
-      INSERT INTO accounts (id, company_name, owner_name, email, status, plan, created_at)
-      VALUES ('acc_nexus', 'Nexus CRM', 'Admin Nexus', 'adminnexus@nexus.com', 'active', 'enterprise', datetime('now'))
-      ON CONFLICT(id) DO UPDATE SET email = 'adminnexus@nexus.com'
-    `).run();
-
-    // Criar usuário admin do Nexus
-    await c.env.DB.prepare(`
-      INSERT INTO users (id, account_id, name, email, password, role, status, joined_at)
-      VALUES ('u_nexus_admin', 'acc_nexus', 'Administrador Nexus', 'adminnexus@nexus.com', '123', 'NEXUS_ADMIN', 'active', datetime('now'))
-      ON CONFLICT(id) DO UPDATE SET email = 'adminnexus@nexus.com', password = '123', account_id = 'acc_nexus'
-    `).run();
-
-    // Verificar se foi criado corretamente
-    const user = await c.env.DB.prepare('SELECT id, account_id, name, email, role FROM users WHERE email = ?').bind('adminnexus@nexus.com').first();
-
-    return c.json({ success: true, user });
-  } catch (error: any) {
-    console.error('Seed Nexus Admin error:', error);
-    return c.json({ error: error.message }, 500);
-  }
-});
+// NOTE: /seed-nexus-admin was removed — it (re)created the platform super-admin
+// account with a hardcoded password ('123') on every call, with no authentication.
+// It was a standing backdoor. If this account's password was ever exposed, rotate
+// it manually (see seed-nexus-admin.sql for the one-time, hashed replacement).
 
 app.get('/migrate-db', async (c) => {
   try {
@@ -1207,7 +1305,7 @@ app.post('/users', async (c) => {
 
     const team_id = body.team_id || null;
     const avatar = body.avatar || null;
-    const password = body.password || 'temp_password';
+    const password = await hashPassword(body.password || 'temp_password');
 
     await c.env.DB.prepare('INSERT INTO users (id, account_id, name, email, password, role, status, team_id, avatar, joined_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))')
       .bind(id, account_id, body.name, body.email, password, body.role, body.status, team_id, avatar)
@@ -1224,8 +1322,9 @@ app.put('/users/:id', async (c) => {
   const body = await c.req.json();
 
   if (body.password) {
+    const hashed = await hashPassword(body.password);
     await c.env.DB.prepare('UPDATE users SET name = ?, email = ?, role = ?, status = ?, team_id = ?, password = ? WHERE id = ?')
-      .bind(body.name, body.email, body.role, body.status, body.team_id || null, body.password, id)
+      .bind(body.name, body.email, body.role, body.status, body.team_id || null, hashed, id)
       .run();
   } else {
     await c.env.DB.prepare('UPDATE users SET name = ?, email = ?, role = ?, status = ?, team_id = ? WHERE id = ?')
@@ -1241,7 +1340,8 @@ app.put('/users/:id/password', async (c) => {
     const id = c.req.param('id');
     const body = await c.req.json();
     if (!body.password) return c.json({ error: 'password required' }, 400);
-    await c.env.DB.prepare('UPDATE users SET password = ? WHERE id = ?').bind(body.password, id).run();
+    const hashed = await hashPassword(body.password);
+    await c.env.DB.prepare('UPDATE users SET password = ? WHERE id = ?').bind(hashed, id).run();
     return c.json({ success: true });
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
@@ -1262,15 +1362,8 @@ app.get('/leads', async (c) => {
   return c.json(results);
 });
 
-app.get('/test-db', async (c) => {
-  try {
-    const table = c.req.query('table') || 'leads';
-    const schema = await c.env.DB.prepare(`PRAGMA table_info(${table})`).all();
-    return c.json({ success: true, schema: schema.results });
-  } catch (e: any) {
-    return c.json({ error: e.message, stack: e.stack });
-  }
-});
+// NOTE: /test-db was removed — it interpolated a client-supplied table name
+// straight into a PRAGMA statement and returned raw stack traces to the client.
 
 app.post('/leads', async (c) => {
   try {
@@ -1630,17 +1723,18 @@ app.post('/admin/accounts', async (c) => {
     
     // Auto-create Master User
     const userId = `u_${crypto.randomUUID().slice(0, 8)}`;
+    const initialPassword = 'temp123';
     await c.env.DB.prepare(`
       INSERT INTO users (id, account_id, name, email, password, role, status, joined_at)
       VALUES (?, ?, ?, ?, ?, 'ACCOUNT_ADMIN', 'active', datetime('now'))
-    `).bind(userId, id, body.owner_name, body.email, 'temp123').run();
+    `).bind(userId, id, body.owner_name, body.email, await hashPassword(initialPassword)).run();
 
     // Init basic funnel
     const funnelId = `f_${crypto.randomUUID().slice(0, 8)}`;
     await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)').bind(funnelId, id, 'Funil Inicial').run();
     await c.env.DB.prepare('INSERT INTO stages (id, funnel_id, name, color, "order") VALUES (?, ?, ?, ?, ?)').bind(crypto.randomUUID(), funnelId, 'Contato Inicial', '#3b82f6', 0).run();
 
-    return c.json({ id, company_name: body.company_name, status: 'active', owner: body.owner_name, defaultPassword: 'temp123' });
+    return c.json({ id, company_name: body.company_name, status: 'active', owner: body.owner_name, defaultPassword: initialPassword });
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
   }
@@ -1699,7 +1793,7 @@ app.post('/admin/accounts/:id/reset-password', async (c) => {
     // Reset password for the user matching this account and email
     const result = await c.env.DB.prepare(`
       UPDATE users SET password = ? WHERE account_id = ? AND LOWER(email) = LOWER(?)
-    `).bind(newPassword, id, account.email).run();
+    `).bind(await hashPassword(newPassword), id, account.email).run();
 
     if (result.meta.changes === 0) {
       console.warn(`[RESET] No user found with email ${account.email} in account ${id}`);
@@ -1715,7 +1809,9 @@ app.post('/admin/accounts/:id/reset-password', async (c) => {
 });
 
 // Generic user password reset (for the users tab)
-app.post('/api/admin/users/:id/reset-password', async (c) => {
+// NOTE: this used to be registered as '/api/admin/users/:id/reset-password' on an
+// app with basePath('/api'), making the real path '/api/api/...' — unreachable.
+app.post('/admin/users/:id/reset-password', async (c) => {
   try {
     const id = c.req.param('id');
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
@@ -1724,7 +1820,7 @@ app.post('/api/admin/users/:id/reset-password', async (c) => {
       newPassword += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     
-    const result = await c.env.DB.prepare('UPDATE users SET password = ? WHERE id = ?').bind(newPassword, id).run();
+    const result = await c.env.DB.prepare('UPDATE users SET password = ? WHERE id = ?').bind(await hashPassword(newPassword), id).run();
 
     if (result.meta.changes === 0) return c.json({ error: 'Usuário não encontrado.' }, 404);
 
@@ -1776,11 +1872,12 @@ app.post('/public/register', async (c) => {
       VALUES (?, ?, ?, ?, 'active', 'trial', datetime('now', '+14 days'), datetime('now'))
     `).bind(id, body.company_name, body.owner_name, body.email).run();
     
+    if (!body.password) return c.json({ error: 'password is required' }, 400);
     const userId = `u_${crypto.randomUUID().slice(0, 8)}`;
     await c.env.DB.prepare(`
       INSERT INTO users (id, account_id, name, email, password, role, status, joined_at)
       VALUES (?, ?, ?, ?, ?, 'ACCOUNT_ADMIN', 'active', datetime('now'))
-    `).bind(userId, id, body.owner_name, body.email, body.password).run();
+    `).bind(userId, id, body.owner_name, body.email, await hashPassword(body.password)).run();
 
     const funnelId = `f_${crypto.randomUUID().slice(0, 8)}`;
     await c.env.DB.prepare('INSERT INTO funnels (id, account_id, name) VALUES (?, ?, ?)').bind(funnelId, id, 'Funil Inicial').run();
@@ -1821,9 +1918,14 @@ app.post('/login', async (c) => {
       return c.json({ error: `Seu usuário está com status: ${user.status}. Entre em contato com o suporte.` }, 403);
     }
 
-    if (user.password !== password) {
+    const { valid, upgradedHash } = await verifyAndUpgradePassword(password, user.password);
+    if (!valid) {
       console.log(`[LOGIN] Password mismatch for email: ${email}`);
       return c.json({ error: 'Senha incorreta.' }, 401);
+    }
+    if (upgradedHash) {
+      // Legacy plaintext password matched — transparently upgrade it to a hash.
+      await c.env.DB.prepare('UPDATE users SET password = ? WHERE id = ?').bind(upgradedHash, user.id).run();
     }
 
     // Check if account is active
@@ -1831,6 +1933,8 @@ app.post('/login', async (c) => {
     if (account && account.status !== 'active') {
        return c.json({ error: `A conta da empresa (${user.account_id}) está ${account.status}.` }, 403);
     }
+
+    await issueSession(c, user);
 
     // Don't return the password
     const { password: _, ...userWithoutPassword } = user;
@@ -1840,6 +1944,11 @@ app.post('/login', async (c) => {
     console.error('Login error:', error);
     return c.json({ error: 'Erro interno no servidor' }, 500);
   }
+});
+
+app.post('/logout', async (c) => {
+  deleteCookie(c, SESSION_COOKIE, { path: '/' });
+  return c.json({ success: true });
 });
 // ==================== TRACKING ENDPOINTS ====================
 
@@ -2664,19 +2773,21 @@ app.get('/admin/deduplicate-marketing-leads', async (c) => {
     
     // 1. Find emails with duplicates (trimming and lowercasing)
     let query = `
-      SELECT LOWER(TRIM(contact_email)) as email, account_id, COUNT(*) as count 
-      FROM marketing_leads 
+      SELECT LOWER(TRIM(contact_email)) as email, account_id, COUNT(*) as count
+      FROM marketing_leads
       WHERE contact_email IS NOT NULL AND contact_email != ''
     `;
-    
+    const queryParams: any[] = [];
+
     if (!allAccounts) {
       if (!accountId) return c.json({ error: 'account_id is required when not using all=true' }, 400);
-      query += ` AND account_id = '${accountId}'`;
+      query += ` AND account_id = ?`;
+      queryParams.push(accountId);
     }
-    
+
     query += ` GROUP BY LOWER(TRIM(contact_email)), account_id HAVING count > 1`;
 
-    const { results: duplicates } = await c.env.DB.prepare(query).all();
+    const { results: duplicates } = await c.env.DB.prepare(query).bind(...queryParams).all();
 
     let totalRemoved = 0;
     const details = [];
@@ -2800,44 +2911,48 @@ app.get('/bio-links/:id/analytics', async (c) => {
     const endDate = c.req.query('end_date');
 
     let dateFilter = '';
+    const dateParams: any[] = [];
     if (startDate && endDate) {
-      dateFilter = `AND clicked_at BETWEEN '${startDate}' AND '${endDate}'`;
+      dateFilter = 'AND clicked_at BETWEEN ? AND ?';
+      dateParams.push(startDate, endDate);
     } else if (startDate) {
-      dateFilter = `AND clicked_at >= '${startDate}'`;
+      dateFilter = 'AND clicked_at >= ?';
+      dateParams.push(startDate);
     } else if (endDate) {
-      dateFilter = `AND clicked_at <= '${endDate}'`;
+      dateFilter = 'AND clicked_at <= ?';
+      dateParams.push(endDate);
     }
 
     // Total clicks per link label
     const clicksByLink = await c.env.DB.prepare(
-      `SELECT link_label, link_url, COUNT(*) as click_count, 
+      `SELECT link_label, link_url, COUNT(*) as click_count,
               COUNT(DISTINCT ip_address) as unique_clicks,
               MIN(clicked_at) as first_click,
               MAX(clicked_at) as last_click
-       FROM bio_link_clicks 
+       FROM bio_link_clicks
        WHERE bio_link_id = ? ${dateFilter}
        GROUP BY link_label, link_url
        ORDER BY click_count DESC`
-    ).bind(id).all();
+    ).bind(id, ...dateParams).all();
 
     // Daily clicks
     const dailyClicks = await c.env.DB.prepare(
       `SELECT DATE(clicked_at) as date, COUNT(*) as click_count,
               COUNT(DISTINCT ip_address) as unique_clicks
-       FROM bio_link_clicks 
+       FROM bio_link_clicks
        WHERE bio_link_id = ? ${dateFilter}
        GROUP BY DATE(clicked_at)
        ORDER BY date ASC`
-    ).bind(id).all();
+    ).bind(id, ...dateParams).all();
 
     // Total stats
     const totalStats = await c.env.DB.prepare(
       `SELECT COUNT(*) as total_clicks,
               COUNT(DISTINCT ip_address) as total_unique_clicks,
               COUNT(DISTINCT link_label) as total_links_clicked
-       FROM bio_link_clicks 
+       FROM bio_link_clicks
        WHERE bio_link_id = ? ${dateFilter}`
-    ).bind(id).first();
+    ).bind(id, ...dateParams).first();
 
     return c.json({
       clicks_by_link: clicksByLink.results || [],
@@ -3065,12 +3180,26 @@ app.get('/email-campaigns/:id/metrics', async (c) => {
 });
 
 // ==================== SEGMENT HELPER ====================
+// `field` below ends up interpolated directly into SQL as a column name (bind()
+// only parameterizes values, not identifiers). It must be checked against this
+// allowlist of real `leads` columns before use — otherwise it's SQL injection
+// via attacker-controlled segment rules.
+const SEGMENT_ALLOWED_FIELDS = new Set([
+  'title', 'company', 'value', 'contact_name', 'contact_email', 'contact_phone',
+  'funnel_id', 'stage_id', 'assigned_user_id', 'probability', 'tags',
+  'score_profile', 'score_interest', 'score_grade', 'created_at',
+]);
+
 async function buildSegmentQuery(db: any, accountId: string, rules: any[]) {
   let whereClause = 'account_id = ?';
   const params: any[] = [accountId];
 
   for (const rule of rules) {
     let { field, operator, value } = rule;
+
+    if (field !== 'filled_form' && field !== 'visited_page' && !SEGMENT_ALLOWED_FIELDS.has(field)) {
+      continue; // unknown/unsafe field name — skip this rule rather than build SQL from it
+    }
 
     // The UI hides the operator dropdown for special fields, meaning it often defaults to 'contains'
     // or whatever was last selected. We must normalize it to 'equals' (affirmative) or 'not_equals' (negative).
@@ -3788,34 +3917,9 @@ async function calculateLeadScore(db: any, account_id: string, leadId?: string) 
   }
 }
 
-app.post('/login', async (c) => {
-  try {
-    const { email, password } = await c.req.json();
-
-    if (!email || !password) {
-      return c.json({ error: 'Email e senha são obrigatórios' }, 400);
-    }
-
-    const user: any = await c.env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
-
-    if (!user) {
-      return c.json({ error: 'Usuário não encontrado' }, 401);
-    }
-
-    // Direct comparison for now as requested.
-    // In a production app, we would use hashing.
-    if (user.password !== password) {
-      return c.json({ error: 'Senha incorreta' }, 401);
-    }
-
-    // Return user data without password
-    const { password: _, ...userWithoutPassword } = user;
-    return c.json(userWithoutPassword);
-  } catch (error: any) {
-    console.error('Login error:', error);
-    return c.json({ error: error.message }, 500);
-  }
-});
+// NOTE: a duplicate, weaker `/login` handler (no status/account checks, plaintext
+// comparison) used to live here. Hono only ever reached the first registration
+// (see the real /login handler above), so this copy was dead code — removed.
 
 // ========================================
 // LEAD SCORING API
