@@ -1,9 +1,16 @@
--- Human-readable reference of the full current schema, and the fresh-install
--- bootstrap for local dev (see `npm run db:setup`). Production and any existing
--- database are evolved via versioned migrations in migrations/ instead (see
--- `npm run db:migrate:*`) — if you change something here, add a matching migration
--- with `wrangler d1 migrations create nexus-db <name>` so this file and the real
--- database don't drift apart again.
+-- Migration number: 0001 	 2026-07-09T02:30:28.245Z
+--
+-- Baseline migration. Content mirrors schema.sql at the time this migration system
+-- was introduced (previously, schema evolution happened ad hoc via a GET /api/migrate-db
+-- endpoint that ran a long hand-maintained sequence of CREATE TABLE IF NOT EXISTS /
+-- ALTER TABLE statements with no version tracking). Every statement below is
+-- idempotent (IF NOT EXISTS), so applying this migration against a database that
+-- already has these tables (e.g. one bootstrapped by the old /migrate-db endpoint)
+-- is safe and a no-op.
+--
+-- Going forward: run `wrangler d1 migrations create nexus-db <name>` for schema
+-- changes instead of editing this file, and keep schema.sql updated to match (it
+-- remains the human-readable reference / fresh-install bootstrap for local dev).
 
 CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
@@ -572,4 +579,3 @@ CREATE INDEX IF NOT EXISTS idx_page_views_account_id ON page_views(account_id);
 CREATE INDEX IF NOT EXISTS idx_marketing_leads_account_id ON marketing_leads(account_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_account_id ON notifications(account_id);
 CREATE INDEX IF NOT EXISTS idx_bio_link_clicks_bio_link_id ON bio_link_clicks(bio_link_id);
- 

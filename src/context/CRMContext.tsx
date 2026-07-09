@@ -54,12 +54,13 @@ export const CRMProvider: React.FC<{children: React.ReactNode}> = ({ children })
   const unreadCount = notifications.filter(n => !n.read).length + tasksToday.length;
 
   useEffect(() => {
-    const db_version = 'v12';
+    // Schema migrations are no longer run from the browser — see migrations/ and
+    // `npm run db:migrate:*`. This only seeds convenience demo data on first run.
+    const db_version = 'v13';
     if (localStorage.getItem(`nexus_db_initialized_${db_version}`)) return;
 
     const initializeDB = async () => {
       try {
-        await api.get('/migrate-db');
         await api.get('/seed-db');
         localStorage.setItem(`nexus_db_initialized_${db_version}`, 'true');
       } catch (err) {

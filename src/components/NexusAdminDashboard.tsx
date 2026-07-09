@@ -2,19 +2,29 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Building2, Activity, DollarSign, Settings, LogOut, Search, Bell, Menu, X, Plus, ShieldCheck, Play, Pause, Key, Save, Trash2, Users, Edit2, Zap, BookOpen, Flame, Network, Image as ImageIcon, Upload, ExternalLink, Link } from 'lucide-react';
 import { useCRM } from '../context/CRMContext';
 import { api, ApiError } from '../lib/api';
+import { Account, User, PerformanceItem } from '../types';
+
+type GlobalSettings = {
+  login_title: string;
+  login_subtitle: string;
+  login_badge_text: string;
+  login_quote_text: string;
+  login_quote_author: string;
+  login_quote_role: string;
+};
 
 export const NexusAdminDashboard = () => {
   const { currentUser, logout } = useCRM();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<'accounts' | 'settings' | 'users' | 'performance'>('accounts');
-  
+
   const [stats, setStats] = useState({ totalAccounts: 0, activeAccounts: 0, totalUsers: 0, mrr: 0 });
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [nexusUsers, setNexusUsers] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [nexusUsers, setNexusUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Global Settings State
-  const [globalSettings, setGlobalSettings] = useState<any>({
+  const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
     login_title: '', login_subtitle: '', login_badge_text: '', login_quote_text: '', login_quote_author: '', login_quote_role: ''
   });
   const [savingSettings, setSavingSettings] = useState(false);
@@ -23,19 +33,19 @@ export const NexusAdminDashboard = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [formData, setFormData] = useState({ company_name: '', owner_name: '', email: '', plan: 'pro' });
   const [creating, setCreating] = useState(false);
-  const [createdInfo, setCreatedInfo] = useState<any>(null);
+  const [createdInfo, setCreatedInfo] = useState<{ id: string; company_name: string; email: string; defaultPassword?: string } | null>(null);
 
   // Modal State - Edit Account
-  const [editingAccount, setEditingAccount] = useState<any>(null);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [editAccFormData, setEditAccFormData] = useState({ company_name: '', owner_name: '', email: '', plan: 'pro', expires_at: '' });
   const [newPassword, setNewPassword] = useState<string | null>(null);
 
   // Modal State - Edit User
-  const [editingUser, setEditingUser] = useState<any>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editUserFormData, setEditUserFormData] = useState({ name: '', email: '', role: 'NEXUS_ADMIN', status: 'active' });
 
   // +Performance State
-  const [perfItems, setPerfItems] = useState<any[]>([]);
+  const [perfItems, setPerfItems] = useState<PerformanceItem[]>([]);
   const [perfFilterType, setPerfFilterType] = useState('');
   const [perfModal, setPerfModal] = useState<'create' | 'edit' | null>(null);
   const [perfForm, setPerfForm] = useState({ id: '', type: 'mentoria', name: '', description: '', thumb_url: '', cta_url: '', status: 'active' });
@@ -104,11 +114,11 @@ export const NexusAdminDashboard = () => {
     }
   };
 
-  const handleEditAccount = (acc: any) => {
+  const handleEditAccount = (acc: Account) => {
     setEditingAccount(acc);
     setEditAccFormData({
       company_name: acc.company_name,
-      owner_name: acc.owner_name,
+      owner_name: acc.owner_name || '',
       email: acc.email,
       plan: acc.plan,
       expires_at: acc.expires_at ? acc.expires_at.split('T')[0] : ''
@@ -118,6 +128,7 @@ export const NexusAdminDashboard = () => {
 
   const handleUpdateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingAccount) return;
     try {
       await api.put(`/admin/accounts/${editingAccount.id}`, editAccFormData);
       setEditingAccount(null);
@@ -129,6 +140,7 @@ export const NexusAdminDashboard = () => {
   };
 
   const handleResetPassword = async () => {
+    if (!editingAccount) return;
     if (!confirm('Deseja gerar uma nova senha temporária para o proprietário desta conta?')) return;
     try {
       const data = await api.post(`/admin/accounts/${editingAccount.id}/reset-password`);
@@ -157,18 +169,19 @@ export const NexusAdminDashboard = () => {
     }
   };
 
-  const handleEditUser = (user: any) => {
+  const handleEditUser = (user: User) => {
     setEditingUser(user);
     setEditUserFormData({
       name: user.name,
       email: user.email,
       role: user.role,
-      status: user.status
+      status: user.status || 'active'
     });
   };
 
   const handleUpdateNexusUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingUser) return;
     try {
       await api.put(`/users/${editingUser.id}`, editUserFormData);
       setEditingUser(null);
@@ -197,7 +210,7 @@ export const NexusAdminDashboard = () => {
     setPerfModal('create');
   };
 
-  const openEditPerf = (item: any) => {
+  const openEditPerf = (item: PerformanceItem) => {
     setPerfForm({ id: item.id, type: item.type, name: item.name, description: item.description || '', thumb_url: item.thumb_url || '', cta_url: item.cta_url || '', status: item.status });
     setPerfModal('edit');
   };
